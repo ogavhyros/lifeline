@@ -14,6 +14,7 @@ const {
   getAllGoals, addGoal, updateGoalStatus,
   getCycles, getCyclesByGoal, addCycle, updateCycleCommitment,
   addGoalProgress, getGoalProgress,
+  getSetting,
 } = require('./db');
 
 // WAT datetime helpers (kept local — not needed in other modules)
@@ -56,11 +57,57 @@ function saveTasks(structuredTasks) {
 
 // ── formatting ────────────────────────────────────────────────────────────────
 
+function getScheduleMap() {
+  const row = getSetting.get('schedule_blocks');
+  if (!row) return new Map();
+  try {
+    const blocks = JSON.parse(row.value);
+    return new Map(blocks.map(b => [b.time, b.name]));
+  } catch { return new Map(); }
+}
+
 function formatTaskList(tasks) {
   if (!tasks.length) return 'No tasks for today.';
-  return tasks
-    .map((t, i) => `${i + 1}. [${t.done ? 'x' : ' '}] ${t.name} (${t.business})${t.time ? ` — ${t.time}` : ''}`)
-    .join('\n');
+
+  const schedMap = getScheduleMap();
+
+  const sorted = [...tasks].sort((a, b) => {
+    if (!a.time && !b.time) return 0;
+    if (!a.time) return 1;
+    if (!b.time) return -1;
+    return a.time.localeCompare(b.time);
+  });
+
+  // Group consecutive tasks by time slot
+  const groups = [];
+  for (const t of sorted) {
+    const last = groups[groups.length - 1];
+    if (last && last.time === (t.time || null)) {
+      last.tasks.push(t);
+    } else {
+      groups.push({ time: t.time || null, tasks: [t] });
+    }
+  }
+
+  let num = 1;
+  const lines = [];
+  for (const g of groups) {
+    if (g.time) {
+      const blockName = schedMap.get(g.time);
+      const header = blockName
+        ? `${blockName.split(':')[0].toUpperCase()} — ${g.time}`
+        : g.time;
+      lines.push('', header);
+    } else {
+      lines.push('', 'UNSCHEDULED');
+    }
+    for (const t of g.tasks) {
+      const mark = t.source === 'recurring' ? '↻' : ' ';
+      lines.push(`${num++}. [${t.done ? 'x' : mark}] ${t.name}`);
+    }
+  }
+
+  return lines.join('\n').trimStart();
 }
 
 function fmtRate(tasks) {

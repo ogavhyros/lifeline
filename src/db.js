@@ -119,12 +119,11 @@ db.exec(`
   );
 `);
 
-// Add priority column to tasks if it was created without it
-try {
-  db.exec(`ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'normal'`);
-} catch {
-  // Column already exists — safe to ignore
-}
+// Add columns that may not exist yet (safe to run every startup)
+try { db.exec(`ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'normal'`); } catch {}
+try { db.exec(`ALTER TABLE recurring_tasks ADD COLUMN days TEXT DEFAULT 'daily'`); } catch {}
+try { db.exec(`ALTER TABLE recurring_tasks ADD COLUMN time_block TEXT`); } catch {}
+try { db.exec(`ALTER TABLE tasks ADD COLUMN source TEXT`); } catch {}
 
 // ── WAT helpers ───────────────────────────────────────────────────────────────
 
@@ -186,26 +185,45 @@ const upsertKpi = db.prepare(
 
 // ── prepared statements — recurring tasks ────────────────────────────────────
 
-const getRecurring        = db.prepare('SELECT * FROM recurring_tasks WHERE active = 1 ORDER BY scheduled_time, id');
+const getRecurring        = db.prepare('SELECT * FROM recurring_tasks WHERE active = 1 ORDER BY business, scheduled_time, id');
 const addRecurring        = db.prepare(
-  `INSERT INTO recurring_tasks (name, business, scheduled_time, active)
-   VALUES (?, ?, ?, 1)`
+  `INSERT INTO recurring_tasks (name, business, scheduled_time, days, time_block, active)
+   VALUES (?, ?, ?, ?, ?, 1)`
 );
 const deleteRecurring     = db.prepare('DELETE FROM recurring_tasks WHERE id = ?');
 const deactivateRecurring = db.prepare('UPDATE recurring_tasks SET active = 0 WHERE id = ?');
-const checkTaskExists = db.prepare('SELECT id FROM tasks WHERE date = ? AND name = ?');
+const checkRecurringExists = db.prepare('SELECT id FROM recurring_tasks WHERE name = ? AND business = ? AND active = 1');
+const checkTaskExists      = db.prepare('SELECT id FROM tasks WHERE date = ? AND name = ?');
+const insertRecurringTask  = db.prepare(
+  `INSERT INTO tasks (date, name, business, time, done, priority, source)
+   VALUES (?, ?, ?, ?, 0, 'normal', 'recurring')`
+);
 
 function populateRecurring(date) {
-  const recurring = getRecurring.all();
-  const insert    = db.transaction((tasks) => {
+  const dayOfWeek = new Date(date + 'T12:00:00Z').getUTCDay(); // 0=Sun … 6=Sat
+  const recurring  = getRecurring.all();
+  db.transaction((tasks) => {
     for (const t of tasks) {
+      const days = t.days || 'daily';
+      if (days !== 'daily') {
+        const allowed = days.split(',').map(d => parseInt(d.trim(), 10));
+        if (!allowed.includes(dayOfWeek)) continue;
+      }
       const exists = checkTaskExists.get(date, t.name);
       if (!exists) {
-        insertTask.run(date, t.name, t.business, t.scheduled_time || null, 'normal');
+        insertRecurringTask.run(date, t.name, t.business, t.scheduled_time || null);
       }
     }
-  });
-  insert(recurring);
+  })(recurring);
+}
+
+function getRecurringGrouped() {
+  const all    = getRecurring.all();
+  const groups = { blok: [], aphl: [], trade: [], personal: [] };
+  for (const t of all) {
+    if (groups[t.business]) groups[t.business].push(t);
+  }
+  return groups;
 }
 
 // ── prepared statements — carry forward ──────────────────────────────────────
@@ -337,6 +355,42 @@ const upsertSetting = db.prepare(`
   ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')
 `);
 
+// ── startup seeds ─────────────────────────────────────────────────────────────
+
+{
+  const SEEDS = [
+    // BLOK AI
+    { name: 'Send 5 investor emails',            business: 'blok',     scheduled_time: '07:30', days: 'daily',      time_block: 'Raise: 5 investor emails, CRM update'        },
+    { name: 'Update CRM pipeline',               business: 'blok',     scheduled_time: '07:45', days: '1,2,3,4,5', time_block: 'Raise: 5 investor emails, CRM update'        },
+    { name: 'Review Arkad user flow',            business: 'blok',     scheduled_time: '09:00', days: 'daily',      time_block: 'Product: PM review, Arkad user flow'         },
+    { name: 'Check async comms and Slack',       business: 'blok',     scheduled_time: '10:30', days: 'daily',      time_block: 'Comms: Slack, async check-ins'               },
+    { name: 'Post or review brand content',      business: 'blok',     scheduled_time: '11:30', days: 'daily',      time_block: 'Brand: creative review, social metrics'      },
+    // APHL AFRICA
+    { name: 'Get daily depot price from Yinusi', business: 'aphl',     scheduled_time: '06:30', days: 'daily',      time_block: 'Pre-day setup: depot price, brief Candy'     },
+    { name: 'Brief Candy on daily targets',      business: 'aphl',     scheduled_time: '06:40', days: 'daily',      time_block: 'Pre-day setup: depot price, brief Candy'     },
+    { name: 'Confirm floor price and call driver', business: 'aphl',   scheduled_time: '07:00', days: 'daily',      time_block: 'Morning command: floor price, driver call'   },
+    { name: 'Track loading and trip status',     business: 'aphl',     scheduled_time: '10:00', days: 'daily',      time_block: 'Operations: payments, loading, tracking'     },
+    { name: 'Log daily revenue',                 business: 'aphl',     scheduled_time: '16:30', days: 'daily',      time_block: 'Unified day close: ops sync, revenue log'    },
+    { name: 'Review Candy sales report',         business: 'aphl',     scheduled_time: '16:45', days: 'daily',      time_block: 'Unified day close: ops sync, revenue log'    },
+    // TRADESOL
+    { name: 'Create or schedule one content piece', business: 'trade', scheduled_time: '11:30', days: '1,3,5',      time_block: 'Brand: creative review, social metrics'      },
+    { name: 'Follow up with agent leads',        business: 'trade',    scheduled_time: '14:00', days: '1,2,3,4,5', time_block: 'Strategy: priorities, decision log'          },
+    // PERSONAL
+    { name: 'Morning pages (3 pages)',           business: 'personal', scheduled_time: '05:45', days: 'daily',      time_block: 'Journaling'                                  },
+    { name: 'Read for 20 minutes',               business: 'personal', scheduled_time: '12:30', days: 'daily',      time_block: 'MD strategic hour: depot, pricing'           },
+    { name: 'Physical training',                 business: 'personal', scheduled_time: '19:00', days: 'daily',      time_block: 'Physical activity'                           },
+    { name: 'Pottery session',                   business: 'personal', scheduled_time: '18:00', days: '1,3,5',      time_block: 'Pottery or reading'                          },
+  ];
+  db.transaction(() => {
+    for (const s of SEEDS) {
+      const exists = checkRecurringExists.get(s.name, s.business);
+      if (!exists) {
+        addRecurring.run(s.name, s.business, s.scheduled_time || null, s.days, s.time_block || null);
+      }
+    }
+  })();
+}
+
 // ── day log + recurring population ───────────────────────────────────────────
 
 function syncDayLog(date) {
@@ -373,6 +427,7 @@ module.exports = {
 
   // recurring
   getRecurring,
+  getRecurringGrouped,
   addRecurring,
   deleteRecurring,
   deactivateRecurring,

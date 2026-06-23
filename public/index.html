@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="DAYWAN" />
+  <link rel="manifest" href="/manifest.json" />
   <title>DAYWAN — Day One</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -845,6 +849,42 @@
       font-family: 'Geist Mono', monospace;
     }
     .rec-add-time::placeholder { color: #ccc; }
+    .rec-biz-group { margin-top: 8px; }
+    .rec-biz-group:first-child { margin-top: 0; }
+    .rec-biz-head {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 0 2px;
+      border-bottom: 1px solid #f0f0ee;
+      margin-bottom: 2px;
+    }
+    .rec-days {
+      font-size: 10px;
+      color: #bbb;
+      font-family: 'Geist Mono', monospace;
+      white-space: nowrap;
+    }
+    .rec-block-label {
+      font-size: 10px;
+      color: #ccc;
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 140px;
+    }
+    .rec-add-select-sm {
+      font-size: 11px;
+      border: none;
+      border-bottom: 1px solid #e8e8e6;
+      outline: none;
+      background: white;
+      color: #6b6b6b;
+      font-family: 'Geist', system-ui, sans-serif;
+      padding: 2px;
+      max-width: 90px;
+    }
 
     /* ── sidebar weekly stat ──────────────────────────────────────────────────── */
     .sidebar-week {
@@ -1179,10 +1219,308 @@
       gap: 12px;
       margin-top: 14px;
     }
+
+    /* ── focus blocks ─────────────────────────────────────────────────────────── */
+
+    .focus-section-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #bbb;
+      margin: 16px 0 8px;
+    }
+    .all-tasks-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #bbb;
+      margin: 20px 0 4px;
+    }
+    .focus-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 4px;
+    }
+    @media (max-width: 600px) {
+      .focus-grid { grid-template-columns: 1fr; }
+    }
+    .focus-card {
+      background: #fafafa;
+      border: 1px solid #f0f0ee;
+      border-radius: 6px;
+      padding: 12px 14px;
+    }
+    .focus-card-head {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #bbb;
+      margin-bottom: 8px;
+    }
+    .focus-task-row {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 4px 0;
+      cursor: pointer;
+      border-bottom: 1px solid #f5f5f4;
+    }
+    .focus-task-row:last-child { border-bottom: none; }
+    .focus-task-row .task-check {
+      width: 13px; height: 13px; flex-shrink: 0;
+    }
+    .focus-task-name {
+      flex: 1;
+      font-size: 12px;
+      color: #1a1a1a;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .focus-task-name.done { color: #ccc; text-decoration: line-through; }
+    .focus-slot-empty {
+      display: flex;
+      align-items: center;
+      padding: 4px 0;
+      cursor: pointer;
+      border-bottom: 1px dashed #ebebea;
+    }
+    .focus-slot-empty:last-child { border-bottom: none; }
+    .focus-slot-text { font-size: 12px; color: #d0d0cc; }
+    .focus-slot-text:hover { color: #999; }
+    .focus-anchor-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 0;
+      border-bottom: 1px solid #f5f5f4;
+    }
+    .focus-anchor-row:last-child { border-bottom: none; }
+    .focus-anchor-time {
+      font-family: 'Geist Mono', monospace;
+      font-size: 10px;
+      color: #ccc;
+      min-width: 36px;
+      flex-shrink: 0;
+    }
+    .focus-anchor-name {
+      flex: 1;
+      font-size: 12px;
+      color: #999;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .personal-rec-section { margin-bottom: 6px; }
+    .personal-rec-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      color: #bbb;
+      cursor: pointer;
+      user-select: none;
+      padding: 6px 0 4px;
+      border-top: 1px solid #f5f5f4;
+    }
+    .personal-rec-toggle:hover { color: #999; }
+    .personal-rec-body { padding: 2px 0 4px; }
+
+    /* ── Mobile topbar & weekstrip (hidden on desktop) ───────────────────────── */
+    #mobile-topbar {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 48px;
+      background: #1a1a1a;
+      color: #fff;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      z-index: 200;
+      font-family: 'Geist Mono', monospace;
+    }
+    .mtb-logo { font-size: 14px; font-weight: 500; letter-spacing: 2px; }
+    .mtb-date { font-size: 11px; color: #aaa; }
+
+    #mobile-weekstrip {
+      display: none;
+      position: fixed;
+      top: 48px; left: 0; right: 0;
+      height: 28px;
+      background: #f5f5f4;
+      border-bottom: 1px solid #e8e8e6;
+      font-size: 11px;
+      color: #888;
+      align-items: center;
+      justify-content: center;
+      z-index: 199;
+    }
+    #mobile-weekstrip #mobile-weekly-stat {
+      font-weight: 600;
+      color: #1a1a1a;
+      margin-right: 4px;
+    }
+
+    /* ── Bottom nav (hidden on desktop) ─────────────────────────────────────── */
+    #bottom-nav {
+      display: none;
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      height: 60px;
+      background: #fff;
+      border-top: 1px solid #e8e8e6;
+      z-index: 200;
+      align-items: stretch;
+    }
+    .bnav-item {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      font-size: 10px;
+      color: #999;
+      cursor: pointer;
+      text-decoration: none;
+      transition: color .15s;
+    }
+    .bnav-item i { font-size: 20px; }
+    .bnav-item.active { color: #1a1a1a; }
+    .bnav-item:active { background: #f5f5f4; }
+
+    /* ── Tablet: 601–900px ───────────────────────────────────────────────────── */
+    @media (max-width: 900px) and (min-width: 601px) {
+      .sidebar {
+        width: 60px;
+        padding: 12px 0;
+        overflow: visible;
+      }
+      .sidebar-logo { display: none; }
+      .nav-label { display: none; }
+      .nav-section { margin-bottom: 4px; padding: 0; }
+      .nav-item {
+        justify-content: center;
+        padding: 10px 0;
+        gap: 0;
+        position: relative;
+      }
+      .nav-item .nav-text { display: none; }
+      .nav-item i { font-size: 20px; }
+      /* tooltip on hover */
+      .nav-item::after {
+        content: attr(data-tooltip);
+        position: absolute;
+        left: 68px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: #1a1a1a;
+        color: #fff;
+        font-size: 11px;
+        padding: 4px 8px;
+        border-radius: 4px;
+        white-space: nowrap;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity .15s;
+        z-index: 300;
+      }
+      .nav-item:hover::after { opacity: 1; }
+      .sidebar-week { display: none; }
+      .content { padding: 20px 16px; }
+    }
+
+    /* ── Mobile: ≤600px ──────────────────────────────────────────────────────── */
+    @media (max-width: 600px) {
+      /* show mobile chrome */
+      #mobile-topbar { display: flex; }
+      #mobile-weekstrip { display: flex; }
+      #bottom-nav { display: flex; }
+
+      /* hide sidebar entirely */
+      .sidebar { display: none; }
+
+      /* layout: full width, push below topbar + weekstrip, above bottom nav */
+      .app { flex-direction: column; }
+      .content {
+        padding: 12px;
+        padding-top: 88px;  /* 48px topbar + 28px strip + 12px gap */
+        padding-bottom: 72px; /* 60px bottom-nav + 12px gap */
+        overflow-x: hidden;
+      }
+
+      /* view headers */
+      .view-header h1 { font-size: 20px; }
+      .view-header { margin-bottom: 12px; }
+
+      /* today view */
+      .day-header { flex-direction: column; align-items: flex-start; gap: 6px; }
+      .day-date { font-size: 18px; }
+      .focus-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .focus-card { padding: 10px; }
+      .focus-card-head { font-size: 9px; }
+
+      /* task list */
+      .task-row { padding: 10px 8px; }
+      .task-name { font-size: 13px; }
+      .task-meta { flex-wrap: wrap; gap: 4px; }
+
+      /* task form */
+      .task-form { gap: 6px; }
+      .task-form input, .task-form select { font-size: 14px; padding: 8px 10px; }
+      .task-form .form-row { flex-direction: column; }
+
+      /* schedule */
+      #schedule-table { font-size: 12px; }
+      #schedule-table td { padding: 8px 6px; }
+      .sched-time-cell { width: 52px; font-size: 11px; }
+      .sched-actions { gap: 4px; }
+      .sched-actions button { padding: 3px 6px; font-size: 10px; }
+
+      /* brain dump */
+      #dump-input { font-size: 14px; min-height: 120px; }
+
+      /* goals */
+      .goal-card { padding: 14px; }
+      .goal-title { font-size: 15px; }
+      .cycle-row { flex-direction: column; gap: 6px; }
+
+      /* dashboard */
+      .dash-grid { grid-template-columns: 1fr; gap: 10px; }
+      .chart-wrap { height: 180px; }
+
+      /* modals */
+      .modal-box {
+        width: 95vw;
+        max-height: 85vh;
+        padding: 16px;
+        margin: auto;
+      }
+
+      /* recurring panel */
+      .rec-biz-group { margin-bottom: 12px; }
+    }
   </style>
 </head>
 
 <body>
+
+<!-- ── mobile top bar ──────────────────────────────────────────────────────── -->
+<div id="mobile-topbar">
+  <div class="mtb-logo">DAYWAN</div>
+  <div class="mtb-date" id="mtb-date"></div>
+</div>
+
+<!-- ── mobile weekly strip ─────────────────────────────────────────────────── -->
+<div id="mobile-weekstrip">
+  <span id="mobile-weekly-stat">—</span> tasks completed this week
+</div>
+
 <div class="app">
 
   <!-- ── sidebar ──────────────────────────────────────────────────────────────── -->
@@ -1195,26 +1533,26 @@
 
     <div class="nav-section">
       <div class="nav-label">WORKSPACE</div>
-      <a class="nav-item active" data-view="today">Today</a>
-      <a class="nav-item" data-view="schedule">Schedule</a>
+      <a class="nav-item active" data-view="today" data-tooltip="Today"><i class="ti ti-home"></i><span class="nav-text">Today</span></a>
+      <a class="nav-item" data-view="schedule" data-tooltip="Schedule"><i class="ti ti-calendar"></i><span class="nav-text">Schedule</span></a>
     </div>
 
     <div class="nav-section">
       <div class="nav-label">CAPTURE</div>
-      <a class="nav-item" data-view="dump">Brain Dump</a>
-      <a class="nav-item" data-view="ideas">Ideas</a>
-      <a class="nav-item" data-view="notes">Notes</a>
+      <a class="nav-item" data-view="dump" data-tooltip="Brain Dump"><i class="ti ti-brain"></i><span class="nav-text">Brain Dump</span></a>
+      <a class="nav-item" data-view="ideas" data-tooltip="Ideas"><i class="ti ti-bulb"></i><span class="nav-text">Ideas</span></a>
+      <a class="nav-item" data-view="notes" data-tooltip="Notes"><i class="ti ti-notes"></i><span class="nav-text">Notes</span></a>
     </div>
 
     <div class="nav-section">
       <div class="nav-label">STRATEGY</div>
-      <a class="nav-item" data-view="goals">Goals</a>
-      <a class="nav-item" data-view="month">This Month</a>
+      <a class="nav-item" data-view="goals" data-tooltip="Goals"><i class="ti ti-target"></i><span class="nav-text">Goals</span></a>
+      <a class="nav-item" data-view="month" data-tooltip="This Month"><i class="ti ti-calendar-month"></i><span class="nav-text">This Month</span></a>
     </div>
 
     <div class="nav-section">
       <div class="nav-label">REVIEW</div>
-      <a class="nav-item" data-view="dashboard">Dashboard</a>
+      <a class="nav-item" data-view="dashboard" data-tooltip="Dashboard"><i class="ti ti-chart-bar"></i><span class="nav-text">Dashboard</span></a>
     </div>
 
     <div class="sidebar-week">
@@ -1222,6 +1560,25 @@
       <div class="sidebar-week-val" id="weekly-stat">—</div>
     </div>
 
+  </nav>
+
+  <!-- ── bottom nav (mobile only) ────────────────────────────────────────────── -->
+  <nav id="bottom-nav">
+    <a class="bnav-item active" data-view="today">
+      <i class="ti ti-home"></i><span>Today</span>
+    </a>
+    <a class="bnav-item" data-view="schedule">
+      <i class="ti ti-calendar"></i><span>Schedule</span>
+    </a>
+    <a class="bnav-item" data-view="dump">
+      <i class="ti ti-brain"></i><span>Dump</span>
+    </a>
+    <a class="bnav-item" data-view="goals">
+      <i class="ti ti-target"></i><span>Goals</span>
+    </a>
+    <a class="bnav-item" data-view="dashboard">
+      <i class="ti ti-chart-bar"></i><span>Dashboard</span>
+    </a>
   </nav>
 
   <!-- ── main content ──────────────────────────────────────────────────────────── -->
@@ -1248,6 +1605,24 @@
         <div class="progress-fill" id="progress-fill" style="width:0%"></div>
       </div>
 
+      <div class="focus-section-label">Focus blocks</div>
+      <div id="focus-blocks-grid" class="focus-grid"></div>
+
+      <div class="personal-rec-section">
+        <div class="personal-rec-toggle" id="personal-rec-toggle">
+          Personal recurring <span id="personal-rec-chevron">▾</span>
+        </div>
+        <div class="personal-rec-body" id="personal-rec-body" style="display:none">
+          <div id="personal-rec-list"></div>
+          <div class="rec-add-row">
+            <input class="rec-add-input" id="prec-name" type="text" placeholder="Task name" autocomplete="off" />
+            <input class="rec-add-time" id="prec-time" type="text" placeholder="time" autocomplete="off" />
+            <button class="add-btn" type="button" id="prec-add-btn">Add</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="all-tasks-label">All tasks</div>
       <div id="task-list">
         <div class="loading-text">Loading…</div>
       </div>
@@ -1272,7 +1647,7 @@
           <option value="high">High</option>
           <option value="low">Low</option>
         </select>
-        <button class="add-btn" type="button">Add</button>
+        <button class="add-btn" type="button" id="task-add-btn">Add</button>
       </div>
 
       <div class="rec-section">
@@ -1291,6 +1666,15 @@
               <option value="personal">personal</option>
             </select>
             <input class="rec-add-time" id="rec-time" type="text" placeholder="time" />
+            <select class="rec-add-select-sm" id="rec-days" title="Which days">
+              <option value="daily">Daily</option>
+              <option value="1,2,3,4,5">Weekdays</option>
+              <option value="1,3,5">Mon/Wed/Fri</option>
+              <option value="2,4,6">Tue/Thu/Sat</option>
+            </select>
+            <select class="rec-add-select-sm" id="rec-block" title="Time block" style="max-width:120px">
+              <option value="">No block</option>
+            </select>
             <button class="add-btn" type="button" id="rec-add-btn">Add</button>
           </div>
         </div>
@@ -1567,6 +1951,25 @@ function watDateStr() { return watNow().toISOString().slice(0, 10); }
 function watTimeMin() { const d = watNow(); return d.getUTCHours() * 60 + d.getUTCMinutes(); }
 function toMins(t)    { const [h, m] = t.split(':').map(Number); return h * 60 + m; }
 
+function minsToTime(m) {
+  const total = ((m % 1440) + 1440) % 1440;
+  return String(Math.floor(total / 60)).padStart(2, '0') + ':' + String(total % 60).padStart(2, '0');
+}
+
+function recalcAllTimes() {
+  const durs = BLOCKS.map(b => Math.max(toMins(b.end) - toMins(b.time), 15));
+  let cur = toMins(BLOCKS[0].time);
+  BLOCKS.forEach((b, i) => { b.time = minsToTime(cur); b.end = minsToTime(cur + durs[i]); cur += durs[i]; });
+}
+
+function recalcFromIdx(idx, startMins) {
+  const durs = BLOCKS.slice(idx).map(b => Math.max(toMins(b.end) - toMins(b.time), 15));
+  let cur = startMins !== undefined ? startMins : toMins(BLOCKS[idx].time);
+  for (let i = idx; i < BLOCKS.length; i++) {
+    BLOCKS[i].time = minsToTime(cur); BLOCKS[i].end = minsToTime(cur + durs[i - idx]); cur += durs[i - idx];
+  }
+}
+
 function getActiveBlock() {
   const now    = watTimeMin();
   const active = BLOCKS.filter(b => toMins(b.time) <= now && now < toMins(b.end));
@@ -1647,10 +2050,11 @@ function tagHtml(biz) {
 
 function switchTab(name) {
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.bnav-item').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
-  const navEl  = document.querySelector(`.nav-item[data-view="${name}"]`);
+  document.querySelectorAll(`.nav-item[data-view="${name}"]`).forEach(el => el.classList.add('active'));
+  document.querySelectorAll(`.bnav-item[data-view="${name}"]`).forEach(el => el.classList.add('active'));
   const viewEl = document.getElementById(`v-${name}`);
-  if (navEl)  navEl.classList.add('active');
   if (viewEl) viewEl.classList.add('active');
   if (name === 'dashboard') renderDashboard();
   if (name === 'schedule')  renderSchedule();
@@ -1690,6 +2094,7 @@ function renderToday() {
 
   renderStreakSquares();
   renderTaskList();
+  renderFocusBlocks();
 }
 
 function renderStreakSquares() {
@@ -1834,7 +2239,8 @@ function renderSchedule() {
           ondragstart="schedDragStart(event,${i})"
           ondragover="schedDragOver(event,${i})"
           ondrop="schedDrop(event)"
-          ondragend="schedDragEnd(event)">
+          ondragend="schedDragEnd(event)"
+          ontouchstart="schedTouchStart(event,${i})">
         <td><span class="sched-handle"><i class="ti ti-grip-vertical"></i></span><span class="sched-time-start" onclick="editSchedCell(event,${i},'time')">${esc(b.time)}</span><span class="sched-time-sep">–</span><span class="sched-time-end" onclick="editSchedCell(event,${i},'end')">${esc(b.end)}</span></td>
         <td><span class="sched-name-span" onclick="editSchedCell(event,${i},'name')">${esc(b.name)}</span></td>
         <td><span class="sched-biz-span" onclick="editSchedCell(event,${i},'biz')">${tagHtml(b.biz)}</span></td>
@@ -1886,8 +2292,9 @@ function schedDrop(e) {
   const moved = BLOCKS.splice(src, 1)[0];
   const dst   = rawDst > src ? rawDst - 1 : rawDst;
   BLOCKS.splice(dst, 0, moved);
+  recalcAllTimes();
   renderSchedule();
-  saveScheduleOrder();
+  saveScheduleOrder('Times adjusted');
 }
 
 function schedDragEnd(e) {
@@ -1898,12 +2305,83 @@ function schedDragEnd(e) {
   _schedDropTarget = null;
 }
 
+// ── SCHEDULE TOUCH DRAG (mobile) ──────────────────────────────────────────────
+
+let _touchDragSrc = null;
+let _touchClone   = null;
+let _touchOffsetY = 0;
+
+function schedTouchStart(e, idx) {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  _touchDragSrc = idx;
+  const tr      = e.currentTarget;
+  const rect    = tr.getBoundingClientRect();
+  _touchOffsetY = e.touches[0].clientY - rect.top;
+
+  _touchClone = tr.cloneNode(true);
+  _touchClone.style.cssText = `
+    position:fixed; left:${rect.left}px; top:${rect.top}px;
+    width:${rect.width}px; opacity:0.85; background:#fff;
+    box-shadow:0 4px 16px rgba(0,0,0,.15); pointer-events:none;
+    z-index:500; border-radius:4px; transition:none;
+  `;
+  document.body.appendChild(_touchClone);
+  tr.classList.add('sched-dragging');
+}
+
+function _schedTouchMove(e) {
+  if (_touchDragSrc === null || !_touchClone) return;
+  e.preventDefault();
+  const y = e.touches[0].clientY;
+  _touchClone.style.top = `${y - _touchOffsetY}px`;
+
+  // find row under finger
+  _touchClone.style.display = 'none';
+  const el = document.elementFromPoint(e.touches[0].clientX, y);
+  _touchClone.style.display = '';
+  const tr = el && el.closest('#sched-body tr');
+  document.querySelectorAll('#sched-body tr').forEach(r => r.classList.remove('sched-drop-above'));
+  if (!tr) return;
+  const idx = parseInt(tr.dataset.idx, 10);
+  if (isNaN(idx) || idx === _touchDragSrc) return;
+  const rect        = tr.getBoundingClientRect();
+  const insertBefore = y < rect.top + rect.height / 2;
+  if (insertBefore) {
+    tr.classList.add('sched-drop-above');
+    _schedDropTarget = idx;
+  } else {
+    const rows = document.querySelectorAll('#sched-body tr');
+    if (idx + 1 < rows.length) rows[idx + 1].classList.add('sched-drop-above');
+    _schedDropTarget = idx + 1;
+  }
+}
+
+function _schedTouchEnd(e) {
+  if (_touchDragSrc === null) return;
+  if (_touchClone) { _touchClone.remove(); _touchClone = null; }
+  document.querySelectorAll('#sched-body tr').forEach(tr =>
+    tr.classList.remove('sched-dragging', 'sched-drop-above')
+  );
+  const src = _touchDragSrc;
+  const dst = _schedDropTarget;
+  _touchDragSrc    = null;
+  _schedDropTarget = null;
+  if (dst === null || dst === src || dst === src + 1) { renderSchedule(); return; }
+  const moved   = BLOCKS.splice(src, 1)[0];
+  const adjDst  = dst > src ? dst - 1 : dst;
+  BLOCKS.splice(adjDst, 0, moved);
+  recalcAllTimes();
+  renderSchedule();
+  saveScheduleOrder('Times adjusted');
+}
+
 // ── SCHEDULE INLINE EDIT ──────────────────────────────────────────────────────
 
 function editSchedCell(e, idx, field) {
   e.stopPropagation();
-  const el       = e.currentTarget;
-  const original = BLOCKS[idx][field];
+  const el           = e.currentTarget;
+  const original     = BLOCKS[idx][field];
+  const origDuration = Math.max(toMins(BLOCKS[idx].end) - toMins(BLOCKS[idx].time), 15);
 
   let input;
   if (field === 'time' || field === 'end') {
@@ -1935,7 +2413,19 @@ function editSchedCell(e, idx, field) {
   const commit = () => {
     if (done) return; done = true;
     const val = input.value;
-    if (val && val !== original) { BLOCKS[idx][field] = val; saveScheduleOrder(); }
+    if (val && val !== original) {
+      BLOCKS[idx][field] = val;
+      if (field === 'time') {
+        BLOCKS[idx].end = minsToTime(toMins(val) + origDuration);
+        if (idx + 1 < BLOCKS.length) recalcFromIdx(idx + 1, toMins(BLOCKS[idx].end));
+        saveScheduleOrder('Times adjusted');
+      } else if (field === 'end') {
+        if (idx + 1 < BLOCKS.length) recalcFromIdx(idx + 1, toMins(val));
+        saveScheduleOrder('Times adjusted');
+      } else {
+        saveScheduleOrder();
+      }
+    }
     renderSchedule();
   };
   const cancel = () => { if (done) return; done = true; renderSchedule(); };
@@ -1956,21 +2446,22 @@ function editSchedCell(e, idx, field) {
 
 let _savedTimer;
 
-async function saveScheduleOrder() {
-  try {
-    await api('/api/schedule/order', { method: 'POST', body: { blocks: BLOCKS } });
-    showSavedIndicator();
-    const subEl = document.getElementById('today-sub');
-    if (subEl) subEl.textContent = getActiveBlock() || '—';
-  } catch (e) { console.error('saveScheduleOrder:', e); }
-}
-
-function showSavedIndicator() {
+function _showSchedMsg(msg) {
   const el = document.getElementById('sched-saved');
   if (!el) return;
+  el.textContent = msg;
   el.style.opacity = '1';
   clearTimeout(_savedTimer);
   _savedTimer = setTimeout(() => { el.style.opacity = '0'; }, 2000);
+}
+
+async function saveScheduleOrder(msg = 'Order saved') {
+  try {
+    await api('/api/schedule/order', { method: 'POST', body: { blocks: BLOCKS } });
+    _showSchedMsg(msg);
+    const subEl = document.getElementById('today-sub');
+    if (subEl) subEl.textContent = getActiveBlock() || '—';
+  } catch (e) { console.error('saveScheduleOrder:', e); }
 }
 
 // ── BRAIN DUMP VIEW ───────────────────────────────────────────────────────────
@@ -2092,24 +2583,41 @@ async function importTasks() {
 
 let _recOpen = false;
 
+function formatDaysLabel(days) {
+  if (!days || days === 'daily') return '';
+  const ABB = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const nums = days.split(',').map(d => parseInt(d.trim(), 10)).filter(n => !isNaN(n));
+  if (nums.join(',') === '1,2,3,4,5') return 'Mon–Fri';
+  if (nums.join(',') === '1,3,5')     return 'Mon/Wed/Fri';
+  if (nums.join(',') === '2,4,6')     return 'Tue/Thu/Sat';
+  return nums.map(n => ABB[n] || '?').join('/');
+}
+
 async function loadRecurring() {
   const el = document.getElementById('rec-list');
   try {
-    const tasks = await api('/api/recurring');
-    if (!tasks.length) {
-      el.innerHTML = '<div class="empty-text" style="padding:6px 0">No recurring tasks.</div>';
-      return;
+    const grouped = await api('/api/recurring');
+    const BIZ_ORDER = ['blok', 'aphl', 'trade', 'personal'];
+    let html = '';
+    for (const key of BIZ_ORDER) {
+      const tasks = grouped[key] || [];
+      if (!tasks.length) continue;
+      html += `<div class="rec-biz-group">
+        <div class="rec-biz-head">${tagHtml(key)}</div>`;
+      html += tasks.map(t => {
+        const dLabel = formatDaysLabel(t.days);
+        const bLabel = t.time_block ? (t.time_block.length > 22 ? t.time_block.slice(0, 20) + '…' : t.time_block) : '';
+        return `<div class="rec-item">
+          ${t.scheduled_time ? `<span class="task-time" style="min-width:36px">${esc(t.scheduled_time)}</span>` : '<span style="min-width:36px"></span>'}
+          <span class="rec-name">${esc(t.name)}</span>
+          ${dLabel ? `<span class="rec-days">${esc(dLabel)}</span>` : ''}
+          ${bLabel ? `<span class="rec-block-label" title="${esc(t.time_block)}">${esc(bLabel)}</span>` : ''}
+          <button class="rec-remove" onclick="removeRecurring(${t.id})" aria-label="Remove"><i class="ti ti-x"></i></button>
+        </div>`;
+      }).join('');
+      html += '</div>';
     }
-    el.innerHTML = tasks.map(t => `
-      <div class="rec-item">
-        ${tagHtml(t.business)}
-        <span class="rec-name">${esc(t.name)}</span>
-        ${t.scheduled_time ? `<span class="task-time">${esc(t.scheduled_time)}</span>` : ''}
-        <button class="rec-remove" onclick="removeRecurring(${t.id})" aria-label="Remove">
-          <i class="ti ti-x"></i>
-        </button>
-      </div>
-    `).join('');
+    el.innerHTML = html || '<div class="empty-text" style="padding:6px 0">No recurring tasks.</div>';
   } catch (e) { console.error('loadRecurring:', e); }
 }
 
@@ -2117,18 +2625,31 @@ function toggleRecurring() {
   _recOpen = !_recOpen;
   document.getElementById('rec-body').classList.toggle('open', _recOpen);
   document.getElementById('rec-chevron').className = _recOpen ? 'ti ti-chevron-down' : 'ti ti-chevron-right';
-  if (_recOpen) loadRecurring();
+  if (_recOpen) {
+    loadRecurring();
+    // Populate block select from current BLOCKS array
+    const sel = document.getElementById('rec-block');
+    if (sel && sel.options.length <= 1) {
+      BLOCKS.forEach(b => {
+        const o = document.createElement('option');
+        o.value = b.name; o.textContent = b.name.length > 30 ? b.name.slice(0, 28) + '…' : b.name;
+        sel.appendChild(o);
+      });
+    }
+  }
 }
 
 async function addRecurringTask() {
-  const name = document.getElementById('rec-name').value.trim();
-  const biz  = document.getElementById('rec-biz').value;
-  const time = document.getElementById('rec-time').value.trim();
+  const name  = document.getElementById('rec-name').value.trim();
+  const biz   = document.getElementById('rec-biz').value;
+  const time  = document.getElementById('rec-time').value.trim();
+  const days  = document.getElementById('rec-days').value;
+  const block = document.getElementById('rec-block').value;
   if (!name) return;
   try {
     await api('/api/recurring', {
       method: 'POST',
-      body: { name, business: biz, scheduled_time: time || undefined },
+      body: { name, business: biz, scheduled_time: time || undefined, days, time_block: block || undefined },
     });
     document.getElementById('rec-name').value = '';
     document.getElementById('rec-time').value = '';
@@ -2257,7 +2778,159 @@ async function updateWeeklyStat() {
       ? Math.round(withData.reduce((s, d) => s + d.rate, 0) / withData.length)
       : 0;
     document.getElementById('weekly-stat').textContent = `${avg}%`;
+    const mws = document.getElementById('mobile-weekly-stat');
+    if (mws) mws.textContent = `${avg}%`;
   } catch { }
+}
+
+// ── FOCUS BLOCKS ──────────────────────────────────────────────────────────────
+
+let _focusRecurring  = [];
+let _personalRecOpen = false;
+
+function renderFocusBlocks() {
+  const el = document.getElementById('focus-blocks-grid');
+  if (!el) return;
+
+  const BIZLIST = [
+    { key: 'blok',  label: BIZ_LABEL.blok  || 'Blok AI' },
+    { key: 'aphl',  label: BIZ_LABEL.aphl  || 'APHL Africa' },
+    { key: 'trade', label: BIZ_LABEL.trade || 'TradeSol' },
+  ];
+
+  const PRI = { high: 0, normal: 1, low: 2 };
+
+  const bizCards = BIZLIST.map(({ key, label }) => {
+    const top = state.tasks
+      .filter(t => t.business === key && !t.done)
+      .sort((a, b) => {
+        const pa = PRI[a.priority] ?? 1, pb = PRI[b.priority] ?? 1;
+        if (pa !== pb) return pa - pb;
+        return (a.time || 'zz').localeCompare(b.time || 'zz');
+      })
+      .slice(0, 3);
+
+    const rows = [];
+    for (let i = 0; i < 3; i++) {
+      const t = top[i];
+      if (t) {
+        const dot = t.priority === 'high'
+          ? `<div class="priority-dot priority-high" style="flex-shrink:0"></div>`
+          : t.priority === 'low'
+          ? `<div class="priority-dot priority-low" style="flex-shrink:0"></div>`
+          : '';
+        const recIcon = t.source === 'recurring'
+          ? `<i class="ti ti-refresh" style="font-size:10px;color:#ccc;flex-shrink:0" title="Recurring task"></i>`
+          : '';
+        rows.push(`<div class="focus-task-row" onclick="toggleFocusTask(${t.id})">
+          <div class="task-check${t.done ? ' checked' : ''}"></div>
+          ${dot}${recIcon}
+          <span class="focus-task-name${t.done ? ' done' : ''}">${esc(t.name)}</span>
+        </div>`);
+      } else {
+        rows.push(`<div class="focus-slot-empty" onclick="focusQuickAdd('${key}')">
+          <span class="focus-slot-text">+ Add ${esc(label)} task</span>
+        </div>`);
+      }
+    }
+
+    return `<div class="focus-card">
+      <div class="focus-card-head">${esc(label)}</div>
+      ${rows.join('')}
+    </div>`;
+  }).join('');
+
+  const anchors = BLOCKS.filter(b => b.biz === 'anchor').slice(0, 4);
+  const anchorRows = anchors.map(b =>
+    `<div class="focus-anchor-row">
+      <span class="focus-anchor-time">${esc(b.time)}</span>
+      <span class="focus-anchor-name">${esc(b.name)}</span>
+    </div>`
+  ).join('');
+
+  const recRows = _focusRecurring.map(r =>
+    `<div class="focus-anchor-row">
+      <span class="focus-anchor-time">${r.scheduled_time ? esc(r.scheduled_time) : ''}</span>
+      <span class="focus-anchor-name">${esc(r.name)}</span>
+    </div>`
+  ).join('');
+
+  const emptyMsg = (!anchors.length && !_focusRecurring.length)
+    ? '<div class="focus-anchor-row"><span class="focus-anchor-name" style="color:#d0d0cc">No recurring tasks</span></div>'
+    : '';
+
+  const personalCard = `<div class="focus-card">
+    <div class="focus-card-head">Personal</div>
+    ${anchorRows}${recRows}${emptyMsg}
+  </div>`;
+
+  el.innerHTML = bizCards + personalCard;
+}
+
+async function toggleFocusTask(id) {
+  try {
+    const updated = await api(`/api/tasks/${id}/toggle`, { method: 'PATCH' });
+    const i = state.tasks.findIndex(t => t.id === id);
+    if (i !== -1) state.tasks[i] = updated;
+    renderToday();
+  } catch (e) { console.error('toggleFocusTask:', e); }
+}
+
+function focusQuickAdd(biz) {
+  const sel = document.getElementById('add-biz');
+  if (sel) sel.value = biz;
+  const inp = document.getElementById('add-name');
+  if (inp) { inp.focus(); inp.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+}
+
+function togglePersonalRec() {
+  _personalRecOpen = !_personalRecOpen;
+  const body    = document.getElementById('personal-rec-body');
+  const chevron = document.getElementById('personal-rec-chevron');
+  if (body)    body.style.display = _personalRecOpen ? 'block' : 'none';
+  if (chevron) chevron.textContent = _personalRecOpen ? '▴' : '▾';
+  if (_personalRecOpen) loadPersonalRecList();
+}
+
+async function loadPersonalRecList() {
+  const listEl = document.getElementById('personal-rec-list');
+  try {
+    const grouped = await api('/api/recurring');
+    _focusRecurring = grouped.personal || [];
+    renderFocusBlocks();
+    if (!_focusRecurring.length) {
+      listEl.innerHTML = '<div class="rec-item" style="color:#ccc;font-size:12px;padding:5px 0">No personal recurring tasks yet.</div>';
+      return;
+    }
+    listEl.innerHTML = _focusRecurring.map(r => `
+      <div class="rec-item">
+        <span style="min-width:38px;font-size:11px;color:#bbb;font-family:'Geist Mono',monospace">${r.scheduled_time ? esc(r.scheduled_time) : ''}</span>
+        <span class="rec-name">${esc(r.name)}</span>
+        <button class="rec-remove" onclick="removePersonalRec(${r.id})" aria-label="Remove"><i class="ti ti-x"></i></button>
+      </div>`).join('');
+  } catch (e) { console.error('loadPersonalRecList:', e); }
+}
+
+async function addPersonalRec() {
+  const nameEl = document.getElementById('prec-name');
+  const timeEl = document.getElementById('prec-time');
+  const name   = nameEl.value.trim();
+  if (!name) { nameEl.focus(); return; }
+  try {
+    await api('/api/recurring', {
+      method: 'POST',
+      body: { name, business: 'personal', scheduled_time: timeEl.value.trim() || undefined, days: 'daily' },
+    });
+    nameEl.value = ''; timeEl.value = '';
+    loadPersonalRecList();
+  } catch (e) { console.error('addPersonalRec:', e); }
+}
+
+async function removePersonalRec(id) {
+  try {
+    await api(`/api/recurring/${id}`, { method: 'DELETE' });
+    loadPersonalRecList();
+  } catch (e) { console.error('removePersonalRec:', e); }
 }
 
 // ── DASHBOARD VIEW ────────────────────────────────────────────────────────────
@@ -2679,13 +3352,16 @@ document.addEventListener('DOMContentLoaded', () => {
     if (schedNav?.classList.contains('active')) renderSchedule();
   }, 60 * 1000);
 
-  // Nav click handlers
+  // Nav click handlers (sidebar + bottom nav)
   document.querySelectorAll('.nav-item').forEach(el =>
+    el.addEventListener('click', () => switchTab(el.dataset.view))
+  );
+  document.querySelectorAll('.bnav-item').forEach(el =>
     el.addEventListener('click', () => switchTab(el.dataset.view))
   );
 
   // Add task
-  document.querySelector('#v-today .add-btn').addEventListener('click', addTask);
+  document.getElementById('task-add-btn').addEventListener('click', addTask);
   document.getElementById('add-name').addEventListener('keydown', e => {
     if (e.key === 'Enter') addTask();
   });
@@ -2725,12 +3401,39 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('new-cycle-form').style.display = 'none';
   });
 
+  // Personal recurring (focus blocks section)
+  document.getElementById('personal-rec-toggle').addEventListener('click', togglePersonalRec);
+  document.getElementById('prec-add-btn').addEventListener('click', addPersonalRec);
+  document.getElementById('prec-name').addEventListener('keydown', e => {
+    if (e.key === 'Enter') addPersonalRec();
+  });
+
   // Load saved schedule order from server, then render
   api('/api/schedule').then(blocks => {
     if (Array.isArray(blocks)) BLOCKS = blocks;
     renderSchedule();
     updateSub();
   }).catch(() => renderSchedule());
+
+  // Load personal recurring for focus blocks (runs concurrently with fetchTasks)
+  api('/api/recurring').then(grouped => {
+    _focusRecurring = grouped.personal || [];
+    renderFocusBlocks();
+  }).catch(() => {});
+
+  // Mobile top bar date
+  const mtbDate = document.getElementById('mtb-date');
+  if (mtbDate) mtbDate.textContent = formatDate();
+
+  // Global touch drag listeners for schedule (passive:false so we can preventDefault)
+  document.addEventListener('touchmove', _schedTouchMove, { passive: false });
+  document.addEventListener('touchend', _schedTouchEnd);
+  document.addEventListener('touchcancel', _schedTouchEnd);
+
+  // Service worker registration
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  }
 
   // Initial load
   fetchTasks();

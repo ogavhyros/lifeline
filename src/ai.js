@@ -81,11 +81,25 @@ Write a 3-5 sentence morning briefing that:
 - Ends with exactly one hard, specific question the person must answer before they start
 No emojis. No filler. Plain text only.`;
 
-  const taskList = tasks
-    .map((t) => `- ${t.name} (${t.business})${t.time ? ` [${t.time}]` : ''}`)
+  const manual    = tasks.filter(t => t.source !== 'recurring');
+  const recurring = tasks.filter(t => t.source === 'recurring');
+
+  const fmtTask = (t) => `- ${t.name} (${t.business})${t.time ? ` [${t.time}]` : ''}`;
+
+  const recByBiz = {};
+  for (const t of recurring) {
+    if (!recByBiz[t.business]) recByBiz[t.business] = [];
+    recByBiz[t.business].push(t);
+  }
+  const recSection = Object.entries(recByBiz)
+    .map(([biz, ts]) => `${biz.toUpperCase()}:\n${ts.map(fmtTask).join('\n')}`)
     .join('\n');
 
-  const userContent = `Date: ${date}\nTasks:\n${taskList}`;
+  const userContent =
+    `Date: ${date}\n\n` +
+    `Manual tasks:\n${manual.map(fmtTask).join('\n') || '(none)'}\n\n` +
+    `Recurring tasks for today (already scheduled, must not be skipped):\n${recSection || '(none)'}`;
+
   return claudeMessage(system, userContent);
 }
 
@@ -93,19 +107,30 @@ async function generateEODReview(tasks, date) {
   const system = `You are Arkad — direct, honest, unsparing.
 Write a 4-6 sentence end-of-day review that:
 - Acknowledges what was actually completed
-- Names any missed or incomplete tasks plainly — no euphemisms
+- Calls out missed recurring tasks by name — these are non-negotiable daily habits; missing them is a pattern to flag
+- Names any missed manual tasks plainly — no euphemisms
 - Identifies the single biggest reason the day succeeded or fell short
 - Closes with one concrete instruction for tomorrow
 No emojis. No praise padding. Plain text only.`;
 
-  const taskList = tasks
-    .map((t) => {
-      const status = t.done ? 'done' : 'not done';
-      return `- [${status}] ${t.name} (${t.business})${t.time ? ` [${t.time}]` : ''}`;
-    })
-    .join('\n');
+  const recurring = tasks.filter(t => t.source === 'recurring');
+  const manual    = tasks.filter(t => t.source !== 'recurring');
 
-  const userContent = `Date: ${date}\nTasks:\n${taskList}`;
+  const fmtTask = (t) => {
+    const s = t.done ? 'done' : 'MISSED';
+    return `- [${s}] ${t.name} (${t.business})${t.time ? ` [${t.time}]` : ''}`;
+  };
+
+  const missedRecurring = recurring.filter(t => !t.done);
+
+  const userContent =
+    `Date: ${date}\n\n` +
+    `Recurring tasks:\n${recurring.map(fmtTask).join('\n') || '(none)'}\n\n` +
+    `Manual tasks:\n${manual.map(fmtTask).join('\n') || '(none)'}` +
+    (missedRecurring.length
+      ? `\n\nMissed recurring (highlight these): ${missedRecurring.map(t => t.name).join(', ')}`
+      : '');
+
   return claudeMessage(system, userContent);
 }
 

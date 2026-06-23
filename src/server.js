@@ -6,7 +6,7 @@ const {
   db, watToday, watTomorrow, watCutoff, weekStart,
   getTasksByDate, getTaskById, insertTask, toggleTask, markTaskDone, updatePriority, deleteTask,
   getHistory, getKpis, upsertKpi,
-  getRecurring, addRecurring, deactivateRecurring, populateRecurring,
+  getRecurring, getRecurringGrouped, addRecurring, deactivateRecurring, populateRecurring,
   carryTask, addIdea, getIdeas, addNote, getNotes, syncDayLog,
   getGoals, getAllGoals, addGoal, updateGoalStatus, updateGoalTitle,
   getCycles, getCyclesByGoal, getCycleById, addCycle, updateCycleCommitment, updateCycleReflection,
@@ -121,14 +121,14 @@ app.post('/api/tasks/:id/carry', (req, res) => {
 // ── recurring tasks ───────────────────────────────────────────────────────────
 
 app.get('/api/recurring', (_req, res) => {
-  res.json(getRecurring.all());
+  res.json(getRecurringGrouped());
 });
 
 app.post('/api/recurring', (req, res) => {
-  const { name, business, scheduled_time } = req.body;
+  const { name, business, scheduled_time, days, time_block } = req.body;
   if (!name || !business) return res.status(400).json({ error: 'name and business are required' });
-  addRecurring.run(name, business, scheduled_time || null);
-  res.status(201).json(getRecurring.all());
+  addRecurring.run(name, business, scheduled_time || null, days || 'daily', time_block || null);
+  res.status(201).json(getRecurringGrouped());
 });
 
 app.delete('/api/recurring/:id', (req, res) => {
