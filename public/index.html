@@ -1,0 +1,2741 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DAYWAN — Day One</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.11.0/dist/tabler-icons.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+  <style>
+    /* ── reset ────────────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body { height: 100%; }
+
+    body {
+      font-family: 'Geist', system-ui, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      color: #1a1a1a;
+      background: #ffffff;
+      overflow: hidden;
+    }
+
+    /* ── app shell ────────────────────────────────────────────────────────────── */
+    .app {
+      display: flex;
+      height: 100vh;
+    }
+
+    /* ── sidebar ──────────────────────────────────────────────────────────────── */
+    .sidebar {
+      width: 200px;
+      flex-shrink: 0;
+      background: #fafafa;
+      border-right: 1px solid #e8e8e6;
+      display: flex;
+      flex-direction: column;
+      padding: 24px 0 16px;
+      overflow-y: auto;
+    }
+
+    .sidebar-logo {
+      padding: 0 16px 28px;
+    }
+
+    .logo-name {
+      font-size: 15px;
+      font-weight: 500;
+      color: #1a1a1a;
+      letter-spacing: -0.01em;
+    }
+
+    .logo-tag {
+      font-size: 11px;
+      color: #999;
+      margin-top: 2px;
+    }
+
+    .nav-section {
+      margin-bottom: 20px;
+    }
+
+    .nav-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #999;
+      font-weight: 400;
+      padding: 0 16px;
+      margin-bottom: 2px;
+    }
+
+    .nav-item {
+      display: block;
+      font-size: 13px;
+      color: #1a1a1a;
+      padding: 6px 12px;
+      cursor: pointer;
+      text-decoration: none;
+      border-left: 2px solid transparent;
+      transition: background 0.1s;
+    }
+
+    .nav-item:hover {
+      background: #f5f5f4;
+    }
+
+    .nav-item.active {
+      background: #f5f5f4;
+      border-left-color: #1a1a1a;
+    }
+
+    /* ── content area ─────────────────────────────────────────────────────────── */
+    .content {
+      flex: 1;
+      overflow-y: auto;
+      background: #ffffff;
+    }
+
+    /* ── views ────────────────────────────────────────────────────────────────── */
+    .view {
+      display: none;
+      padding: 40px 48px;
+      max-width: 720px;
+    }
+
+    .view.active {
+      display: block;
+    }
+
+    /* ── page typography ──────────────────────────────────────────────────────── */
+    .page-title {
+      font-size: 22px;
+      font-weight: 400;
+      color: #1a1a1a;
+      margin-bottom: 4px;
+    }
+
+    .page-sub {
+      font-size: 13px;
+      color: #999;
+      margin-bottom: 24px;
+    }
+
+    /* ── inline stats ─────────────────────────────────────────────────────────── */
+    .inline-stats {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 13px;
+      color: #6b6b6b;
+      margin-bottom: 20px;
+    }
+
+    .stat-div {
+      color: #d0d0cc;
+      margin: 0 2px;
+    }
+
+    /* ── streak squares ───────────────────────────────────────────────────────── */
+    .streak-row {
+      display: flex;
+      flex-direction: row;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+
+    .streak-sq {
+      width: 28px;
+      height: 28px;
+      border-radius: 4px;
+      border: 1px solid #e8e8e6;
+      flex-shrink: 0;
+    }
+
+    .streak-sq.filled {
+      background: #1a1a1a;
+      border-color: #1a1a1a;
+    }
+
+    .streak-sq.partial {
+      background: #f0f0ee;
+    }
+
+    .streak-label {
+      font-size: 13px;
+      color: #6b6b6b;
+      margin-bottom: 20px;
+    }
+
+    /* ── progress bar ─────────────────────────────────────────────────────────── */
+    .progress-bar {
+      height: 2px;
+      background: #f0f0ee;
+      margin: 16px 0;
+      width: 100%;
+    }
+
+    .progress-fill {
+      height: 2px;
+      background: #1a1a1a;
+      transition: width 0.35s ease;
+    }
+
+    /* ── task rows ────────────────────────────────────────────────────────────── */
+    .task-row {
+      display: flex;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid #f0f0ee;
+      gap: 10px;
+      cursor: pointer;
+    }
+
+    .task-row:hover {
+      background: #f5f5f4;
+    }
+
+    .task-row.done {
+      opacity: 0.5;
+    }
+
+    .task-row.anchor-row {
+      border-left: 2px solid #e8e8e6;
+      padding-left: 8px;
+    }
+
+    /* ── checkbox ─────────────────────────────────────────────────────────────── */
+    .task-check {
+      width: 16px;
+      height: 16px;
+      border: 1.5px solid #d0d0cc;
+      border-radius: 3px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .task-check.checked {
+      background: #1a1a1a;
+      border-color: #1a1a1a;
+    }
+
+    .task-check.checked::after {
+      content: '';
+      display: block;
+      width: 5px;
+      height: 3px;
+      border-left: 1.5px solid #fff;
+      border-bottom: 1.5px solid #fff;
+      transform: translateY(-1px) rotate(-45deg);
+    }
+
+    /* ── task name ────────────────────────────────────────────────────────────── */
+    .task-name {
+      flex: 1;
+      font-size: 14px;
+      color: #1a1a1a;
+    }
+
+    .task-name.done {
+      color: #999;
+      text-decoration: line-through;
+    }
+
+    /* ── tags / pills ─────────────────────────────────────────────────────────── */
+    .tag {
+      font-size: 11px;
+      font-weight: 500;
+      padding: 2px 7px;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+
+    .tag-blok     { background: #f0effe; color: #4a3fa0; }
+    .tag-aphl     { background: #edf7f2; color: #1a6646; }
+    .tag-trade    { background: #fef8ec; color: #7a4a0a; }
+    .tag-personal { background: #fdf0f4; color: #8a2a4a; }
+    .tag-anchor   { background: #f0f0ee; color: #333; }
+
+    /* ── task time & delete ───────────────────────────────────────────────────── */
+    .task-time {
+      font-family: 'Geist Mono', monospace;
+      font-size: 12px;
+      color: #999;
+      min-width: 45px;
+      text-align: right;
+    }
+
+    .task-del {
+      background: none;
+      border: none;
+      padding: 0 2px;
+      color: #ccc;
+      font-size: 13px;
+      cursor: pointer;
+      visibility: hidden;
+      display: flex;
+      align-items: center;
+      line-height: 1;
+    }
+
+    .task-del:hover {
+      color: #1a1a1a;
+    }
+
+    .task-row:hover .task-del {
+      visibility: visible;
+    }
+
+    .anchor-lock {
+      color: #e0e0e0;
+      font-size: 11px;
+    }
+
+    /* ── add task row ─────────────────────────────────────────────────────────── */
+    .add-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      padding: 12px 0;
+      margin-top: 4px;
+    }
+
+    .add-input {
+      flex: 1;
+      border: none;
+      outline: none;
+      font-size: 14px;
+      font-family: 'Geist', system-ui, sans-serif;
+      color: #1a1a1a;
+      background: transparent;
+    }
+
+    .add-input::placeholder { color: #ccc; }
+
+    .add-select,
+    .add-time {
+      font-size: 12px;
+      border: none;
+      border-bottom: 1px solid #e8e8e6;
+      padding: 4px;
+      outline: none;
+      background: white;
+      color: #6b6b6b;
+      font-family: 'Geist', system-ui, sans-serif;
+    }
+
+    .add-time { width: 60px; }
+
+    .add-btn {
+      font-size: 13px;
+      color: #1a1a1a;
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-family: 'Geist', system-ui, sans-serif;
+      padding: 0;
+    }
+
+    .add-btn:hover { text-decoration: underline; }
+
+    /* ── schedule table ───────────────────────────────────────────────────────── */
+    .sched-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .sched-table th {
+      font-size: 11px;
+      text-transform: uppercase;
+      color: #999;
+      font-weight: 400;
+      text-align: left;
+      padding: 0 0 12px 0;
+      border-bottom: 1px solid #e8e8e6;
+    }
+
+    .sched-table td {
+      padding: 10px 0;
+      border-bottom: 1px solid #f0f0ee;
+      font-size: 13px;
+      vertical-align: middle;
+    }
+
+    .sched-table td:first-child {
+      font-family: 'Geist Mono', monospace;
+      font-size: 12px;
+      color: #999;
+      width: 130px;
+    }
+
+    .sched-table td:last-child {
+      width: 90px;
+    }
+
+    .sched-table tr.active-block {
+      border-left: 3px solid #1a1a1a;
+      background: #fafafa;
+    }
+
+    .sched-table tr.active-block td {
+      padding-left: 8px;
+    }
+
+    .sched-table tr.past-block td {
+      color: #ccc;
+    }
+
+    .sched-table tr.past-block td:first-child {
+      color: #ccc;
+    }
+
+    /* ── brain dump ───────────────────────────────────────────────────────────── */
+    .dump-wrapper {
+      border: 1px solid #f0f0ee;
+      border-radius: 6px;
+      padding: 16px;
+      transition: border-color 0.15s;
+    }
+
+    .dump-wrapper:focus-within {
+      border-color: #e8e8e6;
+    }
+
+    .dump-textarea {
+      display: block;
+      width: 100%;
+      min-height: 200px;
+      border: none;
+      outline: none;
+      font-size: 16px;
+      line-height: 1.8;
+      font-family: 'Geist', system-ui, sans-serif;
+      resize: none;
+      color: #1a1a1a;
+      background: transparent;
+    }
+
+    .dump-textarea::placeholder { color: #ccc; }
+
+    .dump-toolbar {
+      display: flex;
+      align-items: center;
+      padding-top: 12px;
+      border-top: 1px solid #f0f0ee;
+      margin-top: 12px;
+    }
+
+    .rec-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #6b6b6b;
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-family: 'Geist', system-ui, sans-serif;
+      padding: 0;
+    }
+
+    .rec-btn:hover { color: #1a1a1a; }
+
+    .rec-btn.recording { color: #cc3300; }
+
+    .rec-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #cc3300;
+      flex-shrink: 0;
+      animation: rec-pulse 1s ease-in-out infinite;
+    }
+
+    @keyframes rec-pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.25; }
+    }
+
+    .process-btn {
+      margin-left: auto;
+      font-size: 12px;
+      padding: 8px 20px;
+      border: 1px solid #1a1a1a;
+      background: white;
+      color: #1a1a1a;
+      cursor: pointer;
+      border-radius: 4px;
+      font-family: 'Geist', system-ui, sans-serif;
+    }
+
+    .process-btn:hover { background: #f5f5f4; }
+
+    .ai-box {
+      background: #f9f9f8;
+      border: 1px solid #e8e8e6;
+      border-radius: 6px;
+      padding: 16px;
+      margin-top: 16px;
+      display: none;
+    }
+
+    .ai-box.show { display: block; }
+
+    .ai-focus {
+      font-size: 14px;
+      font-style: italic;
+      color: #6b6b6b;
+      margin-bottom: 12px;
+    }
+
+    .ai-actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid #e8e8e6;
+    }
+
+    .text-btn {
+      font-size: 12px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-family: 'Geist', system-ui, sans-serif;
+      color: #1a1a1a;
+      padding: 0;
+    }
+
+    .text-btn:hover { text-decoration: underline; }
+
+    .text-btn.muted { color: #999; }
+
+    /* ── section head ─────────────────────────────────────────────────────────── */
+    .section-head {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #999;
+      font-weight: 400;
+      margin: 24px 0 12px 0;
+    }
+
+    /* ── dashboard review stats ───────────────────────────────────────────────── */
+    .review-stats {
+      font-size: 13px;
+      color: #6b6b6b;
+      margin-bottom: 24px;
+    }
+
+    /* ── chart ────────────────────────────────────────────────────────────────── */
+    .chart-wrap {
+      height: 160px;
+      position: relative;
+      margin-bottom: 24px;
+    }
+
+    /* ── streak calendar ──────────────────────────────────────────────────────── */
+    .cal-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 24px);
+      gap: 3px;
+      margin-top: 8px;
+      margin-bottom: 24px;
+    }
+
+    .cal-sq {
+      width: 24px;
+      height: 24px;
+      border-radius: 3px;
+    }
+
+    .cal-dark  { background: #1a1a1a; }
+    .cal-med   { background: #888; }
+    .cal-light { background: #ccc; }
+    .cal-faint { background: #f0f0ee; }
+    .cal-empty { border: 1px solid #e8e8e6; }
+
+    /* ── KPI tracker ──────────────────────────────────────────────────────────── */
+    .kpi-biz-head {
+      font-size: 11px;
+      text-transform: uppercase;
+      color: #999;
+      font-weight: 400;
+      margin: 16px 0 6px 0;
+    }
+
+    .kpi-row {
+      display: flex;
+      align-items: center;
+      padding: 6px 0;
+      border-bottom: 1px solid #f0f0ee;
+    }
+
+    .kpi-label {
+      flex: 1;
+      font-size: 13px;
+      color: #1a1a1a;
+    }
+
+    .kpi-input {
+      width: 60px;
+      font-size: 13px;
+      font-family: 'Geist Mono', monospace;
+      border: none;
+      outline: none;
+      text-align: right;
+      color: #1a1a1a;
+      border-bottom: 1px solid transparent;
+      background: transparent;
+    }
+
+    .kpi-input:hover,
+    .kpi-input:focus {
+      border-bottom-color: #e8e8e6;
+    }
+
+    .kpi-target {
+      font-size: 11px;
+      color: #999;
+      margin-left: 8px;
+      min-width: 60px;
+      font-family: 'Geist Mono', monospace;
+    }
+
+    .kpi-save {
+      font-size: 11px;
+      color: #999;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 0 0 0 8px;
+      font-family: 'Geist', system-ui, sans-serif;
+    }
+
+    .kpi-save:hover { color: #1a1a1a; }
+
+    /* ── misc ─────────────────────────────────────────────────────────────────── */
+    .loading-text {
+      color: #999;
+      font-size: 13px;
+      padding: 12px 0;
+    }
+
+    .empty-text {
+      color: #ccc;
+      font-size: 13px;
+      padding: 20px 0;
+    }
+
+    /* ── priority dots ────────────────────────────────────────────────────────── */
+    .priority-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .priority-high { background: #cc3300; }
+    .priority-low  { background: #ccc; }
+
+    /* ── carry button ─────────────────────────────────────────────────────────── */
+    .task-carry {
+      background: none;
+      border: none;
+      padding: 0 2px;
+      color: #ccc;
+      font-size: 13px;
+      cursor: pointer;
+      visibility: hidden;
+      display: flex;
+      align-items: center;
+      line-height: 1;
+    }
+    .task-carry:hover { color: #1a1a1a; }
+    .task-row:hover .task-carry { visibility: visible; }
+
+    /* ── toast ────────────────────────────────────────────────────────────────── */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1a1a1a;
+      color: #fff;
+      font-size: 13px;
+      padding: 8px 18px;
+      border-radius: 4px;
+      opacity: 0;
+      transition: opacity 0.2s;
+      pointer-events: none;
+      z-index: 9999;
+    }
+    .toast.show { opacity: 1; }
+
+    /* ── capture views (ideas / notes) ────────────────────────────────────────── */
+    .capture-input-row {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      margin-bottom: 20px;
+    }
+    .capture-textarea {
+      flex: 1;
+      border: 1px solid #e8e8e6;
+      border-radius: 4px;
+      padding: 10px 12px;
+      font-size: 14px;
+      font-family: 'Geist', system-ui, sans-serif;
+      resize: none;
+      outline: none;
+      color: #1a1a1a;
+      line-height: 1.5;
+    }
+    .capture-textarea::placeholder { color: #ccc; }
+    .capture-textarea:focus { border-color: #1a1a1a; }
+    .capture-save {
+      font-size: 13px;
+      color: #1a1a1a;
+      background: none;
+      border: 1px solid #e8e8e6;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: 'Geist', system-ui, sans-serif;
+      padding: 8px 18px;
+      white-space: nowrap;
+    }
+    .capture-save:hover { background: #f5f5f4; }
+    .capture-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 10px 0;
+      border-bottom: 1px solid #f0f0ee;
+    }
+    .capture-text {
+      flex: 1;
+      font-size: 13px;
+      color: #1a1a1a;
+      line-height: 1.5;
+    }
+    .capture-meta {
+      font-family: 'Geist Mono', monospace;
+      font-size: 11px;
+      color: #999;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    /* ── analytics ────────────────────────────────────────────────────────────── */
+    .biz-bar-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 7px 0;
+      font-size: 13px;
+    }
+    .biz-bar-name { width: 90px; flex-shrink: 0; }
+    .biz-bar-track {
+      width: 120px;
+      height: 4px;
+      background: #f0f0ee;
+      border-radius: 2px;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+    .biz-bar-fill      { height: 100%; border-radius: 2px; }
+    .biz-bar-fill-blok     { background: #4a3fa0; }
+    .biz-bar-fill-aphl     { background: #1a6646; }
+    .biz-bar-fill-trade    { background: #7a4a0a; }
+    .biz-bar-fill-personal { background: #8a2a4a; }
+    .biz-bar-pct { font-size: 12px; color: #999; }
+
+    .missed-list {
+      padding-left: 16px;
+      font-size: 13px;
+    }
+    .missed-list li {
+      padding: 5px 0;
+      border-bottom: 1px solid #f0f0ee;
+      color: #1a1a1a;
+    }
+    .missed-count { color: #999; font-size: 12px; }
+
+    /* ── recurring tasks section ──────────────────────────────────────────────── */
+    .rec-section {
+      border-top: 1px solid #f0f0ee;
+      margin-top: 8px;
+      padding-top: 4px;
+    }
+    .rec-toggle {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      color: #999;
+      cursor: pointer;
+      user-select: none;
+      padding: 6px 0;
+    }
+    .rec-toggle:hover { color: #1a1a1a; }
+    .rec-body { display: none; }
+    .rec-body.open { display: block; }
+    .rec-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 0;
+      border-bottom: 1px solid #f0f0ee;
+      font-size: 13px;
+    }
+    .rec-name { flex: 1; color: #1a1a1a; }
+    .rec-remove {
+      background: none;
+      border: none;
+      color: #ccc;
+      cursor: pointer;
+      font-size: 12px;
+      padding: 0 2px;
+      line-height: 1;
+    }
+    .rec-remove:hover { color: #1a1a1a; }
+    .rec-add-row {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      padding: 8px 0 4px;
+    }
+    .rec-add-input {
+      flex: 1;
+      border: none;
+      border-bottom: 1px solid #e8e8e6;
+      outline: none;
+      font-size: 12px;
+      font-family: 'Geist', system-ui, sans-serif;
+      background: transparent;
+      padding: 2px 0;
+    }
+    .rec-add-input::placeholder { color: #ccc; }
+    .rec-add-select {
+      font-size: 11px;
+      border: none;
+      border-bottom: 1px solid #e8e8e6;
+      outline: none;
+      background: white;
+      color: #6b6b6b;
+      font-family: 'Geist', system-ui, sans-serif;
+      padding: 2px;
+    }
+    .rec-add-time {
+      width: 48px;
+      border: none;
+      border-bottom: 1px solid #e8e8e6;
+      outline: none;
+      font-size: 11px;
+      background: transparent;
+      padding: 2px 0;
+      font-family: 'Geist Mono', monospace;
+    }
+    .rec-add-time::placeholder { color: #ccc; }
+
+    /* ── sidebar weekly stat ──────────────────────────────────────────────────── */
+    .sidebar-week {
+      margin-top: auto;
+      padding: 12px 16px;
+      border-top: 1px solid #e8e8e6;
+    }
+    .sidebar-week-label {
+      font-size: 10px;
+      color: #999;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 4px;
+    }
+    .sidebar-week-val {
+      font-size: 20px;
+      font-family: 'Geist Mono', monospace;
+      color: #1a1a1a;
+      font-weight: 400;
+    }
+
+    /* ── goals view ───────────────────────────────────────────────────────────── */
+    .goal-biz-section { margin-bottom: 28px; }
+    .goal-biz-head {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #999;
+      font-weight: 400;
+      margin-bottom: 8px;
+    }
+    .goal-grid-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 7px 0;
+      border-bottom: 1px solid #f0f0ee;
+    }
+    .goal-dim-label {
+      font-size: 11px;
+      color: #999;
+      min-width: 90px;
+      flex-shrink: 0;
+    }
+    .goal-title-cell { flex: 1; min-width: 0; }
+    .goal-title-text {
+      font-size: 13px;
+      color: #1a1a1a;
+      cursor: pointer;
+    }
+    .goal-title-text:hover { text-decoration: underline; }
+    .goal-placeholder {
+      font-size: 13px;
+      color: #ccc;
+      cursor: pointer;
+    }
+    .goal-placeholder:hover { color: #999; }
+    .goal-edit-input {
+      font-size: 13px;
+      font-family: 'Geist', system-ui, sans-serif;
+      color: #1a1a1a;
+      border: none;
+      border-bottom: 1px solid #1a1a1a;
+      outline: none;
+      background: transparent;
+      width: 100%;
+      padding: 0;
+    }
+    .goal-status-pill {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 3px;
+      cursor: pointer;
+      flex-shrink: 0;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .status-active   { background: #edf7f2; color: #1a6646; }
+    .status-achieved { background: #f0effe; color: #4a3fa0; }
+    .status-paused   { background: #f0f0ee; color: #999; }
+    .goal-id-hint    { font-size: 10px; color: #ccc; flex-shrink: 0; }
+    .goal-progress-area {
+      padding: 4px 0 8px 90px;
+      border-bottom: 1px solid #f0f0ee;
+    }
+    .goal-progress-note {
+      font-size: 11px;
+      color: #999;
+      padding: 2px 0;
+      line-height: 1.4;
+    }
+    .progress-date { color: #ccc; }
+    .goal-log-link {
+      font-size: 11px;
+      color: #ccc;
+      cursor: pointer;
+      display: inline-block;
+      margin-top: 4px;
+    }
+    .goal-log-link:hover { color: #1a1a1a; }
+    .goal-log-inline {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-top: 6px;
+    }
+    .goal-log-input {
+      flex: 1;
+      font-size: 12px;
+      font-family: 'Geist', system-ui, sans-serif;
+      border: none;
+      border-bottom: 1px solid #e8e8e6;
+      outline: none;
+      background: transparent;
+      padding: 2px 0;
+    }
+    .goal-footer-hint {
+      font-size: 11px;
+      color: #ccc;
+      margin-top: 24px;
+    }
+
+    /* ── this month / cycles view ─────────────────────────────────────────────── */
+    .month-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+    .cycle-card {
+      border: 1px solid #f0f0ee;
+      border-radius: 6px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .cycle-header {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .cycle-biz {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #999;
+      flex-shrink: 0;
+    }
+    .cycle-title-text { font-size: 14px; color: #1a1a1a; }
+    .cycle-goal-link  { font-size: 11px; color: #999; margin-bottom: 10px; }
+    .cycle-completion-bar {
+      height: 2px;
+      background: #f0f0ee;
+      border-radius: 1px;
+      margin: 10px 0;
+      overflow: hidden;
+    }
+    .cycle-completion-fill {
+      height: 100%;
+      background: #1a1a1a;
+      border-radius: 1px;
+      transition: width 0.3s ease;
+    }
+    .cycle-commitment-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 0;
+      cursor: pointer;
+    }
+    .cycle-commitment-row:hover { background: #fafafa; }
+    .commitment-check {
+      width: 14px;
+      height: 14px;
+      border: 1.5px solid #d0d0cc;
+      border-radius: 2px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .commitment-check.checked {
+      background: #1a1a1a;
+      border-color: #1a1a1a;
+    }
+    .commitment-check.checked::after {
+      content: '';
+      display: block;
+      width: 4px;
+      height: 3px;
+      border-left: 1.5px solid #fff;
+      border-bottom: 1.5px solid #fff;
+      transform: translateY(-1px) rotate(-45deg);
+    }
+    .commitment-text        { font-size: 13px; color: #1a1a1a; }
+    .commitment-text.done   { color: #999; text-decoration: line-through; }
+    .cycle-reflect-link {
+      display: inline-block;
+      font-size: 11px;
+      color: #4a3fa0;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+    .cycle-reflect-link:hover { text-decoration: underline; }
+    .cycle-reflection-saved {
+      font-size: 12px;
+      color: #6b6b6b;
+      font-style: italic;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid #f0f0ee;
+      line-height: 1.6;
+    }
+    .cycle-reflect-form {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid #f0f0ee;
+    }
+    .cycle-reflect-input {
+      display: block;
+      width: 100%;
+      border: 1px solid #e8e8e6;
+      border-radius: 4px;
+      padding: 8px 10px;
+      font-size: 13px;
+      font-family: 'Geist', system-ui, sans-serif;
+      resize: vertical;
+      outline: none;
+      margin-bottom: 8px;
+    }
+    .cycle-meta { font-size: 11px; color: #ccc; margin-top: 8px; }
+
+    /* ── schedule drag & drop / inline edit ─────────────────────────────────── */
+    .sched-handle {
+      color: #ccc;
+      cursor: grab;
+      margin-right: 10px;
+      display: inline-flex;
+      align-items: center;
+      vertical-align: middle;
+    }
+    .sched-handle:hover { color: #999; }
+    .sched-dragging > td { opacity: 0.35; }
+    .sched-drop-above > td { border-top: 2px solid #1a1a1a !important; }
+
+    .sched-table td:first-child { width: 200px; }
+
+    .sched-time-start, .sched-time-end {
+      cursor: pointer;
+    }
+    .sched-time-start:hover, .sched-time-end:hover {
+      text-decoration: underline;
+      text-decoration-style: dotted;
+    }
+    .sched-time-sep { color: #ddd; margin: 0 3px; }
+
+    .sched-name-span { cursor: pointer; }
+    .sched-name-span:hover { text-decoration: underline; text-decoration-style: dotted; }
+    .sched-biz-span  { cursor: pointer; display: inline-flex; }
+
+    .sched-edit-time {
+      font-family: 'Geist Mono', monospace;
+      font-size: 12px;
+      color: #999;
+      border: none;
+      border-bottom: 1px solid #1a1a1a;
+      outline: none;
+      background: transparent;
+      width: 52px;
+      padding: 0;
+    }
+    .sched-edit-text {
+      font-family: 'Geist', system-ui, sans-serif;
+      font-size: 13px;
+      color: #1a1a1a;
+      border: none;
+      border-bottom: 1px solid #1a1a1a;
+      outline: none;
+      background: transparent;
+      width: 100%;
+      padding: 0;
+    }
+    .sched-edit-select {
+      font-family: 'Geist', system-ui, sans-serif;
+      font-size: 12px;
+      color: #1a1a1a;
+      border: none;
+      border-bottom: 1px solid #1a1a1a;
+      outline: none;
+      background: white;
+      padding: 1px 0;
+    }
+    #sched-saved {
+      font-size: 12px;
+      color: #999;
+      margin-top: 10px;
+      opacity: 0;
+      transition: opacity 0.5s ease;
+      height: 18px;
+    }
+
+    /* new cycle form */
+    .new-cycle-form-wrap {
+      border: 1px solid #e8e8e6;
+      border-radius: 6px;
+      padding: 16px;
+      margin-bottom: 20px;
+      background: #fafafa;
+    }
+    .new-cycle-form-wrap label {
+      display: block;
+      font-size: 11px;
+      color: #999;
+      margin-bottom: 2px;
+      margin-top: 10px;
+    }
+    .new-cycle-form-wrap label:first-child { margin-top: 0; }
+    .cycle-form-input,
+    .cycle-form-select {
+      width: 100%;
+      font-size: 13px;
+      font-family: 'Geist', system-ui, sans-serif;
+      border: none;
+      border-bottom: 1px solid #e8e8e6;
+      outline: none;
+      background: transparent;
+      padding: 4px 0;
+      color: #1a1a1a;
+    }
+    .cycle-form-actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 14px;
+    }
+  </style>
+</head>
+
+<body>
+<div class="app">
+
+  <!-- ── sidebar ──────────────────────────────────────────────────────────────── -->
+  <nav class="sidebar">
+
+    <div class="sidebar-logo">
+      <div class="logo-name">DAYWAN</div>
+      <div class="logo-tag">Day One</div>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label">WORKSPACE</div>
+      <a class="nav-item active" data-view="today">Today</a>
+      <a class="nav-item" data-view="schedule">Schedule</a>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label">CAPTURE</div>
+      <a class="nav-item" data-view="dump">Brain Dump</a>
+      <a class="nav-item" data-view="ideas">Ideas</a>
+      <a class="nav-item" data-view="notes">Notes</a>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label">STRATEGY</div>
+      <a class="nav-item" data-view="goals">Goals</a>
+      <a class="nav-item" data-view="month">This Month</a>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label">REVIEW</div>
+      <a class="nav-item" data-view="dashboard">Dashboard</a>
+    </div>
+
+    <div class="sidebar-week">
+      <div class="sidebar-week-label">This week</div>
+      <div class="sidebar-week-val" id="weekly-stat">—</div>
+    </div>
+
+  </nav>
+
+  <!-- ── main content ──────────────────────────────────────────────────────────── -->
+  <main class="content">
+
+    <!-- TODAY ─────────────────────────────────────────────────────────────────── -->
+    <div class="view active" id="v-today">
+
+      <h1 class="page-title" id="today-date">Loading…</h1>
+      <p class="page-sub" id="today-sub">—</p>
+
+      <div class="inline-stats">
+        <span id="s-total">—</span>&thinsp;tasks
+        <span class="stat-div">·</span>
+        <span id="s-done">—</span>&thinsp;done
+        <span class="stat-div">·</span>
+        <span id="s-rate">—</span>%&thinsp;today
+      </div>
+
+      <div class="streak-row" id="streak-squares"></div>
+      <div class="streak-label" id="streak-label">—</div>
+
+      <div class="progress-bar">
+        <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+      </div>
+
+      <div id="task-list">
+        <div class="loading-text">Loading…</div>
+      </div>
+
+      <div class="add-row">
+        <input
+          class="add-input"
+          id="add-name"
+          type="text"
+          placeholder="+ Add a task"
+          autocomplete="off"
+        />
+        <select class="add-select" id="add-biz">
+          <option value="blok">blok</option>
+          <option value="aphl">aphl</option>
+          <option value="trade">trade</option>
+          <option value="personal">personal</option>
+        </select>
+        <input class="add-time" id="add-time" type="text" placeholder="time" />
+        <select class="add-select" id="add-priority">
+          <option value="normal">Normal</option>
+          <option value="high">High</option>
+          <option value="low">Low</option>
+        </select>
+        <button class="add-btn" type="button">Add</button>
+      </div>
+
+      <div class="rec-section">
+        <div class="rec-toggle" id="rec-toggle">
+          <i class="ti ti-chevron-right" id="rec-chevron"></i>
+          Recurring tasks
+        </div>
+        <div class="rec-body" id="rec-body">
+          <div id="rec-list"></div>
+          <div class="rec-add-row">
+            <input class="rec-add-input" id="rec-name" type="text" placeholder="Task name" autocomplete="off" />
+            <select class="rec-add-select" id="rec-biz">
+              <option value="blok">blok</option>
+              <option value="aphl">aphl</option>
+              <option value="trade">trade</option>
+              <option value="personal">personal</option>
+            </select>
+            <input class="rec-add-time" id="rec-time" type="text" placeholder="time" />
+            <button class="add-btn" type="button" id="rec-add-btn">Add</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- SCHEDULE ──────────────────────────────────────────────────────────────── -->
+    <div class="view" id="v-schedule">
+
+      <h1 class="page-title">Schedule</h1>
+      <p class="page-sub">Drag rows to reorder · click any cell to edit</p>
+
+      <table class="sched-table">
+        <thead>
+          <tr>
+            <th style="padding-left:26px">Time</th>
+            <th>Block</th>
+            <th>Business</th>
+          </tr>
+        </thead>
+        <tbody id="sched-body"></tbody>
+      </table>
+
+      <div id="sched-saved">Order saved</div>
+
+    </div>
+
+    <!-- BRAIN DUMP ────────────────────────────────────────────────────────────── -->
+    <div class="view" id="v-dump">
+
+      <h1 class="page-title">Brain Dump</h1>
+
+      <div class="dump-wrapper">
+        <textarea
+          class="dump-textarea"
+          id="dump-text"
+          placeholder="Everything on your mind. Tasks, decisions, blockers across all businesses."
+        ></textarea>
+        <div class="dump-toolbar">
+          <button class="rec-btn" id="rec-btn" type="button">
+            <span class="rec-dot" id="rec-dot" style="display:none"></span>
+            <i class="ti ti-microphone"></i>
+            <span id="rec-label">Record voice note</span>
+          </button>
+          <button class="process-btn" id="proc-btn" type="button">Structure my day →</button>
+        </div>
+      </div>
+
+      <div class="ai-box" id="ai-box">
+        <div class="ai-focus" id="ai-focus"></div>
+        <div id="ai-tasks"></div>
+        <div class="ai-actions">
+          <button class="text-btn" id="import-btn" type="button">Add tasks to today</button>
+          <button class="text-btn muted" id="dismiss-btn" type="button">Dismiss</button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- IDEAS ────────────────────────────────────────────────────────────────── -->
+    <div class="view" id="v-ideas">
+
+      <h1 class="page-title">Ideas</h1>
+
+      <div class="capture-input-row">
+        <textarea
+          class="capture-textarea"
+          id="idea-input"
+          rows="2"
+          placeholder="New idea… prefix with blok/ aphl/ trade/ personal/"
+        ></textarea>
+        <button class="capture-save" type="button" id="idea-save">Save</button>
+      </div>
+
+      <div id="ideas-list"></div>
+
+    </div>
+
+    <!-- NOTES ────────────────────────────────────────────────────────────────── -->
+    <div class="view" id="v-notes">
+
+      <h1 class="page-title">Notes</h1>
+
+      <div class="capture-input-row">
+        <textarea
+          class="capture-textarea"
+          id="note-input"
+          rows="2"
+          placeholder="New note… prefix with blok/ aphl/ trade/ personal/"
+        ></textarea>
+        <button class="capture-save" type="button" id="note-save">Save</button>
+      </div>
+
+      <div id="notes-list"></div>
+
+    </div>
+
+    <!-- GOALS ───────────────────────────────────────────────────────────────────── -->
+    <div class="view" id="v-goals">
+
+      <h1 class="page-title">2026 Goals</h1>
+
+      <div id="goals-container">
+        <div class="loading-text">Loading…</div>
+      </div>
+
+      <p class="goal-footer-hint">
+        Goals are reviewed monthly. Use /review &lt;id&gt; in Telegram for AI assessment.
+      </p>
+
+    </div>
+
+    <!-- THIS MONTH ───────────────────────────────────────────────────────────── -->
+    <div class="view" id="v-month">
+
+      <div class="month-header">
+        <h1 class="page-title" id="month-title">Cycles</h1>
+        <button class="text-btn" id="new-cycle-btn" type="button">+ New cycle</button>
+      </div>
+      <p class="page-sub">Monthly commitments tied to your goals</p>
+
+      <div class="new-cycle-form-wrap" id="new-cycle-form" style="display:none">
+        <label>Business</label>
+        <select class="cycle-form-select" id="cycle-biz-sel">
+          <option value="blok">Blok AI</option>
+          <option value="aphl">APHL Africa</option>
+          <option value="trade">TradeSol</option>
+          <option value="personal">Personal</option>
+        </select>
+
+        <label>Linked goal</label>
+        <select class="cycle-form-select" id="cycle-goal-sel">
+          <option value="">No linked goal</option>
+        </select>
+
+        <label>Month (YYYY-MM)</label>
+        <input class="cycle-form-input" id="cycle-month-input" type="text" placeholder="2026-06" />
+
+        <label>Cycle title / focus</label>
+        <input class="cycle-form-input" id="cycle-title-input" type="text" placeholder="June fundraise push" />
+
+        <label>Commitment 1 *</label>
+        <input class="cycle-form-input" id="cycle-c1-input" type="text" placeholder="Specific, measurable…" />
+
+        <label>Commitment 2 *</label>
+        <input class="cycle-form-input" id="cycle-c2-input" type="text" placeholder="Specific, measurable…" />
+
+        <label>Commitment 3 (optional)</label>
+        <input class="cycle-form-input" id="cycle-c3-input" type="text" placeholder="Optional third…" />
+
+        <div class="cycle-form-actions">
+          <button class="add-btn" type="button" id="cycle-save-btn">Save cycle</button>
+          <button class="text-btn muted" type="button" id="cycle-cancel-btn">Cancel</button>
+        </div>
+      </div>
+
+      <div id="cycles-container">
+        <div class="loading-text">Loading…</div>
+      </div>
+
+    </div>
+
+    <!-- DASHBOARD ─────────────────────────────────────────────────────────────── -->
+    <div class="view" id="v-dashboard">
+
+      <h1 class="page-title">Review</h1>
+
+      <div class="review-stats" id="review-stats">
+        Current streak — days
+        <span class="stat-div"> · </span>
+        Best streak — days
+        <span class="stat-div"> · </span>
+        Avg completion —%
+      </div>
+
+      <div class="section-head">30-Day Completion</div>
+      <div class="chart-wrap">
+        <canvas id="hist-chart"></canvas>
+      </div>
+
+      <div class="section-head" id="cal-label">This Month</div>
+      <div class="cal-grid" id="cal-grid"></div>
+
+      <div class="section-head">KPI Tracker</div>
+      <div id="kpi-container"></div>
+
+      <div class="section-head">Completion by business — last 30 days</div>
+      <div id="biz-breakdown"></div>
+
+      <div class="section-head">Frequently missed</div>
+      <div id="missed-container"></div>
+
+    </div>
+
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+
+// ── constants ─────────────────────────────────────────────────────────────────
+
+let BLOCKS = [
+  { time: '05:30', end: '05:45', name: 'Prayer',                                    biz: 'anchor'   },
+  { time: '05:45', end: '06:00', name: 'Journaling',                                biz: 'anchor'   },
+  { time: '06:00', end: '06:30', name: 'Orient and daily priority',                 biz: 'blok'     },
+  { time: '06:30', end: '07:00', name: 'Pre-day setup: depot price, brief Candy',   biz: 'aphl'     },
+  { time: '07:00', end: '07:30', name: 'Morning command: floor price, driver call',  biz: 'aphl'     },
+  { time: '07:30', end: '09:00', name: 'Raise: 5 investor emails, CRM update',      biz: 'blok'     },
+  { time: '08:00', end: '10:00', name: 'Sales push: Candy runs outbound',           biz: 'aphl'     },
+  { time: '09:00', end: '10:30', name: 'Product: PM review, Arkad user flow',       biz: 'blok'     },
+  { time: '10:00', end: '13:00', name: 'Operations: payments, loading, tracking',   biz: 'aphl'     },
+  { time: '10:30', end: '11:30', name: 'Comms: Slack, async check-ins',             biz: 'blok'     },
+  { time: '11:30', end: '12:30', name: 'Brand: creative review, social metrics',    biz: 'blok'     },
+  { time: '13:00', end: '14:00', name: 'MD strategic hour: depot, pricing',         biz: 'aphl'     },
+  { time: '14:00', end: '15:30', name: 'Strategy: priorities, decision log',        biz: 'blok'     },
+  { time: '16:00', end: '17:30', name: 'Unified day close: ops sync, revenue log',  biz: 'blok'     },
+  { time: '17:30', end: '18:00', name: 'Calls to loved ones',                       biz: 'anchor'   },
+  { time: '18:00', end: '19:00', name: 'Pottery or reading',                        biz: 'personal' },
+  { time: '19:00', end: '20:00', name: 'Physical activity',                         biz: 'personal' },
+  { time: '20:30', end: '21:00', name: 'Evening wind-down and next day planning',   biz: 'anchor'   },
+];
+
+const BIZ_LABEL = {
+  blok:     'Blok AI',
+  aphl:     'APHL Africa',
+  trade:    'TradeSol',
+  personal: 'Personal',
+  anchor:   'Anchor',
+};
+
+const KPI_DEFS = [
+  { biz: 'blok', label: 'Blok AI', items: [
+    { k: 'investor_emails',  label: 'Investor emails',      target: '5/day'   },
+    { k: 'pipeline_entries', label: 'Pipeline entries',     target: 'Weekly'  },
+  ]},
+  { biz: 'aphl', label: 'APHL Africa', items: [
+    { k: 'outbound_calls',   label: 'Outbound calls',       target: '20+/day' },
+    { k: 'trips_completed',  label: 'Trips completed',      target: 'Daily'   },
+    { k: 'revenue_logged',   label: 'Revenue logged (NGN)', target: 'Daily'   },
+  ]},
+  { biz: 'trade', label: 'TradeSol', items: [
+    { k: 'content_pieces',   label: 'Content pieces',       target: 'Weekly'  },
+    { k: 'agent_signups',    label: 'Agent signups',        target: 'Monthly' },
+  ]},
+  { biz: 'personal', label: 'Personal', items: [
+    { k: 'exercise',         label: 'Exercise sessions',    target: '5/wk'    },
+    { k: 'pottery',          label: 'Pottery sessions',     target: '3/wk'    },
+    { k: 'books',            label: 'Books in progress',    target: 'Ongoing' },
+  ]},
+];
+
+// ── state ─────────────────────────────────────────────────────────────────────
+
+const state = {
+  tasks:       [],
+  history:     [],
+  aiTasks:     [],
+  recording:   false,
+  mediaRec:    null,
+  audioChunks: [],
+  histChart:   null,
+};
+
+// ── WAT helpers (UTC+1) ───────────────────────────────────────────────────────
+
+const WAT_MS = 60 * 60 * 1000;
+
+function watNow()     { return new Date(Date.now() + WAT_MS); }
+function watDateStr() { return watNow().toISOString().slice(0, 10); }
+function watTimeMin() { const d = watNow(); return d.getUTCHours() * 60 + d.getUTCMinutes(); }
+function toMins(t)    { const [h, m] = t.split(':').map(Number); return h * 60 + m; }
+
+function getActiveBlock() {
+  const now    = watTimeMin();
+  const active = BLOCKS.filter(b => toMins(b.time) <= now && now < toMins(b.end));
+  return active.length ? active[active.length - 1].name : '';
+}
+
+function formatDate() {
+  return watNow().toLocaleDateString('en-GB', {
+    weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC',
+  });
+}
+
+// ── streak logic ──────────────────────────────────────────────────────────────
+
+function computeStreaks(history) {
+  if (!history.length) return { current: 0, best: 0, avg: 0 };
+
+  const sorted  = [...history].sort((a, b) => a.date.localeCompare(b.date));
+  const rateMap = {};
+  for (const d of sorted) rateMap[d.date] = d.rate;
+
+  // Current streak — go back from today
+  let current = 0;
+  const todayMs = new Date(watDateStr() + 'T00:00:00Z').getTime();
+  for (let i = 0; i <= 365; i++) {
+    const ds = new Date(todayMs - i * 86400000).toISOString().slice(0, 10);
+    if (!(ds in rateMap)) break;
+    if (rateMap[ds] < 80) break;
+    current++;
+  }
+
+  // Best streak
+  let best = 0, run = 0;
+  for (const d of sorted) {
+    if (d.rate >= 80) { run++; best = Math.max(best, run); }
+    else run = 0;
+  }
+
+  // Avg (only days with data)
+  const withData = sorted.filter(d => d.total > 0);
+  const avg = withData.length
+    ? Math.round(withData.reduce((s, d) => s + d.rate, 0) / withData.length)
+    : 0;
+
+  return { current, best, avg };
+}
+
+// ── utilities ─────────────────────────────────────────────────────────────────
+
+function esc(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+async function api(path, opts = {}) {
+  const isForm  = opts.body instanceof FormData;
+  const headers = { ...(isForm ? {} : { 'Content-Type': 'application/json' }), ...opts.headers };
+  const res     = await fetch(path, {
+    ...opts,
+    headers,
+    body: opts.body && !isForm ? JSON.stringify(opts.body) : opts.body,
+  });
+  if (res.status === 204) return null;
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
+function tagHtml(biz) {
+  const b     = String(biz || '').toLowerCase();
+  const known = { blok: 1, aphl: 1, trade: 1, personal: 1, anchor: 1 };
+  const cls   = known[b] ? `tag-${b}` : 'tag-anchor';
+  return `<span class="tag ${cls}">${esc(BIZ_LABEL[b] || biz)}</span>`;
+}
+
+// ── tab switching ─────────────────────────────────────────────────────────────
+
+function switchTab(name) {
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+  const navEl  = document.querySelector(`.nav-item[data-view="${name}"]`);
+  const viewEl = document.getElementById(`v-${name}`);
+  if (navEl)  navEl.classList.add('active');
+  if (viewEl) viewEl.classList.add('active');
+  if (name === 'dashboard') renderDashboard();
+  if (name === 'schedule')  renderSchedule();
+  if (name === 'ideas')     loadIdeas();
+  if (name === 'notes')     loadNotes();
+  if (name === 'goals')     loadGoals();
+  if (name === 'month')     loadMonth();
+}
+
+// ── TODAY VIEW ────────────────────────────────────────────────────────────────
+
+async function fetchTasks() {
+  try {
+    const [tasks, history] = await Promise.all([
+      api('/api/tasks'),
+      state.history.length ? Promise.resolve(state.history) : api('/api/history?days=35'),
+    ]);
+    state.tasks   = tasks;
+    state.history = history;
+    renderToday();
+  } catch (e) {
+    document.getElementById('task-list').innerHTML =
+      `<div class="empty-text">Error: ${esc(e.message)}</div>`;
+  }
+}
+
+function renderToday() {
+  const total = state.tasks.length;
+  const done  = state.tasks.filter(t => t.done).length;
+  const rate  = total ? Math.round(done / total * 100) : 0;
+
+  document.getElementById('s-total').textContent = total || '—';
+  document.getElementById('s-done').textContent  = done  || '—';
+  document.getElementById('s-rate').textContent  = total ? rate : '—';
+  document.getElementById('progress-fill').style.width = `${rate}%`;
+  document.title = total ? `DAYWAN · ${rate}%` : 'DAYWAN';
+
+  renderStreakSquares();
+  renderTaskList();
+}
+
+function renderStreakSquares() {
+  const todayMs = new Date(watDateStr() + 'T00:00:00Z').getTime();
+  const rateMap = {};
+  for (const d of state.history) rateMap[d.date] = d.rate;
+
+  // 7 squares oldest → newest
+  const days = Array.from({ length: 7 }, (_, i) =>
+    new Date(todayMs - (6 - i) * 86400000).toISOString().slice(0, 10)
+  );
+
+  document.getElementById('streak-squares').innerHTML = days.map(ds => {
+    const r   = rateMap[ds];
+    const cls = r === undefined ? '' : r >= 80 ? 'filled' : r > 0 ? 'partial' : '';
+    return `<div class="streak-sq ${cls}" title="${ds}${r !== undefined ? ': ' + r + '%' : ''}"></div>`;
+  }).join('');
+
+  const { current } = computeStreaks(state.history);
+  document.getElementById('streak-label').textContent = current === 0
+    ? 'No streak yet'
+    : `${current} day streak${current >= 5 ? ' 🔥' : ''}`;
+}
+
+function renderTaskList() {
+  const el = document.getElementById('task-list');
+
+  if (!state.tasks.length) {
+    el.innerHTML = '<div class="empty-text">No tasks yet — add one below.</div>';
+    return;
+  }
+
+  const sorted = [...state.tasks].sort((a, b) => {
+    if (!a.time && !b.time) return 0;
+    if (!a.time) return 1;
+    if (!b.time) return -1;
+    return a.time.localeCompare(b.time);
+  });
+
+  el.innerHTML = sorted.map(t => {
+    const isAnchor = t.business === 'anchor';
+    const isDone   = Boolean(t.done);
+    const rowCls   = ['task-row', isDone && 'done', isAnchor && 'anchor-row'].filter(Boolean).join(' ');
+
+    const priorityDot = t.priority === 'high'
+      ? `<div class="priority-dot priority-high"></div>`
+      : t.priority === 'low'
+      ? `<div class="priority-dot priority-low"></div>`
+      : '';
+
+    const rightCtrl = isAnchor
+      ? `<span class="anchor-lock"><i class="ti ti-lock"></i></span>`
+      : `${!isDone ? `<button class="task-carry" onclick="event.stopPropagation();carryTask(${t.id})" aria-label="Carry to tomorrow"><i class="ti ti-arrow-right"></i></button>` : ''}
+         <button class="task-del" onclick="event.stopPropagation();deleteTask(${t.id})" aria-label="Delete">
+           <i class="ti ti-x"></i>
+         </button>`;
+
+    return `
+      <div class="${rowCls}" onclick="toggleTask(${t.id})">
+        <div class="task-check${isDone ? ' checked' : ''}"></div>
+        ${priorityDot}
+        <span class="task-name${isDone ? ' done' : ''}">${esc(t.name)}</span>
+        ${tagHtml(t.business)}
+        <span class="task-time">${t.time ? esc(t.time) : ''}</span>
+        ${rightCtrl}
+      </div>
+    `;
+  }).join('');
+}
+
+async function toggleTask(id) {
+  try {
+    const updated = await api(`/api/tasks/${id}/toggle`, { method: 'PATCH' });
+    const i = state.tasks.findIndex(t => t.id === id);
+    if (i !== -1) state.tasks[i] = updated;
+    renderToday();
+  } catch (e) { console.error('toggle:', e); }
+}
+
+async function deleteTask(id) {
+  try {
+    await api(`/api/tasks/${id}`, { method: 'DELETE' });
+    state.tasks = state.tasks.filter(t => t.id !== id);
+    renderToday();
+  } catch (e) { console.error('delete:', e); }
+}
+
+// ── CARRY FORWARD ─────────────────────────────────────────────────────────────
+
+async function carryTask(id) {
+  try {
+    await api(`/api/tasks/${id}/carry`, { method: 'POST', body: {} });
+    showToast('Carried to tomorrow');
+    await fetchTasks();
+  } catch (e) { console.error('carry:', e); }
+}
+
+// ── TOAST ─────────────────────────────────────────────────────────────────────
+
+let _toastTimer;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove('show'), 2000);
+}
+
+async function addTask() {
+  const nameEl = document.getElementById('add-name');
+  const name   = nameEl.value.trim();
+  if (!name) return;
+
+  const biz      = document.getElementById('add-biz').value;
+  const time     = document.getElementById('add-time').value.trim();
+  const priority = document.getElementById('add-priority').value;
+
+  try {
+    const task = await api('/api/tasks', {
+      method: 'POST',
+      body: { name, business: biz, scheduled_time: time || undefined, priority },
+    });
+    state.tasks.push(task);
+    renderToday();
+    nameEl.value = '';
+    document.getElementById('add-time').value = '';
+    nameEl.focus();
+  } catch (e) { console.error('addTask:', e); }
+}
+
+// ── SCHEDULE VIEW ─────────────────────────────────────────────────────────────
+
+function renderSchedule() {
+  const now = watTimeMin();
+  document.getElementById('sched-body').innerHTML = BLOCKS.map((b, i) => {
+    const start    = toMins(b.time), end = toMins(b.end);
+    const isActive = start <= now && now < end;
+    const isPast   = end <= now;
+    const trCls    = ['sched-row', isActive ? 'active-block' : isPast ? 'past-block' : ''].filter(Boolean).join(' ');
+    return `
+      <tr class="${trCls}" draggable="true" data-idx="${i}"
+          ondragstart="schedDragStart(event,${i})"
+          ondragover="schedDragOver(event,${i})"
+          ondrop="schedDrop(event)"
+          ondragend="schedDragEnd(event)">
+        <td><span class="sched-handle"><i class="ti ti-grip-vertical"></i></span><span class="sched-time-start" onclick="editSchedCell(event,${i},'time')">${esc(b.time)}</span><span class="sched-time-sep">–</span><span class="sched-time-end" onclick="editSchedCell(event,${i},'end')">${esc(b.end)}</span></td>
+        <td><span class="sched-name-span" onclick="editSchedCell(event,${i},'name')">${esc(b.name)}</span></td>
+        <td><span class="sched-biz-span" onclick="editSchedCell(event,${i},'biz')">${tagHtml(b.biz)}</span></td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// ── SCHEDULE DRAG & DROP ──────────────────────────────────────────────────────
+
+let _schedDragSrc    = null;
+let _schedDropTarget = null;
+
+function schedDragStart(e, idx) {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') {
+    e.preventDefault();
+    return;
+  }
+  _schedDragSrc = idx;
+  e.dataTransfer.effectAllowed = 'move';
+  setTimeout(() => e.currentTarget.classList.add('sched-dragging'), 0);
+}
+
+function schedDragOver(e, idx) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  document.querySelectorAll('#sched-body tr').forEach(tr => tr.classList.remove('sched-drop-above'));
+  if (idx === _schedDragSrc) return;
+  const rect        = e.currentTarget.getBoundingClientRect();
+  const insertBefore = e.clientY < rect.top + rect.height / 2;
+  if (insertBefore) {
+    e.currentTarget.classList.add('sched-drop-above');
+    _schedDropTarget = idx;
+  } else {
+    const rows = document.querySelectorAll('#sched-body tr');
+    if (idx + 1 < rows.length) rows[idx + 1].classList.add('sched-drop-above');
+    _schedDropTarget = idx + 1;
+  }
+}
+
+function schedDrop(e) {
+  e.preventDefault();
+  if (_schedDragSrc === null || _schedDropTarget === null) return;
+  const src    = _schedDragSrc;
+  const rawDst = _schedDropTarget;
+  _schedDragSrc    = null;
+  _schedDropTarget = null;
+  if (rawDst === src || rawDst === src + 1) { renderSchedule(); return; }
+  const moved = BLOCKS.splice(src, 1)[0];
+  const dst   = rawDst > src ? rawDst - 1 : rawDst;
+  BLOCKS.splice(dst, 0, moved);
+  renderSchedule();
+  saveScheduleOrder();
+}
+
+function schedDragEnd(e) {
+  document.querySelectorAll('#sched-body tr').forEach(tr =>
+    tr.classList.remove('sched-dragging', 'sched-drop-above')
+  );
+  _schedDragSrc    = null;
+  _schedDropTarget = null;
+}
+
+// ── SCHEDULE INLINE EDIT ──────────────────────────────────────────────────────
+
+function editSchedCell(e, idx, field) {
+  e.stopPropagation();
+  const el       = e.currentTarget;
+  const original = BLOCKS[idx][field];
+
+  let input;
+  if (field === 'time' || field === 'end') {
+    input       = document.createElement('input');
+    input.type  = 'time';
+    input.value = original;
+    input.className = 'sched-edit-time';
+  } else if (field === 'name') {
+    input       = document.createElement('input');
+    input.type  = 'text';
+    input.value = original;
+    input.className = 'sched-edit-text';
+  } else if (field === 'biz') {
+    input = document.createElement('select');
+    input.className = 'sched-edit-select';
+    ['blok', 'aphl', 'trade', 'personal', 'anchor'].forEach(opt => {
+      const o = document.createElement('option');
+      o.value = opt; o.textContent = BIZ_LABEL[opt] || opt;
+      if (opt === original) o.selected = true;
+      input.appendChild(o);
+    });
+  }
+  if (!input) return;
+  el.replaceWith(input);
+  input.focus();
+  if (input.tagName === 'INPUT') input.select?.();
+
+  let done = false;
+  const commit = () => {
+    if (done) return; done = true;
+    const val = input.value;
+    if (val && val !== original) { BLOCKS[idx][field] = val; saveScheduleOrder(); }
+    renderSchedule();
+  };
+  const cancel = () => { if (done) return; done = true; renderSchedule(); };
+
+  if (field === 'biz') {
+    input.addEventListener('change', commit);
+    input.addEventListener('blur', commit);
+  } else {
+    input.addEventListener('blur', commit);
+    input.addEventListener('keydown', ev => {
+      if (ev.key === 'Enter')  { ev.preventDefault(); commit(); }
+      if (ev.key === 'Escape') cancel();
+    });
+  }
+}
+
+// ── SCHEDULE PERSISTENCE ──────────────────────────────────────────────────────
+
+let _savedTimer;
+
+async function saveScheduleOrder() {
+  try {
+    await api('/api/schedule/order', { method: 'POST', body: { blocks: BLOCKS } });
+    showSavedIndicator();
+    const subEl = document.getElementById('today-sub');
+    if (subEl) subEl.textContent = getActiveBlock() || '—';
+  } catch (e) { console.error('saveScheduleOrder:', e); }
+}
+
+function showSavedIndicator() {
+  const el = document.getElementById('sched-saved');
+  if (!el) return;
+  el.style.opacity = '1';
+  clearTimeout(_savedTimer);
+  _savedTimer = setTimeout(() => { el.style.opacity = '0'; }, 2000);
+}
+
+// ── BRAIN DUMP VIEW ───────────────────────────────────────────────────────────
+
+async function toggleRec() {
+  if (state.recording) { state.mediaRec?.stop(); return; }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    state.audioChunks = [];
+    state.mediaRec    = new MediaRecorder(stream);
+
+    state.mediaRec.ondataavailable = e => { if (e.data.size) state.audioChunks.push(e.data); };
+
+    state.mediaRec.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      setRecordingUi(false);
+      setDumpLoading(true);
+      try {
+        const mimeType = state.mediaRec.mimeType || 'audio/webm';
+        const blob = new Blob(state.audioChunks, { type: mimeType });
+        const form = new FormData();
+        form.append('audio', blob, 'voice.webm');
+        const res  = await fetch('/api/brain-dump/voice', { method: 'POST', body: form });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        document.getElementById('dump-text').value = data.transcript || '';
+        showAiOutput(data.structured);
+      } catch (e) {
+        console.error('voice:', e);
+      } finally {
+        setDumpLoading(false);
+      }
+    };
+
+    state.mediaRec.start();
+    setRecordingUi(true);
+  } catch {
+    console.warn('Microphone access denied');
+  }
+}
+
+function setRecordingUi(on) {
+  state.recording = on;
+  const btn   = document.getElementById('rec-btn');
+  const dot   = document.getElementById('rec-dot');
+  const label = document.getElementById('rec-label');
+  const icon  = btn.querySelector('i');
+  if (on) {
+    btn.classList.add('recording');
+    dot.style.display  = 'inline-block';
+    icon.className     = 'ti ti-player-stop-filled';
+    label.textContent  = 'Stop recording';
+  } else {
+    btn.classList.remove('recording');
+    dot.style.display  = 'none';
+    icon.className     = 'ti ti-microphone';
+    label.textContent  = 'Record voice note';
+  }
+}
+
+function setDumpLoading(on) {
+  const procBtn = document.getElementById('proc-btn');
+  const recBtn  = document.getElementById('rec-btn');
+  procBtn.disabled    = on;
+  recBtn.disabled     = on;
+  procBtn.textContent = on ? 'Processing…' : 'Structure my day →';
+}
+
+async function processDump() {
+  const text = document.getElementById('dump-text').value.trim();
+  if (!text) return;
+  setDumpLoading(true);
+  try {
+    const res = await api('/api/brain-dump/text', { method: 'POST', body: { text } });
+    showAiOutput(res.structured);
+  } catch (e) {
+    console.error('processDump:', e);
+  } finally {
+    setDumpLoading(false);
+  }
+}
+
+function showAiOutput(structured) {
+  state.aiTasks = structured?.tasks || [];
+
+  document.getElementById('ai-focus').textContent = structured?.focus || '';
+
+  document.getElementById('ai-tasks').innerHTML = state.aiTasks.length
+    ? state.aiTasks.map(t => `
+        <div class="task-row" style="pointer-events:none">
+          <div class="task-check"></div>
+          <span class="task-name">${esc(t.name)}</span>
+          ${tagHtml(t.business || 'personal')}
+          <span class="task-time">${t.time ? esc(t.time) : ''}</span>
+        </div>
+      `).join('')
+    : '<div class="empty-text">No tasks extracted.</div>';
+
+  document.getElementById('import-btn').textContent =
+    `Add ${state.aiTasks.length} task${state.aiTasks.length !== 1 ? 's' : ''} to today`;
+
+  document.getElementById('ai-box').classList.add('show');
+}
+
+async function importTasks() {
+  if (!state.aiTasks.length) return;
+  try {
+    await api('/api/brain-dump/import', { method: 'POST', body: { tasks: state.aiTasks } });
+    document.getElementById('ai-box').classList.remove('show');
+    document.getElementById('dump-text').value = '';
+    state.aiTasks = [];
+    await fetchTasks();
+    switchTab('today');
+  } catch (e) { console.error('importTasks:', e); }
+}
+
+// ── RECURRING TASKS ───────────────────────────────────────────────────────────
+
+let _recOpen = false;
+
+async function loadRecurring() {
+  const el = document.getElementById('rec-list');
+  try {
+    const tasks = await api('/api/recurring');
+    if (!tasks.length) {
+      el.innerHTML = '<div class="empty-text" style="padding:6px 0">No recurring tasks.</div>';
+      return;
+    }
+    el.innerHTML = tasks.map(t => `
+      <div class="rec-item">
+        ${tagHtml(t.business)}
+        <span class="rec-name">${esc(t.name)}</span>
+        ${t.scheduled_time ? `<span class="task-time">${esc(t.scheduled_time)}</span>` : ''}
+        <button class="rec-remove" onclick="removeRecurring(${t.id})" aria-label="Remove">
+          <i class="ti ti-x"></i>
+        </button>
+      </div>
+    `).join('');
+  } catch (e) { console.error('loadRecurring:', e); }
+}
+
+function toggleRecurring() {
+  _recOpen = !_recOpen;
+  document.getElementById('rec-body').classList.toggle('open', _recOpen);
+  document.getElementById('rec-chevron').className = _recOpen ? 'ti ti-chevron-down' : 'ti ti-chevron-right';
+  if (_recOpen) loadRecurring();
+}
+
+async function addRecurringTask() {
+  const name = document.getElementById('rec-name').value.trim();
+  const biz  = document.getElementById('rec-biz').value;
+  const time = document.getElementById('rec-time').value.trim();
+  if (!name) return;
+  try {
+    await api('/api/recurring', {
+      method: 'POST',
+      body: { name, business: biz, scheduled_time: time || undefined },
+    });
+    document.getElementById('rec-name').value = '';
+    document.getElementById('rec-time').value = '';
+    loadRecurring();
+  } catch (e) { console.error('addRecurring:', e); }
+}
+
+async function removeRecurring(id) {
+  try {
+    await api(`/api/recurring/${id}`, { method: 'DELETE' });
+    loadRecurring();
+  } catch (e) { console.error('removeRecurring:', e); }
+}
+
+// ── IDEAS ─────────────────────────────────────────────────────────────────────
+
+function parseBizPrefix(text) {
+  for (const biz of ['blok', 'aphl', 'trade', 'personal']) {
+    if (text.toLowerCase().startsWith(`${biz}/`)) {
+      return { biz, content: text.slice(biz.length + 1).trim() };
+    }
+  }
+  return { biz: 'blok', content: text.trim() };
+}
+
+function renderCaptureList(el, items) {
+  if (!items.length) {
+    el.innerHTML = '<div class="empty-text">Nothing saved yet.</div>';
+    return;
+  }
+  el.innerHTML = items.map(item => `
+    <div class="capture-row">
+      ${tagHtml(item.business)}
+      <span class="capture-text">${esc(item.content)}</span>
+      <span class="capture-meta">${esc((item.created_at || '').slice(0, 10))}</span>
+    </div>
+  `).join('');
+}
+
+async function loadIdeas() {
+  const el = document.getElementById('ideas-list');
+  try {
+    renderCaptureList(el, await api('/api/ideas'));
+  } catch (e) {
+    el.innerHTML = `<div class="empty-text">Error: ${esc(e.message)}</div>`;
+  }
+}
+
+async function saveIdea() {
+  const input = document.getElementById('idea-input');
+  const raw   = input.value.trim();
+  if (!raw) return;
+  const { biz, content } = parseBizPrefix(raw);
+  if (!content) return;
+  try {
+    await api('/api/ideas', { method: 'POST', body: { business: biz, content } });
+    input.value = '';
+    loadIdeas();
+  } catch (e) { console.error('saveIdea:', e); }
+}
+
+// ── NOTES ─────────────────────────────────────────────────────────────────────
+
+async function loadNotes() {
+  const el = document.getElementById('notes-list');
+  try {
+    renderCaptureList(el, await api('/api/notes'));
+  } catch (e) {
+    el.innerHTML = `<div class="empty-text">Error: ${esc(e.message)}</div>`;
+  }
+}
+
+async function saveNote() {
+  const input = document.getElementById('note-input');
+  const raw   = input.value.trim();
+  if (!raw) return;
+  const { biz, content } = parseBizPrefix(raw);
+  if (!content) return;
+  try {
+    await api('/api/notes', { method: 'POST', body: { business: biz, content } });
+    input.value = '';
+    loadNotes();
+  } catch (e) { console.error('saveNote:', e); }
+}
+
+// ── ANALYTICS ─────────────────────────────────────────────────────────────────
+
+async function renderAnalytics() {
+  try {
+    const [byBiz, missed] = await Promise.all([
+      api('/api/analytics/by-business'),
+      api('/api/analytics/missed'),
+    ]);
+
+    const bizEl = document.getElementById('biz-breakdown');
+    bizEl.innerHTML = byBiz.length
+      ? byBiz.map(r => `
+          <div class="biz-bar-row">
+            <span class="biz-bar-name">${esc(BIZ_LABEL[r.business] || r.business)}</span>
+            <div class="biz-bar-track">
+              <div class="biz-bar-fill biz-bar-fill-${esc(r.business)}" style="width:${Math.min(r.rate, 100)}%"></div>
+            </div>
+            <span class="biz-bar-pct">${r.completed}/${r.total} (${r.rate}%)</span>
+          </div>
+        `).join('')
+      : '<div class="empty-text">No data yet.</div>';
+
+    const missedEl = document.getElementById('missed-container');
+    missedEl.innerHTML = missed.length
+      ? `<ol class="missed-list">
+          ${missed.slice(0, 5).map(r => `
+            <li>${esc(r.name)} <span class="missed-count">— missed ${r.frequency} time${r.frequency !== 1 ? 's' : ''}</span></li>
+          `).join('')}
+         </ol>`
+      : '<div class="empty-text">No missed tasks.</div>';
+  } catch (e) { console.error('renderAnalytics:', e); }
+}
+
+// ── WEEKLY STAT ───────────────────────────────────────────────────────────────
+
+async function updateWeeklyStat() {
+  try {
+    const history  = await api('/api/history?days=7');
+    const withData = history.filter(d => d.total > 0);
+    const avg      = withData.length
+      ? Math.round(withData.reduce((s, d) => s + d.rate, 0) / withData.length)
+      : 0;
+    document.getElementById('weekly-stat').textContent = `${avg}%`;
+  } catch { }
+}
+
+// ── DASHBOARD VIEW ────────────────────────────────────────────────────────────
+
+async function renderDashboard() {
+  try {
+    const [history, kpis] = await Promise.all([
+      api('/api/history?days=35'),
+      api('/api/kpis'),
+    ]);
+    state.history = history;
+
+    const { current, best, avg } = computeStreaks(history);
+
+    document.getElementById('review-stats').innerHTML =
+      `Current streak ${current} day${current !== 1 ? 's' : ''}` +
+      `<span class="stat-div"> · </span>` +
+      `Best streak ${best} day${best !== 1 ? 's' : ''}` +
+      `<span class="stat-div"> · </span>` +
+      `Avg completion ${avg}%`;
+
+    renderHistChart(history);
+    renderCalendar(history);
+    renderKpis(kpis);
+    renderAnalytics();
+  } catch (e) { console.error('renderDashboard:', e); }
+}
+
+function renderHistChart(history) {
+  const sorted = [...history]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(-30);
+
+  const labels = sorted.map((d, i) => {
+    if (i % 7 !== 0) return '';
+    const [, mo, dy] = d.date.split('-');
+    return `${+dy}/${+mo}`;
+  });
+
+  const data   = sorted.map(d => d.rate);
+  const colors = data.map(r => r >= 80 ? '#1a1a1a' : r >= 50 ? '#d0d0cc' : '#f0f0ee');
+
+  if (state.histChart) { state.histChart.destroy(); state.histChart = null; }
+
+  state.histChart = new Chart(
+    document.getElementById('hist-chart').getContext('2d'),
+    {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{ data, backgroundColor: colors, borderRadius: 2, borderSkipped: false }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend:  { display: false },
+          tooltip: { callbacks: { label: c => `${c.parsed.y}%` } },
+        },
+        scales: {
+          y: {
+            min: 0, max: 100,
+            grid:   { display: false },
+            border: { display: false },
+            ticks: {
+              callback:     v => v + '%',
+              color:        '#999',
+              font:         { family: "'Geist Mono', monospace", size: 11 },
+              maxTicksLimit: 5,
+            },
+          },
+          x: {
+            grid:   { display: false },
+            border: { display: false },
+            ticks:  { color: '#999', font: { family: "'Geist', system-ui, sans-serif", size: 11 } },
+          },
+        },
+      },
+    }
+  );
+}
+
+function renderCalendar(history) {
+  const rateMap = {};
+  for (const d of history) rateMap[d.date] = d.rate;
+
+  const todayMs = new Date(watDateStr() + 'T00:00:00Z').getTime();
+  const days    = Array.from({ length: 35 }, (_, i) =>
+    new Date(todayMs - (34 - i) * 86400000).toISOString().slice(0, 10)
+  );
+
+  const latest = new Date(days[days.length - 1] + 'T00:00:00Z');
+  document.getElementById('cal-label').textContent = latest.toLocaleDateString('en-GB', {
+    month: 'long', year: 'numeric', timeZone: 'UTC',
+  });
+
+  document.getElementById('cal-grid').innerHTML = days.map(ds => {
+    const r   = rateMap[ds];
+    const cls = r === undefined   ? 'cal-empty'
+              : r >= 80           ? 'cal-dark'
+              : r >= 60           ? 'cal-med'
+              : r >= 40           ? 'cal-light'
+              :                     'cal-faint';
+    return `<div class="cal-sq ${cls}" title="${ds}${r !== undefined ? ': ' + r + '%' : ''}"></div>`;
+  }).join('');
+}
+
+function renderKpis(apiKpis) {
+  const idx = {};
+  for (const k of apiKpis) idx[`${k.business}__${k.metric}`] = k;
+
+  const container = document.getElementById('kpi-container');
+  container.innerHTML = KPI_DEFS.map(def => `
+    <div class="kpi-biz-head">${esc(def.label)}</div>
+    ${def.items.map(item => {
+      const ex = idx[`${def.biz}__${item.k}`];
+      return `
+        <div class="kpi-row">
+          <span class="kpi-label">${esc(item.label)}</span>
+          <input class="kpi-input" type="number" min="0" step="any"
+            value="${ex != null ? ex.value : ''}" placeholder="—"
+            data-biz="${def.biz}" data-key="${esc(item.k)}" />
+          <span class="kpi-target">${esc(item.target)}</span>
+        </div>
+      `;
+    }).join('')}
+  `).join('');
+
+  container.querySelectorAll('.kpi-input').forEach(input => {
+    input.addEventListener('blur', async () => {
+      const val = parseFloat(input.value);
+      if (isNaN(val)) return;
+      try {
+        await api('/api/kpis', {
+          method: 'POST',
+          body: { business: input.dataset.biz, metric: input.dataset.key, value: val },
+        });
+      } catch (e) { console.error('kpi save:', e); }
+    });
+  });
+}
+
+// ── GOALS VIEW ────────────────────────────────────────────────────────────────
+
+const BUSINESSES_ORDER = ['blok', 'aphl', 'trade', 'personal'];
+const DIMENSIONS       = ['growth', 'finance', 'operations'];
+
+let _allGoals = [];
+
+async function loadGoals() {
+  const container = document.getElementById('goals-container');
+  try {
+    const goals = await api('/api/goals');
+    _allGoals = goals;
+    renderGoals(goals);
+  } catch (e) {
+    container.innerHTML = `<div class="empty-text">Error: ${esc(e.message)}</div>`;
+  }
+}
+
+function renderGoals(goals) {
+  const container = document.getElementById('goals-container');
+  const map = {};
+  for (const g of goals) map[`${g.business}__${g.dimension}`] = g;
+
+  container.innerHTML = BUSINESSES_ORDER.map(biz => `
+    <div class="goal-biz-section">
+      <div class="goal-biz-head">${esc(BIZ_LABEL[biz] || biz)}</div>
+      ${DIMENSIONS.map(dim => {
+        const goal     = map[`${biz}__${dim}`];
+        const dimLabel = dim.charAt(0).toUpperCase() + dim.slice(1);
+        const rowHtml  = `
+          <div class="goal-grid-row">
+            <span class="goal-dim-label">${esc(dimLabel)}</span>
+            <div class="goal-title-cell">
+              ${goal
+                ? `<span class="goal-title-text" data-goal-id="${goal.id}" data-biz="${biz}" data-dim="${dim}" onclick="startEditGoal(this)">${esc(goal.title)}</span>`
+                : `<span class="goal-placeholder" data-biz="${biz}" data-dim="${dim}" onclick="startEditGoal(this)">Set a goal…</span>`
+              }
+            </div>
+            ${goal ? `
+              <span class="goal-status-pill status-${esc(goal.status)}" onclick="cycleGoalStatus(${goal.id}, '${esc(goal.status)}')">${esc(goal.status)}</span>
+              <span class="goal-id-hint">#${goal.id}</span>
+            ` : ''}
+          </div>
+        `;
+        const progressHtml = goal ? `
+          <div class="goal-progress-area">
+            ${(goal.progress || []).map(p =>
+              `<div class="goal-progress-note">— ${esc(p.note)} <span class="progress-date">${esc((p.logged_at || '').slice(0, 10))}</span></div>`
+            ).join('')}
+            <span class="goal-log-link" onclick="toggleLogProgress(${goal.id})">+ log progress</span>
+            <div class="goal-log-inline" id="glog-${goal.id}" style="display:none">
+              <input class="goal-log-input" id="glog-input-${goal.id}" type="text" placeholder="What moved today?" />
+              <button class="text-btn" onclick="saveProgress(${goal.id})" style="white-space:nowrap">Save</button>
+            </div>
+          </div>
+        ` : '';
+        return rowHtml + progressHtml;
+      }).join('')}
+    </div>
+  `).join('');
+}
+
+function startEditGoal(el) {
+  const goalId = el.dataset.goalId ? Number(el.dataset.goalId) : 0;
+  const biz    = el.dataset.biz;
+  const dim    = el.dataset.dim;
+  const current = goalId ? el.textContent : '';
+  const input = document.createElement('input');
+  input.type      = 'text';
+  input.value     = current;
+  input.className = 'goal-edit-input';
+  input.placeholder = 'Enter goal title…';
+  el.replaceWith(input);
+  input.focus();
+  if (current) input.select();
+
+  let saved = false;
+  const doSave = async () => {
+    if (saved) return;
+    saved = true;
+    const title = input.value.trim();
+    if (!title) { loadGoals(); return; }
+    try {
+      if (goalId) {
+        await api(`/api/goals/${goalId}`, { method: 'PATCH', body: { title } });
+      } else {
+        await api('/api/goals', { method: 'POST', body: { business: biz, dimension: dim, title, year: 2026 } });
+      }
+    } catch (e) { console.error('startEditGoal save:', e); }
+    loadGoals();
+  };
+  input.addEventListener('blur',    doSave);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); if (e.key === 'Escape') { saved = true; loadGoals(); } });
+}
+
+const STATUS_CYCLE = { active: 'achieved', achieved: 'paused', paused: 'active' };
+
+async function cycleGoalStatus(goalId, currentStatus) {
+  const next = STATUS_CYCLE[currentStatus] || 'active';
+  try {
+    await api(`/api/goals/${goalId}/status`, { method: 'PATCH', body: { status: next } });
+    loadGoals();
+  } catch (e) { console.error('cycleGoalStatus:', e); }
+}
+
+function toggleLogProgress(goalId) {
+  const el = document.getElementById(`glog-${goalId}`);
+  if (!el) return;
+  const isOpen = el.style.display !== 'none';
+  el.style.display = isOpen ? 'none' : 'flex';
+  if (!isOpen) document.getElementById(`glog-input-${goalId}`)?.focus();
+}
+
+async function saveProgress(goalId) {
+  const input = document.getElementById(`glog-input-${goalId}`);
+  const note  = input?.value.trim();
+  if (!note) return;
+  try {
+    await api(`/api/goals/${goalId}/progress`, { method: 'POST', body: { note } });
+    input.value = '';
+    loadGoals();
+  } catch (e) { console.error('saveProgress:', e); }
+}
+
+// ── THIS MONTH VIEW ───────────────────────────────────────────────────────────
+
+let _currentMonth    = '';
+let _allGoalsForForm = [];
+
+async function loadMonth() {
+  const watNow   = new Date(Date.now() + WAT_MS);
+  _currentMonth  = watNow.toISOString().slice(0, 7);
+  const monthLabel = watNow.toLocaleDateString('en-GB', { month: 'long', timeZone: 'UTC' });
+  document.getElementById('month-title').textContent = `${monthLabel} Cycles`;
+
+  const container = document.getElementById('cycles-container');
+  try {
+    const [cycles, goals] = await Promise.all([
+      api(`/api/cycles/${_currentMonth}`),
+      api('/api/goals'),
+    ]);
+    _allGoalsForForm = goals;
+    renderCycles(cycles);
+  } catch (e) {
+    container.innerHTML = `<div class="empty-text">Error: ${esc(e.message)}</div>`;
+  }
+}
+
+function renderCycles(cycles) {
+  const container = document.getElementById('cycles-container');
+  if (!cycles.length) {
+    container.innerHTML =
+      '<div class="empty-text">No cycles set for this month.<br>' +
+      'Use /suggest &lt;goal_id&gt; in Telegram to get AI-suggested commitments.</div>';
+    return;
+  }
+
+  container.innerHTML = cycles.map(c => {
+    const biz   = BIZ_LABEL[c.business] || c.business;
+    const comms = [
+      { text: c.commitment_1, status: c.status_1 },
+      { text: c.commitment_2, status: c.status_2 },
+      ...(c.commitment_3 ? [{ text: c.commitment_3, status: c.status_3 }] : []),
+    ];
+    const total  = comms.length;
+    const done   = comms.filter(cm => cm.status === 'done').length;
+    const allDone = done === total;
+    const pct    = total ? Math.round(done / total * 100) : 0;
+
+    return `
+      <div class="cycle-card">
+        <div class="cycle-header">
+          <span class="cycle-biz">${esc(biz)}</span>
+          <span class="cycle-title-text">${esc(c.title)}</span>
+        </div>
+        ${c.goal_title ? `<div class="cycle-goal-link">Goal: ${esc(c.goal_title)}</div>` : ''}
+        <div class="cycle-completion-bar">
+          <div class="cycle-completion-fill" style="width:${pct}%"></div>
+        </div>
+        ${comms.map((cm, i) => `
+          <div class="cycle-commitment-row" onclick="toggleCommitment(${c.id}, ${i + 1}, '${cm.status}')">
+            <div class="commitment-check${cm.status === 'done' ? ' checked' : ''}"></div>
+            <span class="commitment-text${cm.status === 'done' ? ' done' : ''}">${esc(cm.text)}</span>
+          </div>
+        `).join('')}
+        ${allDone && !c.reflection ? `<a class="cycle-reflect-link" onclick="openReflection(${c.id})">Write reflection →</a>` : ''}
+        ${c.reflection ? `<div class="cycle-reflection-saved">${esc(c.reflection)}</div>` : ''}
+        <div class="cycle-reflect-form" id="crf-${c.id}" style="display:none">
+          <textarea class="cycle-reflect-input" id="crf-input-${c.id}" placeholder="End of month reflection…" rows="3"></textarea>
+          <button class="text-btn" onclick="saveReflection(${c.id})">Save reflection</button>
+        </div>
+        <div class="cycle-meta">ID: ${c.id} &nbsp;·&nbsp; ${done}/${total} done</div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function toggleCommitment(cycleId, which, currentStatus) {
+  const next = currentStatus === 'done' ? 'pending' : 'done';
+  try {
+    await api(`/api/cycles/${cycleId}/commitment`, { method: 'PATCH', body: { which, status: next } });
+    loadMonth();
+  } catch (e) { console.error('toggleCommitment:', e); }
+}
+
+function openReflection(cycleId) {
+  const el = document.getElementById(`crf-${cycleId}`);
+  if (el) { el.style.display = 'block'; document.getElementById(`crf-input-${cycleId}`)?.focus(); }
+}
+
+async function saveReflection(cycleId) {
+  const input = document.getElementById(`crf-input-${cycleId}`);
+  const text  = input?.value.trim();
+  if (!text) return;
+  try {
+    await api(`/api/cycles/${cycleId}/reflection`, { method: 'PATCH', body: { reflection: text } });
+    loadMonth();
+  } catch (e) { console.error('saveReflection:', e); }
+}
+
+function toggleNewCycleForm() {
+  const form   = document.getElementById('new-cycle-form');
+  const isOpen = form.style.display !== 'none';
+  form.style.display = isOpen ? 'none' : 'block';
+  if (!isOpen) {
+    const sel = document.getElementById('cycle-goal-sel');
+    sel.innerHTML = '<option value="">No linked goal</option>' +
+      _allGoalsForForm.map(g => {
+        const bizShort = (BIZ_LABEL[g.business] || g.business).split(' ')[0];
+        return `<option value="${g.id}">[${esc(bizShort)}] ${esc(g.dimension)} — ${esc(g.title)}</option>`;
+      }).join('');
+    document.getElementById('cycle-month-input').value = _currentMonth;
+  }
+}
+
+async function saveNewCycle() {
+  const body = {
+    business:     document.getElementById('cycle-biz-sel').value,
+    goal_id:      document.getElementById('cycle-goal-sel').value || undefined,
+    month:        document.getElementById('cycle-month-input').value,
+    title:        document.getElementById('cycle-title-input').value.trim(),
+    commitment_1: document.getElementById('cycle-c1-input').value.trim(),
+    commitment_2: document.getElementById('cycle-c2-input').value.trim(),
+    commitment_3: document.getElementById('cycle-c3-input').value.trim() || undefined,
+  };
+  if (!body.business || !body.month || !body.title || !body.commitment_1 || !body.commitment_2) {
+    showToast('Fill in all required fields');
+    return;
+  }
+  try {
+    await api('/api/cycles', { method: 'POST', body });
+    document.getElementById('new-cycle-form').style.display = 'none';
+    loadMonth();
+  } catch (e) {
+    showToast(e.message);
+    console.error('saveNewCycle:', e);
+  }
+}
+
+// ── init ──────────────────────────────────────────────────────────────────────
+
+function updateSub() {
+  const el = document.getElementById('today-sub');
+  if (el) el.textContent = getActiveBlock() || '—';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+
+  // Date header and active block subtitle
+  document.getElementById('today-date').textContent = formatDate();
+  updateSub();
+
+  // Refresh subtitle + schedule every minute
+  setInterval(() => {
+    updateSub();
+    const schedNav = document.querySelector('.nav-item[data-view="schedule"]');
+    if (schedNav?.classList.contains('active')) renderSchedule();
+  }, 60 * 1000);
+
+  // Nav click handlers
+  document.querySelectorAll('.nav-item').forEach(el =>
+    el.addEventListener('click', () => switchTab(el.dataset.view))
+  );
+
+  // Add task
+  document.querySelector('#v-today .add-btn').addEventListener('click', addTask);
+  document.getElementById('add-name').addEventListener('keydown', e => {
+    if (e.key === 'Enter') addTask();
+  });
+
+  // Recurring tasks
+  document.getElementById('rec-toggle').addEventListener('click', toggleRecurring);
+  document.getElementById('rec-add-btn').addEventListener('click', addRecurringTask);
+  document.getElementById('rec-name').addEventListener('keydown', e => {
+    if (e.key === 'Enter') addRecurringTask();
+  });
+
+  // Brain dump
+  document.getElementById('proc-btn').addEventListener('click', processDump);
+  document.getElementById('rec-btn').addEventListener('click', toggleRec);
+  document.getElementById('import-btn').addEventListener('click', importTasks);
+  document.getElementById('dismiss-btn').addEventListener('click', () => {
+    document.getElementById('ai-box').classList.remove('show');
+    state.aiTasks = [];
+  });
+
+  // Ideas
+  document.getElementById('idea-save').addEventListener('click', saveIdea);
+  document.getElementById('idea-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) saveIdea();
+  });
+
+  // Notes
+  document.getElementById('note-save').addEventListener('click', saveNote);
+  document.getElementById('note-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) saveNote();
+  });
+
+  // New cycle form
+  document.getElementById('new-cycle-btn').addEventListener('click', toggleNewCycleForm);
+  document.getElementById('cycle-save-btn').addEventListener('click', saveNewCycle);
+  document.getElementById('cycle-cancel-btn').addEventListener('click', () => {
+    document.getElementById('new-cycle-form').style.display = 'none';
+  });
+
+  // Load saved schedule order from server, then render
+  api('/api/schedule').then(blocks => {
+    if (Array.isArray(blocks)) BLOCKS = blocks;
+    renderSchedule();
+    updateSub();
+  }).catch(() => renderSchedule());
+
+  // Initial load
+  fetchTasks();
+  updateWeeklyStat();
+});
+</script>
+</body>
+</html>
