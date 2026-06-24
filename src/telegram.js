@@ -117,6 +117,77 @@ function fmtRate(tasks) {
   return `Today: ${done} of ${total} done (${rate}%)`;
 }
 
+// ── nudge digest ──────────────────────────────────────────────────────────────
+
+function getActiveBlockName() {
+  const row = getSetting.get('schedule_blocks');
+  if (!row) return null;
+  try {
+    const blocks  = JSON.parse(row.value);
+    const now     = new Date(Date.now() + 60 * 60 * 1000);
+    const toMins  = t => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+    const nowMins = now.getUTCHours() * 60 + now.getUTCMinutes();
+    for (const b of blocks) {
+      if (b.time && b.end && toMins(b.time) <= nowMins && nowMins < toMins(b.end)) {
+        return b.name;
+      }
+    }
+    return null;
+  } catch { return null; }
+}
+
+// overdue  — tasks from getPendingNudges (time already passed, not snoozed, nudge_count < 3)
+// allTasks — full task list for the day (for upcoming + progress)
+async function sendNudgeDigest(date, overdue, allTasks) {
+  const now     = new Date(Date.now() + 60 * 60 * 1000);
+  const toMins  = t => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+  const nowMins = now.getUTCHours() * 60 + now.getUTCMinutes();
+  const nowHHMM =
+    String(now.getUTCHours()).padStart(2, '0') + ':' +
+    String(now.getUTCMinutes()).padStart(2, '0');
+
+  // upcoming: not done, not anchor, scheduled in the next 60 minutes
+  const upcoming = allTasks
+    .filter(t => !t.done && t.time && t.business !== 'anchor')
+    .filter(t => { const m = toMins(t.time); return m > nowMins && m <= nowMins + 60; })
+    .sort((a, b) => a.time.localeCompare(b.time))
+    .slice(0, 3);
+
+  if (!overdue.length && !upcoming.length) return;
+
+  const activeBlock = getActiveBlockName();
+  const lines       = [`DAYWAN — ${nowHHMM} WAT`];
+  if (activeBlock) lines.push(`Active block: ${activeBlock}`);
+
+  if (overdue.length) {
+    lines.push('', 'OVERDUE');
+    for (const t of overdue) {
+      lines.push(`[${t.business.toUpperCase()}] ${t.name} — due ${t.time}`);
+    }
+  }
+
+  if (upcoming.length) {
+    lines.push('', 'COMING UP NEXT');
+    for (const t of upcoming) {
+      lines.push(`[${t.business.toUpperCase()}] ${t.name} — due ${t.time}`);
+    }
+  }
+
+  const total = allTasks.length;
+  const done  = allTasks.filter(t => t.done).length;
+  const pct   = total ? Math.round(done / total * 100) : 0;
+  lines.push('', `Progress: ${done} of ${total} done (${pct}%)`);
+  lines.push('', '/done <number> · /snooze <number> · /snoozeall');
+
+  await sendMessage(lines.join('\n'));
+
+  // Increment nudge_count for every overdue task included in the digest
+  const nowDatetime = now.toISOString().replace('T', ' ').slice(0, 19);
+  for (const t of overdue) {
+    upsertNudge.run(t.id, date, (t.nudge_count || 0) + 1, nowDatetime);
+  }
+}
+
 // ── exports ───────────────────────────────────────────────────────────────────
 
 const POLLING = true; // set false for webhook/production
@@ -760,4 +831,4 @@ async function handleVoice(voice, chatId) {
   await sendMessage(reply);
 }
 
-module.exports = { initBot, handleUpdate, registerWebhook, sendMessage, POLLING };
+module.exports = { initBot, handleUpdate, registerWebhook, sendMessage, sendNudgeDigest, POLLING };

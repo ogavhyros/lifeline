@@ -1,9 +1,9 @@
 require('dotenv').config();
 const { generateMorningBriefing, generateEODReview } = require('./ai');
-const { sendMessage } = require('./telegram');
+const { sendMessage, sendNudgeDigest } = require('./telegram');
 const {
   getTasksByDate, populateRecurring, watToday,
-  getPendingNudges, upsertNudge,
+  getPendingNudges,
 } = require('./db');
 
 // ── WAT helpers (UTC+1) ───────────────────────────────────────────────────────
@@ -141,8 +141,7 @@ async function nudgeTick() {
   // Only nudge during working hours: 06:00–20:30
   if (mins < 360 || mins >= 1230) return;
 
-  const date        = now.toISOString().slice(0, 10);
-  const nowDatetime = watNowDatetime();
+  const date = now.toISOString().slice(0, 10);
 
   let pending;
   try {
@@ -152,43 +151,15 @@ async function nudgeTick() {
     return;
   }
 
-  if (!pending.length) return;
-
-  // Get full sorted task list so nudge numbers match /today output
   const allTasks = getTasksByDate.all(date);
 
-  for (const task of pending) {
-    const count   = task.nudge_count || 0;
-    const taskNum = allTasks.findIndex(t => t.id === task.id) + 1;
-    const biz     = task.business.toUpperCase();
-
-    let msg;
-    if (count === 0) {
-      msg =
-        `Still pending: [${biz}] ${task.name}\n` +
-        `Scheduled for ${task.time}\n` +
-        `/done ${taskNum} to mark complete or /snooze ${taskNum} to push 30 mins`;
-    } else if (count === 1) {
-      msg =
-        `Still not done: [${biz}] ${task.name}\n` +
-        `This is your second reminder.\n` +
-        `/done ${taskNum} or /snooze ${taskNum}`;
-    } else if (count === 2) {
-      msg =
-        `Last reminder: [${biz}] ${task.name}\n` +
-        `This will be logged as missed if not completed.\n` +
-        `/done ${taskNum}`;
+  try {
+    await sendNudgeDigest(date, pending, allTasks);
+    if (pending.length) {
+      console.log(`[scheduler] nudge digest sent — ${pending.length} overdue task(s)`);
     }
-
-    if (msg) {
-      try {
-        await sendMessage(msg);
-        upsertNudge.run(task.id, date, count + 1, nowDatetime);
-        console.log(`[scheduler] nudged task ${task.id} (count ${count + 1})`);
-      } catch (err) {
-        console.error(`[scheduler] nudge for task ${task.id} failed:`, err.message);
-      }
-    }
+  } catch (err) {
+    console.error('[scheduler] nudge digest failed:', err.message);
   }
 }
 
