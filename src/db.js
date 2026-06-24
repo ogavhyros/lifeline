@@ -127,6 +127,7 @@ try { db.exec(`ALTER TABLE tasks ADD COLUMN source TEXT`); } catch {}
 try { db.exec(`ALTER TABLE tasks ADD COLUMN event_id TEXT`); } catch {}
 try { db.exec(`ALTER TABLE tasks ADD COLUMN calendar_event_id TEXT`); } catch {}
 try { db.exec(`ALTER TABLE tasks ADD COLUMN calendar_source TEXT`); } catch {}
+try { db.exec(`ALTER TABLE recurring_tasks ADD COLUMN category TEXT DEFAULT 'work'`); } catch {}
 
 // ── WAT helpers ───────────────────────────────────────────────────────────────
 
@@ -189,12 +190,15 @@ const upsertKpi = db.prepare(
 // ── prepared statements — recurring tasks ────────────────────────────────────
 
 const getRecurring        = db.prepare('SELECT * FROM recurring_tasks WHERE active = 1 ORDER BY business, scheduled_time, id');
+const getFutureRecurring  = db.prepare('SELECT * FROM recurring_tasks WHERE active = 0 ORDER BY business, scheduled_time, id');
 const addRecurring        = db.prepare(
-  `INSERT INTO recurring_tasks (name, business, scheduled_time, days, time_block, active)
-   VALUES (?, ?, ?, ?, ?, 1)`
+  `INSERT INTO recurring_tasks (name, business, scheduled_time, days, time_block, category, active)
+   VALUES (?, ?, ?, ?, ?, ?, 1)`
 );
 const deleteRecurring     = db.prepare('DELETE FROM recurring_tasks WHERE id = ?');
 const deactivateRecurring = db.prepare('UPDATE recurring_tasks SET active = 0 WHERE id = ?');
+const activateRecurring   = db.prepare('UPDATE recurring_tasks SET active = 1 WHERE id = ?');
+const getCategoryRecurring = db.prepare('SELECT * FROM recurring_tasks WHERE category = ? AND active = 1 ORDER BY scheduled_time, id');
 const checkRecurringExists = db.prepare('SELECT id FROM recurring_tasks WHERE name = ? AND business = ? AND active = 1');
 const checkTaskExists      = db.prepare('SELECT id FROM tasks WHERE date = ? AND name = ?');
 const insertRecurringTask  = db.prepare(
@@ -379,40 +383,57 @@ const upsertSetting = db.prepare(`
 `);
 const deleteSetting = db.prepare('DELETE FROM settings WHERE key = ?');
 
-// ── startup seeds ─────────────────────────────────────────────────────────────
+// ── startup seeds (v2 — runs once, resets previous seeds) ────────────────────
 
 {
-  const SEEDS = [
-    // BLOK AI
-    { name: 'Send 5 investor emails',            business: 'blok',     scheduled_time: '07:30', days: 'daily',      time_block: 'Raise: 5 investor emails, CRM update'        },
-    { name: 'Update CRM pipeline',               business: 'blok',     scheduled_time: '07:45', days: '1,2,3,4,5', time_block: 'Raise: 5 investor emails, CRM update'        },
-    { name: 'Review Arkad user flow',            business: 'blok',     scheduled_time: '09:00', days: 'daily',      time_block: 'Product: PM review, Arkad user flow'         },
-    { name: 'Check async comms and Slack',       business: 'blok',     scheduled_time: '10:30', days: 'daily',      time_block: 'Comms: Slack, async check-ins'               },
-    { name: 'Post or review brand content',      business: 'blok',     scheduled_time: '11:30', days: 'daily',      time_block: 'Brand: creative review, social metrics'      },
-    // APHL AFRICA
-    { name: 'Get daily depot price from Yinusi', business: 'aphl',     scheduled_time: '06:30', days: 'daily',      time_block: 'Pre-day setup: depot price, brief Candy'     },
-    { name: 'Brief Candy on daily targets',      business: 'aphl',     scheduled_time: '06:40', days: 'daily',      time_block: 'Pre-day setup: depot price, brief Candy'     },
-    { name: 'Confirm floor price and call driver', business: 'aphl',   scheduled_time: '07:00', days: 'daily',      time_block: 'Morning command: floor price, driver call'   },
-    { name: 'Track loading and trip status',     business: 'aphl',     scheduled_time: '10:00', days: 'daily',      time_block: 'Operations: payments, loading, tracking'     },
-    { name: 'Log daily revenue',                 business: 'aphl',     scheduled_time: '16:30', days: 'daily',      time_block: 'Unified day close: ops sync, revenue log'    },
-    { name: 'Review Candy sales report',         business: 'aphl',     scheduled_time: '16:45', days: 'daily',      time_block: 'Unified day close: ops sync, revenue log'    },
-    // TRADESOL
-    { name: 'Create or schedule one content piece', business: 'trade', scheduled_time: '11:30', days: '1,3,5',      time_block: 'Brand: creative review, social metrics'      },
-    { name: 'Follow up with agent leads',        business: 'trade',    scheduled_time: '14:00', days: '1,2,3,4,5', time_block: 'Strategy: priorities, decision log'          },
-    // PERSONAL
-    { name: 'Morning pages (3 pages)',           business: 'personal', scheduled_time: '05:45', days: 'daily',      time_block: 'Journaling'                                  },
-    { name: 'Read for 20 minutes',               business: 'personal', scheduled_time: '12:30', days: 'daily',      time_block: 'MD strategic hour: depot, pricing'           },
-    { name: 'Physical training',                 business: 'personal', scheduled_time: '19:00', days: 'daily',      time_block: 'Physical activity'                           },
-    { name: 'Pottery session',                   business: 'personal', scheduled_time: '18:00', days: '1,3,5',      time_block: 'Pottery or reading'                          },
-  ];
-  db.transaction(() => {
-    for (const s of SEEDS) {
-      const exists = checkRecurringExists.get(s.name, s.business);
-      if (!exists) {
-        addRecurring.run(s.name, s.business, s.scheduled_time || null, s.days, s.time_block || null);
+  const alreadySeeded = getSetting.get('recurring_seeded_v2');
+  if (!alreadySeeded) {
+    const SEEDS_V2 = [
+      // BLOK AI
+      { name: 'Send investor emails',                    business: 'blok',     category: 'work',      scheduled_time: '07:30', days: '1,2,3,4,5', time_block: 'Raise: investor emails, CRM update',        active: 1 },
+      { name: 'Update CRM pipeline',                     business: 'blok',     category: 'work',      scheduled_time: '07:45', days: '1,2,3,4,5', time_block: 'Raise: investor emails, CRM update',        active: 1 },
+      { name: 'Review Arkad product progress',           business: 'blok',     category: 'work',      scheduled_time: '09:00', days: '1,2,3,4,5', time_block: 'Product: PM review, Arkad user flow',       active: 1 },
+      { name: 'Check and respond to Blok AI comms',      business: 'blok',     category: 'work',      scheduled_time: '10:30', days: 'daily',      time_block: 'Comms: Slack, async check-ins',             active: 1 },
+      // APHL AFRICA
+      { name: 'Get daily depot price from Yinusi',       business: 'aphl',     category: 'work',      scheduled_time: '06:30', days: 'daily',      time_block: 'Pre-day setup: depot price, brief Candy',   active: 1 },
+      { name: 'Brief Candy on daily sales targets',      business: 'aphl',     category: 'work',      scheduled_time: '06:40', days: 'daily',      time_block: 'Pre-day setup: depot price, brief Candy',   active: 1 },
+      { name: 'Confirm floor price and driver briefing', business: 'aphl',     category: 'work',      scheduled_time: '07:00', days: 'daily',      time_block: 'Morning command: floor price, driver call',  active: 1 },
+      { name: 'Track loading progress and trip status',  business: 'aphl',     category: 'work',      scheduled_time: '10:00', days: 'daily',      time_block: 'Operations: payments, loading, tracking',   active: 1 },
+      { name: 'Log daily revenue and close ops',         business: 'aphl',     category: 'work',      scheduled_time: '16:30', days: 'daily',      time_block: 'Unified day close: ops sync, revenue log',  active: 1 },
+      { name: 'Review Candy daily sales report',         business: 'aphl',     category: 'work',      scheduled_time: '16:45', days: 'daily',      time_block: 'Unified day close: ops sync, revenue log',  active: 1 },
+      // PERSONAL — SPIRITUAL
+      { name: 'Morning prayer',                          business: 'personal', category: 'spiritual', scheduled_time: '05:30', days: 'daily',      time_block: 'Prayer',                                    active: 1 },
+      { name: 'Evening gratitude and reflection',        business: 'personal', category: 'spiritual', scheduled_time: '20:30', days: 'daily',      time_block: 'Evening wind-down and next day planning',   active: 1 },
+      // PERSONAL — MENTAL
+      { name: 'Morning journaling — brain and intention', business: 'personal', category: 'mental',   scheduled_time: '05:45', days: 'daily',      time_block: 'Journaling',                                active: 1 },
+      { name: 'Midday mindfulness check-in (5 minutes)', business: 'personal', category: 'mental',   scheduled_time: '13:00', days: 'daily',      time_block: 'MD strategic hour: depot, pricing',         active: 1 },
+      { name: 'Evening wind-down and plan tomorrow',     business: 'personal', category: 'mental',    scheduled_time: '20:30', days: 'daily',      time_block: 'Evening wind-down and next day planning',   active: 1 },
+      // PERSONAL — PHYSICAL
+      { name: 'Physical training session',               business: 'personal', category: 'physical',  scheduled_time: '19:00', days: 'daily',      time_block: 'Physical activity',                         active: 1 },
+      { name: 'Read for 20 minutes',                     business: 'personal', category: 'physical',  scheduled_time: '18:00', days: 'daily',      time_block: 'Pottery or reading',                        active: 1 },
+      // PERSONAL — GROOMING
+      { name: 'Morning hygiene and grooming routine',    business: 'personal', category: 'grooming',  scheduled_time: '06:00', days: 'daily',      time_block: 'Orient and daily priority',                 active: 1 },
+      // FUTURE (not yet active)
+      { name: 'Pottery session',                         business: 'personal', category: 'physical',  scheduled_time: '18:00', days: '1,3,5',      time_block: 'Pottery or reading',                        active: 0 },
+    ];
+
+    const seedStmt = db.prepare(
+      `INSERT INTO recurring_tasks (name, business, scheduled_time, days, time_block, category, active)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    );
+
+    db.prepare('DELETE FROM recurring_tasks').run();
+    db.transaction(() => {
+      for (const s of SEEDS_V2) {
+        seedStmt.run(
+          s.name, s.business, s.scheduled_time || null, s.days || 'daily',
+          s.time_block || null, s.category || 'work', s.active !== undefined ? s.active : 1
+        );
       }
-    }
-  })();
+    })();
+    upsertSetting.run('recurring_seeded_v2', '1');
+    console.log('[db] Recurring tasks reset to v2');
+  }
 }
 
 // ── day log + recurring population ───────────────────────────────────────────
@@ -451,10 +472,13 @@ module.exports = {
 
   // recurring
   getRecurring,
+  getFutureRecurring,
   getRecurringGrouped,
   addRecurring,
   deleteRecurring,
   deactivateRecurring,
+  activateRecurring,
+  getCategoryRecurring,
   populateRecurring,
 
   // carry

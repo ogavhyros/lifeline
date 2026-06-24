@@ -1633,6 +1633,113 @@
     .toggle-switch input:checked + .toggle-track { background: #1a1a1a; }
     .toggle-switch input:checked + .toggle-track::after { transform: translateX(16px); }
 
+    /* ── personal care categories (today view) ──────────────────────────────── */
+    .focus-card-personal { grid-column: 1 / -1; }
+    .pers-cat-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #bbb;
+      margin: 8px 0 2px;
+      font-weight: 400;
+    }
+    .pers-cat-label:first-child { margin-top: 0; }
+
+    /* ── routines view ───────────────────────────────────────────────────────── */
+    .routines-biz-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-top: 10px;
+    }
+    .routines-personal-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-top: 10px;
+    }
+    .routine-card {
+      background: #fff;
+      border: 1px solid #e8e8e6;
+      border-radius: 6px;
+      padding: 14px;
+    }
+    .routine-card-personal { background: #fafafa; }
+    .routine-card-head {
+      font-size: 13px;
+      font-weight: 500;
+      color: #1a1a1a;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .routine-task-list { margin-bottom: 6px; }
+    .routine-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 0;
+      border-bottom: 1px solid #f4f4f2;
+      font-size: 12px;
+    }
+    .routine-row:last-child { border-bottom: none; }
+    .routine-time {
+      min-width: 36px;
+      font-family: 'Geist Mono', monospace;
+      font-size: 11px;
+      color: #999;
+    }
+    .routine-name { flex: 1; color: #1a1a1a; }
+    .routine-days {
+      font-size: 10px;
+      color: #bbb;
+    }
+    .routine-remove {
+      background: none;
+      border: none;
+      color: #ccc;
+      cursor: pointer;
+      font-size: 12px;
+      padding: 0 2px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .routine-remove:hover { color: #cc3300; }
+    .routine-activate-btn {
+      background: none;
+      border: 1px solid #ddd;
+      border-radius: 3px;
+      font-size: 11px;
+      color: #888;
+      cursor: pointer;
+      padding: 1px 6px;
+      margin-left: auto;
+    }
+    .routine-activate-btn:hover { border-color: #1a1a1a; color: #1a1a1a; }
+    .goal-link-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      margin-top: 10px;
+    }
+    .goal-link-table th {
+      text-align: left;
+      font-weight: 400;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #999;
+      border-bottom: 1px solid #e8e8e6;
+      padding: 4px 8px 6px 0;
+    }
+    .goal-link-table td {
+      padding: 6px 8px 6px 0;
+      border-bottom: 1px solid #f4f4f2;
+      color: #1a1a1a;
+    }
+    .goal-link-table tr:last-child td { border-bottom: none; }
+
     /* ── Mobile: ≤600px ──────────────────────────────────────────────────────── */
     @media (max-width: 600px) {
       /* show mobile chrome */
@@ -1713,6 +1820,10 @@
 
       /* settings */
       .settings-section { padding: 12px; }
+
+      /* routines */
+      .routines-biz-grid { grid-template-columns: 1fr; }
+      .routines-personal-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -1757,6 +1868,7 @@
       <div class="nav-label">STRATEGY</div>
       <a class="nav-item" data-view="goals" data-tooltip="Goals"><i class="ti ti-target"></i><span class="nav-text">Goals</span></a>
       <a class="nav-item" data-view="month" data-tooltip="This Month"><i class="ti ti-calendar-month"></i><span class="nav-text">This Month</span></a>
+      <a class="nav-item" data-view="routines" data-tooltip="Routines"><i class="ti ti-repeat"></i><span class="nav-text">Routines</span></a>
     </div>
 
     <div class="nav-section">
@@ -1823,19 +1935,6 @@
       <div class="focus-section-label">Focus blocks</div>
       <div id="focus-blocks-grid" class="focus-grid"></div>
 
-      <div class="personal-rec-section">
-        <div class="personal-rec-toggle" id="personal-rec-toggle">
-          Personal recurring <span id="personal-rec-chevron">▾</span>
-        </div>
-        <div class="personal-rec-body" id="personal-rec-body" style="display:none">
-          <div id="personal-rec-list"></div>
-          <div class="rec-add-row">
-            <input class="rec-add-input" id="prec-name" type="text" placeholder="Task name" autocomplete="off" />
-            <input class="rec-add-time" id="prec-time" type="text" placeholder="time" autocomplete="off" />
-            <button class="add-btn" type="button" id="prec-add-btn">Add</button>
-          </div>
-        </div>
-      </div>
 
       <div class="all-tasks-label">All tasks</div>
       <div id="task-list">
@@ -2200,6 +2299,131 @@
       </div>
     </div>
 
+    <!-- ROUTINES ────────────────────────────────────────────────────────────── -->
+    <div class="view" id="v-routines">
+      <h1 class="page-title">Daily Routines</h1>
+      <p class="page-sub" style="font-size:13px;color:#999">Tasks that run every day or on specific days, tied to your current goals.</p>
+
+      <!-- Business Routines -->
+      <div class="section-head" style="margin-top:20px">Business</div>
+      <div class="routines-biz-grid">
+
+        <div class="routine-card" id="routines-blok">
+          <div class="routine-card-head">
+            <span class="biz-tag biz-blok">blok</span> Blok AI
+          </div>
+          <div class="routine-task-list" id="rt-blok-list"></div>
+          <div class="rec-add-row">
+            <input class="rec-add-input" id="rt-blok-name" type="text" placeholder="+ Add Blok AI routine" autocomplete="off" />
+            <input class="rec-add-time" id="rt-blok-time" type="text" placeholder="time" />
+            <select class="rec-add-select-sm" id="rt-blok-days">
+              <option value="daily">Daily</option>
+              <option value="1,2,3,4,5" selected>Mon–Fri</option>
+              <option value="1,3,5">Mon/Wed/Fri</option>
+            </select>
+            <button class="add-btn" type="button" onclick="addRoutineTask('blok','work','rt-blok')">Add</button>
+          </div>
+        </div>
+
+        <div class="routine-card" id="routines-aphl">
+          <div class="routine-card-head">
+            <span class="biz-tag biz-aphl">aphl</span> APHL Africa
+          </div>
+          <div class="routine-task-list" id="rt-aphl-list"></div>
+          <div class="rec-add-row">
+            <input class="rec-add-input" id="rt-aphl-name" type="text" placeholder="+ Add APHL routine" autocomplete="off" />
+            <input class="rec-add-time" id="rt-aphl-time" type="text" placeholder="time" />
+            <select class="rec-add-select-sm" id="rt-aphl-days">
+              <option value="daily" selected>Daily</option>
+              <option value="1,2,3,4,5">Mon–Fri</option>
+            </select>
+            <button class="add-btn" type="button" onclick="addRoutineTask('aphl','work','rt-aphl')">Add</button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Personal Routines -->
+      <div class="section-head" style="margin-top:28px">Personal</div>
+      <div class="routines-personal-grid">
+
+        <div class="routine-card routine-card-personal">
+          <div class="routine-card-head"><i class="ti ti-sun" style="font-size:13px;color:#e8a838"></i> Spiritual</div>
+          <div class="routine-task-list" id="rt-spiritual-list"></div>
+          <div class="rec-add-row">
+            <input class="rec-add-input" id="rt-spiritual-name" type="text" placeholder="+ Add spiritual routine" autocomplete="off" />
+            <input class="rec-add-time" id="rt-spiritual-time" type="text" placeholder="time" />
+            <button class="add-btn" type="button" onclick="addRoutineTask('personal','spiritual','rt-spiritual')">Add</button>
+          </div>
+        </div>
+
+        <div class="routine-card routine-card-personal">
+          <div class="routine-card-head"><i class="ti ti-brain" style="font-size:13px;color:#7c6fcd"></i> Mental health</div>
+          <div class="routine-task-list" id="rt-mental-list"></div>
+          <div class="rec-add-row">
+            <input class="rec-add-input" id="rt-mental-name" type="text" placeholder="+ Add mental health routine" autocomplete="off" />
+            <input class="rec-add-time" id="rt-mental-time" type="text" placeholder="time" />
+            <button class="add-btn" type="button" onclick="addRoutineTask('personal','mental','rt-mental')">Add</button>
+          </div>
+        </div>
+
+        <div class="routine-card routine-card-personal">
+          <div class="routine-card-head"><i class="ti ti-heart" style="font-size:13px;color:#e05c5c"></i> Physical health</div>
+          <div class="routine-task-list" id="rt-physical-list"></div>
+          <div class="rec-add-row">
+            <input class="rec-add-input" id="rt-physical-name" type="text" placeholder="+ Add physical health routine" autocomplete="off" />
+            <input class="rec-add-time" id="rt-physical-time" type="text" placeholder="time" />
+            <button class="add-btn" type="button" onclick="addRoutineTask('personal','physical','rt-physical')">Add</button>
+          </div>
+        </div>
+
+        <div class="routine-card routine-card-personal">
+          <div class="routine-card-head"><i class="ti ti-droplet" style="font-size:13px;color:#4db8c8"></i> Hygiene and grooming</div>
+          <div class="routine-task-list" id="rt-grooming-list"></div>
+          <div class="rec-add-row">
+            <input class="rec-add-input" id="rt-grooming-name" type="text" placeholder="+ Add grooming routine" autocomplete="off" />
+            <input class="rec-add-time" id="rt-grooming-time" type="text" placeholder="time" />
+            <button class="add-btn" type="button" onclick="addRoutineTask('personal','grooming','rt-grooming')">Add</button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Future routines -->
+      <div class="section-head" style="margin-top:28px;color:#ccc">Planned — not active yet</div>
+      <p style="font-size:11px;color:#ccc;margin-bottom:10px">Add routines here that you will activate later.</p>
+      <div id="rt-future-list"></div>
+      <div class="rec-add-row" style="margin-top:8px">
+        <input class="rec-add-input" id="rt-future-name" type="text" placeholder="Future routine name" autocomplete="off" />
+        <input class="rec-add-time" id="rt-future-time" type="text" placeholder="time" />
+        <select class="rec-add-select" id="rt-future-biz">
+          <option value="blok">blok</option>
+          <option value="aphl">aphl</option>
+          <option value="personal" selected>personal</option>
+        </select>
+        <button class="add-btn" type="button" onclick="addFutureRoutine()">Save for later</button>
+      </div>
+
+      <!-- Goal linkage -->
+      <div class="section-head" style="margin-top:28px">2026 Goals</div>
+      <table class="goal-link-table">
+        <thead><tr><th>Routine</th><th>Linked goal</th></tr></thead>
+        <tbody>
+          <tr><td>Morning prayer</td><td style="color:#999">Spiritual connection and clarity</td></tr>
+          <tr><td>Evening gratitude and reflection</td><td style="color:#999">Spiritual connection and clarity</td></tr>
+          <tr><td>Morning journaling</td><td style="color:#999">Mental clarity, emotional health</td></tr>
+          <tr><td>Midday mindfulness check-in</td><td style="color:#999">Mental clarity, emotional health</td></tr>
+          <tr><td>Physical training session</td><td style="color:#999">Physical health and fitness</td></tr>
+          <tr><td>Read for 20 minutes</td><td style="color:#999">Personal growth and knowledge</td></tr>
+          <tr><td>Send investor emails</td><td style="color:#999">Blok AI: Raise $500k pre-seed</td></tr>
+          <tr><td>Review Arkad product progress</td><td style="color:#999">Blok AI: Ship Arkad v1</td></tr>
+          <tr><td>Get daily depot price from Yinusi</td><td style="color:#999">APHL: Daily ops execution</td></tr>
+          <tr><td>Log daily revenue and close ops</td><td style="color:#999">APHL: Revenue tracking and growth</td></tr>
+        </tbody>
+      </table>
+
+    </div>
+
   </main>
 </div>
 
@@ -2396,6 +2620,7 @@ function switchTab(name) {
   if (name === 'month')     loadMonth();
   if (name === 'monthly')   loadMonthly();
   if (name === 'settings')  loadSettings();
+  if (name === 'routines')  loadRoutines();
 }
 
 // ── TODAY VIEW ────────────────────────────────────────────────────────────────
@@ -3192,8 +3417,7 @@ async function updateWeeklyStat() {
 
 // ── FOCUS BLOCKS ──────────────────────────────────────────────────────────────
 
-let _focusRecurring  = [];
-let _personalRecOpen = false;
+let _focusRecurring = [];
 
 function renderFocusBlocks() {
   const el = document.getElementById('focus-blocks-grid');
@@ -3247,28 +3471,53 @@ function renderFocusBlocks() {
     </div>`;
   }).join('');
 
-  const anchors = BLOCKS.filter(b => b.biz === 'anchor').slice(0, 4);
-  const anchorRows = anchors.map(b =>
-    `<div class="focus-anchor-row">
-      <span class="focus-anchor-time">${esc(b.time)}</span>
-      <span class="focus-anchor-name">${esc(b.name)}</span>
-    </div>`
-  ).join('');
+  // Personal card: grouped by category with live checkbox state
+  const PERS_CATS = [
+    { key: 'spiritual', label: 'SPIRITUAL' },
+    { key: 'mental',    label: 'MENTAL' },
+    { key: 'physical',  label: 'PHYSICAL' },
+    { key: 'grooming',  label: 'GROOMING' },
+  ];
 
-  const recRows = _focusRecurring.map(r =>
-    `<div class="focus-anchor-row">
-      <span class="focus-anchor-time">${r.scheduled_time ? esc(r.scheduled_time) : ''}</span>
-      <span class="focus-anchor-name">${esc(r.name)}</span>
-    </div>`
-  ).join('');
+  const persByCat = {};
+  for (const r of _focusRecurring) {
+    const cat = r.category || 'work';
+    if (!persByCat[cat]) persByCat[cat] = [];
+    persByCat[cat].push(r);
+  }
 
-  const emptyMsg = (!anchors.length && !_focusRecurring.length)
-    ? '<div class="focus-anchor-row"><span class="focus-anchor-name" style="color:#d0d0cc">No recurring tasks</span></div>'
-    : '';
+  let personalRows = '';
+  for (const { key, label } of PERS_CATS) {
+    const recs = persByCat[key] || [];
+    if (!recs.length) continue;
+    personalRows += `<div class="pers-cat-label">${label}</div>`;
+    for (const r of recs) {
+      const actual = state.tasks.find(t => t.business === 'personal' && t.name === r.name);
+      const id     = actual ? actual.id : null;
+      const done   = actual ? actual.done : 0;
+      const time   = r.scheduled_time || '';
+      if (id) {
+        personalRows += `<div class="focus-task-row" onclick="toggleFocusTask(${id})">
+          <div class="task-check${done ? ' checked' : ''}"></div>
+          ${time ? `<span class="focus-anchor-time" style="min-width:38px">${esc(time)}</span>` : ''}
+          <span class="focus-task-name${done ? ' done' : ''}">${esc(r.name)}</span>
+        </div>`;
+      } else {
+        personalRows += `<div class="focus-anchor-row">
+          ${time ? `<span class="focus-anchor-time">${esc(time)}</span>` : ''}
+          <span class="focus-anchor-name" style="color:#ccc">${esc(r.name)}</span>
+        </div>`;
+      }
+    }
+  }
 
-  const personalCard = `<div class="focus-card">
+  if (!personalRows) {
+    personalRows = '<div class="focus-anchor-row"><span class="focus-anchor-name" style="color:#d0d0cc">No personal routines</span></div>';
+  }
+
+  const personalCard = `<div class="focus-card focus-card-personal">
     <div class="focus-card-head">Personal</div>
-    ${anchorRows}${recRows}${emptyMsg}
+    ${personalRows}
   </div>`;
 
   el.innerHTML = bizCards + personalCard;
@@ -3290,54 +3539,158 @@ function focusQuickAdd(biz) {
   if (inp) { inp.focus(); inp.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
 }
 
-function togglePersonalRec() {
-  _personalRecOpen = !_personalRecOpen;
-  const body    = document.getElementById('personal-rec-body');
-  const chevron = document.getElementById('personal-rec-chevron');
-  if (body)    body.style.display = _personalRecOpen ? 'block' : 'none';
-  if (chevron) chevron.textContent = _personalRecOpen ? '▴' : '▾';
-  if (_personalRecOpen) loadPersonalRecList();
+// ── ROUTINES VIEW ─────────────────────────────────────────────────────────────
+
+const PERMANENT_PERSONAL = ['spiritual', 'mental', 'grooming'];
+
+function formatDaysLabelShort(days) {
+  if (!days || days === 'daily') return 'Daily';
+  if (days === '1,2,3,4,5') return 'Mon–Fri';
+  const ABB = { 1:'Mon',2:'Tue',3:'Wed',4:'Thu',5:'Fri',6:'Sat',0:'Sun' };
+  return days.split(',').map(n => ABB[n] || '?').join('/');
 }
 
-async function loadPersonalRecList() {
-  const listEl = document.getElementById('personal-rec-list');
+async function loadRoutines() {
   try {
-    const grouped = await api('/api/recurring');
-    _focusRecurring = grouped.personal || [];
-    renderFocusBlocks();
-    if (!_focusRecurring.length) {
-      listEl.innerHTML = '<div class="rec-item" style="color:#ccc;font-size:12px;padding:5px 0">No personal recurring tasks yet.</div>';
-      return;
-    }
-    listEl.innerHTML = _focusRecurring.map(r => `
-      <div class="rec-item">
-        <span style="min-width:38px;font-size:11px;color:#bbb;font-family:'Geist Mono',monospace">${r.scheduled_time ? esc(r.scheduled_time) : ''}</span>
-        <span class="rec-name">${esc(r.name)}</span>
-        <button class="rec-remove" onclick="removePersonalRec(${r.id})" aria-label="Remove"><i class="ti ti-x"></i></button>
-      </div>`).join('');
-  } catch (e) { console.error('loadPersonalRecList:', e); }
+    const [grouped, future] = await Promise.all([
+      api('/api/recurring'),
+      api('/api/recurring/future'),
+    ]);
+
+    // Business sections
+    renderRoutineSection('rt-blok-list', grouped.blok || []);
+    renderRoutineSection('rt-aphl-list', grouped.aphl || []);
+
+    // Personal by category
+    const personal = grouped.personal || [];
+    renderRoutineSection('rt-spiritual-list', personal.filter(r => r.category === 'spiritual'), true);
+    renderRoutineSection('rt-mental-list',    personal.filter(r => r.category === 'mental'),    true);
+    renderRoutineSection('rt-physical-list',  personal.filter(r => r.category === 'physical'));
+    renderRoutineSection('rt-grooming-list',  personal.filter(r => r.category === 'grooming'),  true);
+
+    // Future routines
+    renderFutureRoutines(future);
+  } catch (e) { console.error('loadRoutines:', e); }
 }
 
-async function addPersonalRec() {
-  const nameEl = document.getElementById('prec-name');
-  const timeEl = document.getElementById('prec-time');
-  const name   = nameEl.value.trim();
-  if (!name) { nameEl.focus(); return; }
+function renderRoutineSection(elId, tasks, permanent = false) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  if (!tasks.length) {
+    el.innerHTML = '<div style="font-size:12px;color:#ccc;padding:4px 0">No routines yet.</div>';
+    return;
+  }
+  el.innerHTML = tasks.map(t => `
+    <div class="routine-row">
+      <i class="ti ti-refresh" style="font-size:11px;color:#ccc;flex-shrink:0"></i>
+      <span class="routine-time">${t.scheduled_time ? esc(t.scheduled_time) : ''}</span>
+      <span class="routine-name">${esc(t.name)}</span>
+      <span class="routine-days">${formatDaysLabelShort(t.days)}</span>
+      <button class="routine-remove" onclick="removeRoutine(${t.id}, ${permanent})" aria-label="Remove"><i class="ti ti-x"></i></button>
+    </div>`).join('');
+}
+
+function renderFutureRoutines(tasks) {
+  const el = document.getElementById('rt-future-list');
+  if (!el) return;
+  if (!tasks.length) {
+    el.innerHTML = `<div style="font-size:12px;color:#ccc;padding:4px 0">
+      <div class="routine-row" style="opacity:.5">
+        <i class="ti ti-clock" style="font-size:11px;color:#ccc;flex-shrink:0"></i>
+        <span class="routine-time">18:00</span>
+        <span class="routine-name">Pottery session</span>
+        <span class="routine-days">Mon/Wed/Fri</span>
+        <button class="routine-activate-btn" onclick="activateFuture(this)" data-name="Pottery session">Activate</button>
+      </div>
+    </div>`;
+    return;
+  }
+  el.innerHTML = tasks.map(t => `
+    <div class="routine-row">
+      <i class="ti ti-clock" style="font-size:11px;color:#ccc;flex-shrink:0"></i>
+      <span class="routine-time">${t.scheduled_time ? esc(t.scheduled_time) : ''}</span>
+      <span class="routine-name" style="color:#aaa">${esc(t.name)}</span>
+      <span class="routine-days">${formatDaysLabelShort(t.days)}</span>
+      <button class="routine-activate-btn" onclick="activateFutureRoutine(${t.id})">Activate</button>
+      <button class="routine-remove" onclick="removeRoutine(${t.id}, false)" aria-label="Remove"><i class="ti ti-x"></i></button>
+    </div>`).join('');
+}
+
+async function addRoutineTask(biz, category, prefix) {
+  const nameEl = document.getElementById(`${prefix}-name`);
+  const timeEl = document.getElementById(`${prefix}-time`);
+  const daysEl = document.getElementById(`${prefix}-days`);
+  const name   = nameEl ? nameEl.value.trim() : '';
+  if (!name) { if (nameEl) nameEl.focus(); return; }
+  const days = daysEl ? daysEl.value : 'daily';
   try {
     await api('/api/recurring', {
       method: 'POST',
-      body: { name, business: 'personal', scheduled_time: timeEl.value.trim() || undefined, days: 'daily' },
+      body: { name, business: biz, scheduled_time: timeEl ? timeEl.value.trim() || undefined : undefined, days, category },
     });
-    nameEl.value = ''; timeEl.value = '';
-    loadPersonalRecList();
-  } catch (e) { console.error('addPersonalRec:', e); }
+    if (nameEl) nameEl.value = '';
+    if (timeEl) timeEl.value = '';
+    loadRoutines();
+    // Refresh personal recurring for focus blocks
+    api('/api/recurring').then(g => { _focusRecurring = g.personal || []; renderFocusBlocks(); }).catch(() => {});
+  } catch (e) { console.error('addRoutineTask:', e); }
 }
 
-async function removePersonalRec(id) {
+async function removeRoutine(id, permanent = false) {
+  if (permanent) {
+    const ok = confirm('Are you sure? This is a core routine. Remove it?');
+    if (!ok) return;
+  }
   try {
     await api(`/api/recurring/${id}`, { method: 'DELETE' });
-    loadPersonalRecList();
-  } catch (e) { console.error('removePersonalRec:', e); }
+    loadRoutines();
+    api('/api/recurring').then(g => { _focusRecurring = g.personal || []; renderFocusBlocks(); }).catch(() => {});
+  } catch (e) { console.error('removeRoutine:', e); }
+}
+
+async function activateFutureRoutine(id) {
+  try {
+    await api(`/api/recurring/${id}/activate`, { method: 'PATCH' });
+    loadRoutines();
+    api('/api/recurring').then(g => { _focusRecurring = g.personal || []; renderFocusBlocks(); }).catch(() => {});
+    showToast('Routine activated');
+  } catch (e) { console.error('activateFutureRoutine:', e); }
+}
+
+// Handles the hardcoded pottery "Activate" button in the empty-future fallback
+async function activateFuture(btn) {
+  try {
+    const future = await api('/api/recurring/future');
+    const pottery = future.find(r => r.name === 'Pottery session');
+    if (pottery) {
+      await activateFutureRoutine(pottery.id);
+    } else {
+      showToast('No pottery routine found in future list');
+    }
+  } catch (e) { console.error('activateFuture:', e); }
+}
+
+async function addFutureRoutine() {
+  const nameEl = document.getElementById('rt-future-name');
+  const timeEl = document.getElementById('rt-future-time');
+  const bizEl  = document.getElementById('rt-future-biz');
+  const name   = nameEl ? nameEl.value.trim() : '';
+  if (!name) { if (nameEl) nameEl.focus(); return; }
+  try {
+    await api('/api/recurring/future', {
+      method: 'POST',
+      body: {
+        name,
+        business: bizEl ? bizEl.value : 'personal',
+        scheduled_time: timeEl ? timeEl.value.trim() || undefined : undefined,
+        days: 'daily',
+        category: 'work',
+      },
+    });
+    if (nameEl) nameEl.value = '';
+    if (timeEl) timeEl.value = '';
+    loadRoutines();
+  } catch (e) { console.error('addFutureRoutine:', e); }
 }
 
 // ── DASHBOARD VIEW ────────────────────────────────────────────────────────────
@@ -4280,12 +4633,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('new-cycle-form').style.display = 'none';
   });
 
-  // Personal recurring (focus blocks section)
-  document.getElementById('personal-rec-toggle').addEventListener('click', togglePersonalRec);
-  document.getElementById('prec-add-btn').addEventListener('click', addPersonalRec);
-  document.getElementById('prec-name').addEventListener('keydown', e => {
-    if (e.key === 'Enter') addPersonalRec();
-  });
 
   // Load saved schedule order from server, then render
   api('/api/schedule').then(blocks => {

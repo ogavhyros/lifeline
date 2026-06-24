@@ -74,62 +74,103 @@ Do not include any explanation or markdown — only the raw JSON object.`;
 }
 
 async function generateMorningBriefing(tasks, date) {
-  const system = `You are Arkad — a direct, no-nonsense coach who holds people to hard standards.
-Write a 3-5 sentence morning briefing that:
-- States what matters today and why it counts
-- Calls out any risk or weak spot in the plan without softening it
-- Ends with exactly one hard, specific question the person must answer before they start
-No emojis. No filler. Plain text only.`;
+  const system = `You are Arkad — direct, no-nonsense, holds people to hard standards.
+Write a morning briefing in this exact format (plain text, no markdown, no emojis):
 
-  const manual    = tasks.filter(t => t.source !== 'recurring');
+DAYWAN — Good morning
+[Weekday, Date]
+
+TAKE CARE OF YOURSELF FIRST
+[List personal recurring tasks sorted by time: HH:MM  task name]
+
+APHL AFRICA
+[List aphl recurring tasks sorted by time: HH:MM  task name]
+
+BLOK AI (weekdays only)
+[List blok recurring tasks sorted by time: HH:MM  task name — skip if weekend]
+
+CLOSE THE DAY WELL
+[List evening personal tasks: 19:00 Physical training, 20:30 Evening gratitude and plan tomorrow]
+
+X tasks total. Make today count.
+
+[One hard, specific question the person must answer honestly before starting — no flattery, no softening]
+
+Use exactly this structure. Replace placeholders with real data. No extra sections.`;
+
+  const d       = new Date(date + 'T12:00:00Z');
+  const DAYS    = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const MONTHS  = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  const weekday = DAYS[d.getUTCDay()];
+  const isWeekend = d.getUTCDay() === 0 || d.getUTCDay() === 6;
+
   const recurring = tasks.filter(t => t.source === 'recurring');
+  const manual    = tasks.filter(t => t.source !== 'recurring');
+  const fmtRec    = (t) => `${t.time || '—'}  ${t.name}`;
+  const fmtManual = (t) => `${t.time || '—'}  ${t.name}`;
 
-  const fmtTask = (t) => `- ${t.name} (${t.business})${t.time ? ` [${t.time}]` : ''}`;
-
-  const recByBiz = {};
-  for (const t of recurring) {
-    if (!recByBiz[t.business]) recByBiz[t.business] = [];
-    recByBiz[t.business].push(t);
-  }
-  const recSection = Object.entries(recByBiz)
-    .map(([biz, ts]) => `${biz.toUpperCase()}:\n${ts.map(fmtTask).join('\n')}`)
-    .join('\n');
+  const personalRec = recurring.filter(t => t.business === 'personal').sort((a,b) => (a.time||'').localeCompare(b.time||''));
+  const aphlRec     = recurring.filter(t => t.business === 'aphl').sort((a,b) => (a.time||'').localeCompare(b.time||''));
+  const blokRec     = recurring.filter(t => t.business === 'blok').sort((a,b) => (a.time||'').localeCompare(b.time||''));
+  const totalCount  = tasks.length;
 
   const userContent =
-    `Date: ${date}\n\n` +
-    `Manual tasks:\n${manual.map(fmtTask).join('\n') || '(none)'}\n\n` +
-    `Recurring tasks for today (already scheduled, must not be skipped):\n${recSection || '(none)'}`;
+    `Date: ${weekday}, ${date}\n` +
+    `Is weekend: ${isWeekend}\n` +
+    `Personal recurring:\n${personalRec.map(fmtRec).join('\n') || '(none)'}\n\n` +
+    `APHL recurring:\n${aphlRec.map(fmtRec).join('\n') || '(none)'}\n\n` +
+    `Blok AI recurring:\n${blokRec.map(fmtRec).join('\n') || '(none weekday only)'}\n\n` +
+    `Manual tasks today:\n${manual.map(fmtManual).join('\n') || '(none)'}\n\n` +
+    `Total task count: ${totalCount}`;
 
   return claudeMessage(system, userContent);
 }
 
 async function generateEODReview(tasks, date) {
-  const system = `You are Arkad — direct, honest, unsparing.
-Write a 4-6 sentence end-of-day review that:
-- Acknowledges what was actually completed
-- Calls out missed recurring tasks by name — these are non-negotiable daily habits; missing them is a pattern to flag
-- Names any missed manual tasks plainly — no euphemisms
-- Identifies the single biggest reason the day succeeded or fell short
-- Closes with one concrete instruction for tomorrow
-No emojis. No praise padding. Plain text only.`;
+  const system = `You are Arkad — direct, honest, unsparing. No flattery. No filler.
+Write an end-of-day review in this structure (plain text, no markdown, no emojis):
+
+DAYWAN — End of Day
+[Date]
+
+PERSONAL
+Spiritual: [did they pray and reflect? one sentence, direct]
+Mental: [did they journal and check in? one sentence]
+Physical: [did they train and read? one sentence]
+Grooming: [did they maintain their routine? one sentence]
+
+APHL AFRICA
+[2-3 sentences: what ops happened, what was missed, pattern to flag if any]
+
+BLOK AI
+[2-3 sentences: investor emails sent? CRM updated? product reviewed? be direct]
+
+THE DAY
+[One sentence: did the day succeed or fall short? Name the single biggest reason]
+
+TOMORROW
+[One concrete instruction. No softening.]
+
+Use exactly this structure. Be direct. Do not add extra sections or padding.`;
+
+  const fmtTask = (t) => {
+    const s = t.done ? '[done]' : '[MISSED]';
+    return `${s} ${t.name} (${t.business})${t.time ? ` ${t.time}` : ''}`;
+  };
 
   const recurring = tasks.filter(t => t.source === 'recurring');
   const manual    = tasks.filter(t => t.source !== 'recurring');
 
-  const fmtTask = (t) => {
-    const s = t.done ? 'done' : 'MISSED';
-    return `- [${s}] ${t.name} (${t.business})${t.time ? ` [${t.time}]` : ''}`;
-  };
-
-  const missedRecurring = recurring.filter(t => !t.done);
+  const personalTasks = recurring.filter(t => t.business === 'personal');
+  const aphlTasks     = recurring.filter(t => t.business === 'aphl');
+  const blokTasks     = recurring.filter(t => t.business === 'blok');
 
   const userContent =
     `Date: ${date}\n\n` +
-    `Recurring tasks:\n${recurring.map(fmtTask).join('\n') || '(none)'}\n\n` +
-    `Manual tasks:\n${manual.map(fmtTask).join('\n') || '(none)'}` +
-    (missedRecurring.length
-      ? `\n\nMissed recurring (highlight these): ${missedRecurring.map(t => t.name).join(', ')}`
-      : '');
+    `Personal recurring:\n${personalTasks.map(fmtTask).join('\n') || '(none)'}\n\n` +
+    `APHL recurring:\n${aphlTasks.map(fmtTask).join('\n') || '(none)'}\n\n` +
+    `Blok AI recurring:\n${blokTasks.map(fmtTask).join('\n') || '(none)'}\n\n` +
+    `Manual tasks:\n${manual.map(fmtTask).join('\n') || '(none)'}`;
 
   return claudeMessage(system, userContent);
 }

@@ -6,7 +6,7 @@ const {
   db, watToday, watTomorrow, watCutoff, weekStart,
   getTasksByDate, getTaskById, insertTask, toggleTask, markTaskDone, updatePriority, deleteTask,
   getHistory, getKpis, upsertKpi,
-  getRecurring, getRecurringGrouped, addRecurring, deactivateRecurring, populateRecurring,
+  getRecurring, getFutureRecurring, getRecurringGrouped, addRecurring, deactivateRecurring, activateRecurring, populateRecurring,
   carryTask, addIdea, getIdeas, addNote, getNotes, syncDayLog,
   getGoals, getAllGoals, addGoal, updateGoalStatus, updateGoalTitle,
   getCycles, getCyclesByGoal, getCycleById, addCycle, updateCycleCommitment, updateCycleReflection,
@@ -129,9 +129,9 @@ app.get('/api/recurring', (_req, res) => {
 });
 
 app.post('/api/recurring', (req, res) => {
-  const { name, business, scheduled_time, days, time_block } = req.body;
+  const { name, business, scheduled_time, days, time_block, category } = req.body;
   if (!name || !business) return res.status(400).json({ error: 'name and business are required' });
-  addRecurring.run(name, business, scheduled_time || null, days || 'daily', time_block || null);
+  addRecurring.run(name, business, scheduled_time || null, days || 'daily', time_block || null, category || 'work');
   res.status(201).json(getRecurringGrouped());
 });
 
@@ -139,6 +139,26 @@ app.delete('/api/recurring/:id', (req, res) => {
   const info = deactivateRecurring.run(req.params.id);
   if (!info.changes) return res.status(404).json({ error: 'not found' });
   res.json(getRecurring.all());
+});
+
+app.get('/api/recurring/future', (_req, res) => {
+  res.json(getFutureRecurring.all());
+});
+
+app.post('/api/recurring/future', (req, res) => {
+  const { name, business, scheduled_time, days, time_block, category } = req.body;
+  if (!name || !business) return res.status(400).json({ error: 'name and business are required' });
+  db.prepare(
+    `INSERT INTO recurring_tasks (name, business, scheduled_time, days, time_block, category, active)
+     VALUES (?, ?, ?, ?, ?, ?, 0)`
+  ).run(name, business, scheduled_time || null, days || 'daily', time_block || null, category || 'work');
+  res.status(201).json(getFutureRecurring.all());
+});
+
+app.patch('/api/recurring/:id/activate', (req, res) => {
+  const info = activateRecurring.run(req.params.id);
+  if (!info.changes) return res.status(404).json({ error: 'not found' });
+  res.json({ ok: true });
 });
 
 // ── history ───────────────────────────────────────────────────────────────────
