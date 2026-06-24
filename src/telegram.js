@@ -6,6 +6,7 @@ const {
   generateMorningBriefing, generateEODReview,
   analyzeVoiceReport, suggestMonthlyCommitments, reviewGoalProgress,
 } = require('./ai');
+const gcal = require('./google-calendar');
 const {
   db, watToday, watTomorrow,
   getTasksByDate, getTaskById, insertTask, toggleTask, markTaskDone, updatePriority,
@@ -307,7 +308,9 @@ async function handleCommand(text) {
         '/note <business> <content> — save a note\n' +
         '/notes — last 5 notes\n' +
         '/snooze <n> — snooze task for 30 mins\n' +
-        '/snoozeall — snooze all pending tasks\n\n' +
+        '/snoozeall — snooze all pending tasks\n' +
+        '/gcal — view today\'s calendar events\n' +
+        '/calsync — sync pending tasks to Google Calendar\n\n' +
         'GOALS & CYCLES:\n' +
         '/goals — view 2026 goals\n' +
         '/addgoal <biz> <dimension> <title> — add a goal\n' +
@@ -741,6 +744,49 @@ async function handleCommand(text) {
       if (!goal) { await sendMessage(`Goal ${goalId} not found.`); return; }
       addGoalProgress.run(goalId, note);
       await sendMessage(`Progress logged for ${goal.title}`);
+      break;
+    }
+
+    case '/gcal': {
+      let connected = false;
+      try { gcal.getClient(); connected = true; } catch { }
+      if (!connected) {
+        await sendMessage(
+          'Google Calendar not connected.\n' +
+          'Open your dashboard and go to Settings to connect.'
+        );
+        return;
+      }
+      const events = await gcal.getTodayEvents();
+      const now    = new Date(Date.now() + 60 * 60 * 1000);
+      const dayLabel = now.toLocaleDateString('en-GB', {
+        weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC',
+      });
+      if (!events.length) {
+        await sendMessage(`YOUR CALENDAR — ${dayLabel}\n\nNo events today.`);
+        return;
+      }
+      const lines = [`YOUR CALENDAR — ${dayLabel}`, ''];
+      for (const e of events) {
+        lines.push(`${e.start} – ${e.end}  ${e.title}`);
+      }
+      lines.push('', `${events.length} event${events.length !== 1 ? 's' : ''} today.`);
+      await sendMessage(lines.join('\n'));
+      break;
+    }
+
+    case '/calsync': {
+      const today = watToday();
+      const tasks = getTodayTasks().filter(t => t.time && !t.done && t.business !== 'anchor');
+      if (!tasks.length) {
+        await sendMessage('No pending timed tasks to sync.');
+        return;
+      }
+      let synced = 0;
+      for (const t of tasks) {
+        try { await gcal.syncTaskToCalendar(t); synced++; } catch { }
+      }
+      await sendMessage(`Synced ${synced} task${synced !== 1 ? 's' : ''} to Google Calendar.`);
       break;
     }
 

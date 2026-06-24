@@ -3,7 +3,7 @@ const { generateMorningBriefing, generateEODReview } = require('./ai');
 const { sendMessage, sendNudgeDigest } = require('./telegram');
 const {
   getTasksByDate, populateRecurring, watToday,
-  getPendingNudges,
+  getPendingNudges, getSetting,
 } = require('./db');
 
 // ── WAT helpers (UTC+1) ───────────────────────────────────────────────────────
@@ -30,6 +30,17 @@ function isQuietHours() {
   return mins < 320 || mins >= 1230; // before 05:20 or from 20:30 onwards
 }
 
+// ── notification preferences ──────────────────────────────────────────────────
+
+function notifEnabled(key) {
+  const row = getSetting.get('notification_prefs');
+  if (!row) return true; // default all on
+  try {
+    const prefs = JSON.parse(row.value);
+    return prefs[key] !== false;
+  } catch { return true; }
+}
+
 // ── task helper ───────────────────────────────────────────────────────────────
 
 function getTodayTasks() {
@@ -43,12 +54,14 @@ function getTodayTasks() {
 // ── job actions ───────────────────────────────────────────────────────────────
 
 async function morningBriefing() {
+  if (!notifEnabled('briefing')) return;
   const tasks    = getTodayTasks();
   const briefing = await generateMorningBriefing(tasks, watToday());
   await sendMessage(briefing);
 }
 
 async function eodReview() {
+  if (!notifEnabled('eod')) return;
   const tasks  = getTodayTasks();
   const review = await generateEODReview(tasks, watToday());
   await sendMessage(review);
@@ -66,7 +79,7 @@ const JOBS = [
   { time: '00:01', label: 'midnight',       action: midnight,                                                                noQuiet: true },
 
   // anchor blocks
-  { time: '05:25', label: 'prayer-5min',    action: () => sendMessage('Prayer block in 5 minutes')                                        },
+  { time: '05:25', label: 'prayer-5min',    action: () => notifEnabled('block_reminders') && sendMessage('Prayer block in 5 minutes')                                        },
   { time: '05:40', label: 'journaling-now', action: () => sendMessage('Journaling block starting now')                                     },
   { time: '06:25', label: 'orient-now',     action: () => sendMessage('Orient and daily priority starting now [BLOK]')                     },
   { time: '06:25', label: 'pre-day-5min',   action: () => sendMessage('Pre-day setup block in 5 minutes [APHL]')                          },
@@ -152,6 +165,8 @@ async function nudgeTick() {
   }
 
   const allTasks = getTasksByDate.all(date);
+
+  if (!notifEnabled('nudges')) return;
 
   try {
     await sendNudgeDigest(date, pending, allTasks);

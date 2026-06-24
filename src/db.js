@@ -124,6 +124,7 @@ try { db.exec(`ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'norm
 try { db.exec(`ALTER TABLE recurring_tasks ADD COLUMN days TEXT DEFAULT 'daily'`); } catch {}
 try { db.exec(`ALTER TABLE recurring_tasks ADD COLUMN time_block TEXT`); } catch {}
 try { db.exec(`ALTER TABLE tasks ADD COLUMN source TEXT`); } catch {}
+try { db.exec(`ALTER TABLE tasks ADD COLUMN event_id TEXT`); } catch {}
 
 // ── WAT helpers ───────────────────────────────────────────────────────────────
 
@@ -347,6 +348,10 @@ const getGoalProgress = db.prepare(
   'SELECT * FROM goal_progress WHERE goal_id = ? ORDER BY logged_at DESC LIMIT 10'
 );
 
+// ── prepared statements — event sync ─────────────────────────────────────────
+
+const updateTaskEventId = db.prepare('UPDATE tasks SET event_id = ? WHERE id = ?');
+
 // ── prepared statements — settings ───────────────────────────────────────────
 
 const getSetting    = db.prepare('SELECT value FROM settings WHERE key = ?');
@@ -354,6 +359,7 @@ const upsertSetting = db.prepare(`
   INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
   ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')
 `);
+const deleteSetting = db.prepare('DELETE FROM settings WHERE key = ?');
 
 // ── startup seeds ─────────────────────────────────────────────────────────────
 
@@ -469,9 +475,13 @@ module.exports = {
   addGoalProgress,
   getGoalProgress,
 
+  // event sync
+  updateTaskEventId,
+
   // settings
   getSetting,
   upsertSetting,
+  deleteSetting,
 
   // day log
   syncDayLog,

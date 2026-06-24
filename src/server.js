@@ -11,8 +11,9 @@ const {
   getGoals, getAllGoals, addGoal, updateGoalStatus, updateGoalTitle,
   getCycles, getCyclesByGoal, getCycleById, addCycle, updateCycleCommitment, updateCycleReflection,
   addGoalProgress, getGoalProgress,
-  getSetting, upsertSetting,
+  getSetting, upsertSetting, deleteSetting,
 } = require('./db');
+const gcal = require('./google-calendar');
 
 const DEFAULT_BLOCKS = [
   { time: '05:30', end: '05:45', name: 'Prayer',                                   biz: 'anchor'   },
@@ -140,8 +141,34 @@ app.delete('/api/recurring/:id', (req, res) => {
 // ── history ───────────────────────────────────────────────────────────────────
 
 app.get('/api/history', (req, res) => {
+  const { from, to } = req.query;
+  if (from && to) {
+    const rows = db.prepare(
+      `SELECT date,
+              COUNT(*)                                AS total,
+              SUM(done)                               AS done,
+              ROUND(SUM(done) * 100.0 / COUNT(*), 1) AS rate
+       FROM tasks WHERE date >= ? AND date <= ?
+       GROUP BY date ORDER BY date ASC`
+    ).all(from, to);
+    return res.json(rows);
+  }
   const days = Math.min(parseInt(req.query.days, 10) || 30, 90);
   res.json(getHistory(days));
+});
+
+app.get('/api/tasks/range', (req, res) => {
+  const { from, to } = req.query;
+  if (!from || !to) return res.status(400).json({ error: 'from and to required' });
+  const rows = db.prepare(
+    'SELECT * FROM tasks WHERE date >= ? AND date <= ? ORDER BY date, time, id'
+  ).all(from, to);
+  const byDate = {};
+  for (const t of rows) {
+    if (!byDate[t.date]) byDate[t.date] = [];
+    byDate[t.date].push(t);
+  }
+  res.json(byDate);
 });
 
 // ── brain dump ────────────────────────────────────────────────────────────────
@@ -225,18 +252,29 @@ app.post('/api/notes', (req, res) => {
 
 // ── analytics ─────────────────────────────────────────────────────────────────
 
-app.get('/api/analytics/by-business', (_req, res) => {
-  const since = watCutoff(30);
-  const rows  = db.prepare(
-    `SELECT business,
-            COUNT(*)                                AS total,
-            SUM(done)                               AS completed,
-            ROUND(SUM(done) * 100.0 / COUNT(*), 1) AS rate
-     FROM tasks
-     WHERE date >= ?
-     GROUP BY business
-     ORDER BY business`
-  ).all(since);
+app.get('/api/analytics/by-business', (req, res) => {
+  const { month } = req.query; // YYYY-MM
+  let rows;
+  if (month) {
+    rows = db.prepare(
+      `SELECT business,
+              COUNT(*)                                AS total,
+              SUM(done)                               AS completed,
+              ROUND(SUM(done) * 100.0 / COUNT(*), 1) AS rate
+       FROM tasks WHERE date LIKE ?
+       GROUP BY business ORDER BY business`
+    ).all(`${month}-%`);
+  } else {
+    const since = watCutoff(30);
+    rows = db.prepare(
+      `SELECT business,
+              COUNT(*)                                AS total,
+              SUM(done)                               AS completed,
+              ROUND(SUM(done) * 100.0 / COUNT(*), 1) AS rate
+       FROM tasks WHERE date >= ?
+       GROUP BY business ORDER BY business`
+    ).all(since);
+  }
   res.json(rows);
 });
 
@@ -395,6 +433,130 @@ app.post('/api/schedule/order', (req, res) => {
     return res.status(400).json({ error: 'blocks array required' });
   }
   upsertSetting.run('schedule_blocks', JSON.stringify(blocks));
+  res.json({ ok: true });
+});
+
+// ── Google OAuth ──────────────────────────────────────────────────────────────
+
+app.get('/auth/google', (_req, res) => {
+  try {
+    res.redirect(gcal.getAuthUrl());
+  } catch (err) {
+    res.status(500).send('Google OAuth not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.');
+  }
+});
+
+app.get('/auth/google/callback', async (req, res) => {
+  try {
+    await gcal.exchangeCode(req.query.code);
+    res.redirect('/?connected=google');
+  } catch (err) {
+    console.error('[google] callback error:', err.message);
+    res.redirect('/?error=google_auth');
+  }
+});
+
+// ── Google Calendar API ───────────────────────────────────────────────────────
+
+app.get('/api/calendar/status', (_req, res) => {
+  const row = getSetting.get('google_tokens');
+  res.json({ connected: !!row });
+});
+
+app.get('/api/calendar/today', async (_req, res) => {
+  try { res.json(await gcal.getTodayEvents()); }
+  catch (err) { res.status(err.message === 'Not authenticated' ? 401 : 500).json({ error: err.message }); }
+});
+
+app.get('/api/calendar/month/:year/:month', async (req, res) => {
+  try {
+    const events = await gcal.getEventsForMonth(
+      parseInt(req.params.year, 10),
+      parseInt(req.params.month, 10)
+    );
+    res.json(events);
+  } catch (err) {
+    res.status(err.message === 'Not authenticated' ? 401 : 500).json({ error: err.message });
+  }
+});
+
+app.get('/api/calendar/calendars', async (_req, res) => {
+  try { res.json(await gcal.listCalendars()); }
+  catch (err) { res.status(err.message === 'Not authenticated' ? 401 : 500).json({ error: err.message }); }
+});
+
+app.post('/api/calendar/sync-task/:id', async (req, res) => {
+  try {
+    const task = getTaskById.get(req.params.id);
+    if (!task) return res.status(404).json({ error: 'Task not found' });
+    const eventId = await gcal.syncTaskToCalendar(task);
+    res.json({ ok: true, eventId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/calendar/sync-blocks', async (req, res) => {
+  try {
+    const row    = getSetting.get('schedule_blocks');
+    const blocks = row ? JSON.parse(row.value) : [];
+    const count  = await gcal.syncBlocksToCalendar(blocks);
+    res.json({ ok: true, count });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/calendar/events', async (req, res) => {
+  try {
+    const { title, date, startTime, endTime, description, calendarId } = req.body;
+    if (!title || !date || !startTime || !endTime) {
+      return res.status(400).json({ error: 'title, date, startTime, endTime required' });
+    }
+    const event = await gcal.createEvent(title, date, startTime, endTime, description, calendarId);
+    res.json(event);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/calendar/events/:eventId', async (req, res) => {
+  try {
+    await gcal.deleteEvent(req.params.eventId, req.query.calendarId);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── settings ──────────────────────────────────────────────────────────────────
+
+app.get('/api/settings', (_req, res) => {
+  const rows = db.prepare("SELECT key, value, updated_at FROM settings WHERE key != 'google_tokens'").all();
+  const out  = {};
+  for (const r of rows) {
+    try { out[r.key] = JSON.parse(r.value); } catch { out[r.key] = r.value; }
+  }
+  res.json(out);
+});
+
+app.patch('/api/settings/calendar', (req, res) => {
+  const { calendarId } = req.body;
+  if (!calendarId) return res.status(400).json({ error: 'calendarId required' });
+  upsertSetting.run('google_calendar_id', calendarId);
+  res.json({ ok: true });
+});
+
+app.delete('/api/settings/google', (req, res) => {
+  deleteSetting.run('google_tokens');
+  deleteSetting.run('google_calendar_id');
+  deleteSetting.run('daywan_calendar_id');
+  res.json({ ok: true });
+});
+
+app.patch('/api/settings/notifications', (req, res) => {
+  const prefs = req.body;
+  upsertSetting.run('notification_prefs', JSON.stringify(prefs));
   res.json({ ok: true });
 });
 
