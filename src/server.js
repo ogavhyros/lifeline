@@ -36,8 +36,11 @@ const DEFAULT_BLOCKS = [
   { time: '20:30', end: '21:00', name: 'Evening wind-down and next day planning',  biz: 'anchor'   },
 ];
 const { structureDump, transcribeAudio } = require('./ai');
-const { initBot, handleUpdate, registerWebhook, POLLING } = require('./telegram');
+const { initBot, handleUpdate, registerWebhook, POLLING, sendMessage } = require('./telegram');
 const { initScheduler } = require('./scheduler');
+
+// Wire sendMessage into gcal so processCalendarEvent can notify via Telegram
+gcal.setMessageSender(sendMessage);
 
 // ── app setup ─────────────────────────────────────────────────────────────────
 
@@ -449,6 +452,10 @@ app.get('/auth/google', (_req, res) => {
 app.get('/auth/google/callback', async (req, res) => {
   try {
     await gcal.exchangeCode(req.query.code);
+    // Start push notifications immediately (no-op on localhost)
+    gcal.setupCalendarWatch(process.env.SERVER_URL).catch(err =>
+      console.error('[calendar] watch setup after auth failed:', err.message)
+    );
     res.redirect('/?connected=google');
   } catch (err) {
     console.error('[google] callback error:', err.message);
@@ -558,6 +565,53 @@ app.patch('/api/settings/notifications', (req, res) => {
   const prefs = req.body;
   upsertSetting.run('notification_prefs', JSON.stringify(prefs));
   res.json({ ok: true });
+});
+
+// ── Google Calendar push webhook ──────────────────────────────────────────────
+
+app.post('/api/calendar/webhook', (req, res) => {
+  const token = req.headers['x-goog-channel-token'];
+  if (token !== (process.env.GOOGLE_WEBHOOK_TOKEN || 'daywan-secret')) {
+    return res.sendStatus(403);
+  }
+
+  const state = req.headers['x-goog-resource-state'];
+  res.sendStatus(200); // respond fast — Google requires < 2 s
+
+  if (state === 'sync') {
+    // Initial handshake — fetch events to get a sync token baseline
+    gcal.getChangedEvents(null)
+      .catch(err => console.error('[calendar] initial sync error:', err.message));
+    return;
+  }
+
+  if (state === 'exists') {
+    const tokenRow  = getSetting.get('google_sync_token');
+    const syncToken = tokenRow ? tokenRow.value : null;
+    gcal.getChangedEvents(syncToken)
+      .then(events => Promise.all(events.map(e => gcal.processCalendarEvent(e))))
+      .catch(err => console.error('[calendar] webhook processing error:', err.message));
+  }
+});
+
+app.post('/api/calendar/sync-test', async (req, res) => {
+  try {
+    const now       = new Date(Date.now() + 60 * 60 * 1000);
+    const today     = now.toISOString().slice(0, 10);
+    const startH    = String(now.getUTCHours() + 1).padStart(2, '0');
+    const startTime = `${startH}:00`;
+    const endTime   = `${startH}:30`;
+    const event = await gcal.createEvent(
+      'DAYWAN Sync Test', today, startTime, endTime, 'Webhook sync test event'
+    );
+    res.json({
+      ok: true,
+      eventId: event.id,
+      message: 'Test event created. Check your tasks in a few seconds.',
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── telegram webhook ──────────────────────────────────────────────────────────

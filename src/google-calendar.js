@@ -1,6 +1,14 @@
 require('dotenv').config();
-const { google }          = require('googleapis');
-const { getSetting, upsertSetting, updateTaskEventId } = require('./db');
+const { google } = require('googleapis');
+const {
+  getSetting, upsertSetting, deleteSetting, updateTaskEventId,
+  getTaskByEventId, insertCalendarTask, updateTaskFromCalendar, deleteTaskByEventId,
+  getTasksByDate, syncDayLog,
+} = require('./db');
+
+// Injected by server.js after both modules load — avoids circular dependency
+let _sendMessage = () => Promise.resolve();
+function setMessageSender(fn) { _sendMessage = fn; }
 
 const SCOPES = [
   'https://www.googleapis.com/auth/calendar',
@@ -240,7 +248,156 @@ async function syncBlocksToCalendar(blocks) {
   return count;
 }
 
+// ── webhook watch management ──────────────────────────────────────────────────
+
+async function setupCalendarWatch(serverUrl) {
+  if (!serverUrl || serverUrl.includes('localhost')) {
+    console.log('[calendar] Skipping webhook setup — no public URL');
+    return null;
+  }
+  const cal        = google.calendar({ version: 'v3', auth: getClient() });
+  const calRow     = getSetting.get('google_calendar_id');
+  const calendarId = calRow ? calRow.value : 'primary';
+
+  // Stop existing channel first
+  await stopCalendarWatch().catch(() => {});
+
+  const res = await cal.events.watch({
+    calendarId,
+    requestBody: {
+      id:         `daywan-channel-${Date.now()}`,
+      type:       'web_hook',
+      address:    `${serverUrl}/api/calendar/webhook`,
+      token:      process.env.GOOGLE_WEBHOOK_TOKEN || 'daywan-secret',
+      expiration: String(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    },
+  });
+
+  const channel = {
+    id:         res.data.id,
+    resourceId: res.data.resourceId,
+    expiration: res.data.expiration,
+    created_at: Date.now(),
+  };
+  upsertSetting.run('google_watch_channel', JSON.stringify(channel));
+  console.log(`[calendar] Watch channel registered: ${channel.id}`);
+  return channel;
+}
+
+async function stopCalendarWatch() {
+  const row = getSetting.get('google_watch_channel');
+  if (!row) return;
+  const channel = JSON.parse(row.value);
+  try {
+    const cal = google.calendar({ version: 'v3', auth: getClient() });
+    await cal.channels.stop({
+      requestBody: { id: channel.id, resourceId: channel.resourceId },
+    });
+  } catch (err) {
+    console.warn('[calendar] Stop watch warning:', err.message);
+  }
+  deleteSetting.run('google_watch_channel');
+}
+
+async function renewCalendarWatch(serverUrl) {
+  console.log('[calendar] Renewing watch channel');
+  await stopCalendarWatch().catch(() => {});
+  return setupCalendarWatch(serverUrl);
+}
+
+// ── incremental sync ──────────────────────────────────────────────────────────
+
+async function getChangedEvents(syncToken) {
+  const cal        = google.calendar({ version: 'v3', auth: getClient() });
+  const calRow     = getSetting.get('google_calendar_id');
+  const calendarId = calRow ? calRow.value : 'primary';
+
+  const params = {
+    calendarId,
+    singleEvents: true,
+    showDeleted:  true,
+  };
+
+  if (syncToken) {
+    params.syncToken = syncToken;
+  } else {
+    const today = new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 10);
+    params.timeMin = `${today}T00:00:00+01:00`;
+    params.orderBy = 'startTime';
+  }
+
+  try {
+    const res = await cal.events.list(params);
+    if (res.data.nextSyncToken) {
+      upsertSetting.run('google_sync_token', res.data.nextSyncToken);
+    }
+    return res.data.items || [];
+  } catch (err) {
+    if (err.code === 410) {
+      // Sync token expired — full re-sync
+      deleteSetting.run('google_sync_token');
+      return getChangedEvents(null);
+    }
+    throw err;
+  }
+}
+
+// ── event → task processing ───────────────────────────────────────────────────
+
+function _detectBusiness(title, description) {
+  const text = `${title} ${description}`.toLowerCase();
+  if (/blok|arkad|investor|pitch|fundrais/.test(text))          return 'blok';
+  if (/aphl|depot|candy|haulage|petroleum|loading/.test(text))  return 'aphl';
+  if (/tradesol|trade|agent|commerce/.test(text))               return 'trade';
+  return 'personal';
+}
+
+async function processCalendarEvent(event) {
+  if (event.status === 'cancelled') {
+    const task = getTaskByEventId.get(event.id);
+    if (task && task.calendar_source === 'google') {
+      deleteTaskByEventId.run(event.id);
+      syncDayLog(task.date);
+      _sendMessage(
+        `Calendar event deleted — task removed:\n[${task.business.toUpperCase()}] ${task.name}`
+      ).catch(() => {});
+    }
+    return;
+  }
+
+  const title     = event.summary || '(no title)';
+  const dateRaw   = event.start?.dateTime || event.start?.date || '';
+  const date      = dateRaw.slice(0, 10);
+  if (!date) return;
+
+  const startTime = watHHMM(event.start?.dateTime) || null;
+  const business  = _detectBusiness(title, event.description || '');
+  const existing  = getTaskByEventId.get(event.id);
+
+  if (existing) {
+    updateTaskFromCalendar.run(title, startTime, date, event.id);
+    syncDayLog(date);
+    _sendMessage(
+      `Calendar event updated — task updated:\n` +
+      `[${business.toUpperCase()}] ${title}` +
+      (startTime ? ` — ${date} at ${startTime}` : '')
+    ).catch(() => {});
+  } else {
+    insertCalendarTask.run(date, title, business, startTime, event.id);
+    syncDayLog(date);
+    const allTasks = getTasksByDate.all(date);
+    const taskNum  = allTasks.findIndex(t => t.calendar_event_id === event.id) + 1;
+    _sendMessage(
+      `New calendar event — task added:\n` +
+      `[${business.toUpperCase()}] ${title}` +
+      (startTime ? ` — ${date} at ${startTime}` : '') +
+      (taskNum > 0 ? `\n\n/done ${taskNum} to mark complete when done.` : '')
+    ).catch(() => {});
+  }
+}
+
 module.exports = {
+  setMessageSender,
   getAuthUrl,
   exchangeCode,
   getClient,
@@ -253,4 +410,9 @@ module.exports = {
   deleteEvent,
   syncTaskToCalendar,
   syncBlocksToCalendar,
+  setupCalendarWatch,
+  stopCalendarWatch,
+  renewCalendarWatch,
+  getChangedEvents,
+  processCalendarEvent,
 };

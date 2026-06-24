@@ -1432,6 +1432,11 @@
       .content { padding: 20px 16px; }
     }
 
+    /* ── Calendar-sourced tasks ──────────────────────────────────────────────── */
+    .task-row.gcal-task  { border-left: 2px solid #e0e0e0; }
+    .gcal-icon           { font-size: 11px; color: #bbb; flex-shrink: 0; }
+    .task-row.gcal-event { opacity: .8; font-style: normal; background: #fafafa; }
+
     /* ── Monthly view ────────────────────────────────────────────────────────── */
     .icon-btn {
       background: none; border: 1px solid #e8e8e6; border-radius: 6px;
@@ -2143,10 +2148,17 @@
                 <option value="">Loading…</option>
               </select>
             </div>
-            <div style="display:flex;gap:8px;margin-top:10px">
+            <div class="settings-row">
+              <span class="settings-label">Push sync</span>
+              <span id="gcal-watch-status" class="settings-value" style="color:#999">Checking…</span>
+            </div>
+            <p class="settings-hint">When you add or edit events in Google Calendar, they automatically appear as tasks in DAYWAN.</p>
+            <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
               <button class="secondary-btn" onclick="syncScheduleBlocks()">Sync schedule blocks</button>
+              <button class="secondary-btn" id="sync-test-btn" onclick="runSyncTest()">Test sync</button>
               <button class="secondary-btn danger-btn" onclick="disconnectGoogle()">Disconnect</button>
             </div>
+            <div id="sync-test-result" style="font-size:12px;color:#888;margin-top:6px"></div>
           </div>
           <div id="gcal-disconnected-ui" style="display:none">
             <div style="margin-top:8px">
@@ -2251,13 +2263,15 @@ const KPI_DEFS = [
 // ── state ─────────────────────────────────────────────────────────────────────
 
 const state = {
-  tasks:       [],
-  history:     [],
-  aiTasks:     [],
-  recording:   false,
-  mediaRec:    null,
-  audioChunks: [],
-  histChart:   null,
+  tasks:        [],
+  history:      [],
+  aiTasks:      [],
+  calEvents:    [],  // today's Google Calendar events (not yet tasks)
+  calConnected: false,
+  recording:    false,
+  mediaRec:     null,
+  audioChunks:  [],
+  histChart:    null,
 };
 
 // ── WAT helpers (UTC+1) ───────────────────────────────────────────────────────
@@ -2394,6 +2408,19 @@ async function fetchTasks() {
     ]);
     state.tasks   = tasks;
     state.history = history;
+
+    // Fetch Google Calendar events in the background (non-blocking)
+    api('/api/calendar/status').then(({ connected }) => {
+      state.calConnected = connected;
+      if (!connected) { state.calEvents = []; renderToday(); return; }
+      return api('/api/calendar/today').then(events => {
+        // Only show events that aren't already tasks (by calendar_event_id)
+        const existingIds = new Set(tasks.map(t => t.calendar_event_id).filter(Boolean));
+        state.calEvents   = events.filter(e => !existingIds.has(e.id));
+        renderToday();
+      });
+    }).catch(() => {});
+
     renderToday();
   } catch (e) {
     document.getElementById('task-list').innerHTML =
@@ -2442,40 +2469,79 @@ function renderStreakSquares() {
 function renderTaskList() {
   const el = document.getElementById('task-list');
 
-  if (!state.tasks.length) {
+  // Build merged list: tasks + calendar event previews
+  const taskItems = state.tasks.map(t => ({ _type: 'task', _sortTime: t.time || '99:99', ...t }));
+
+  // Calendar event previews (not yet tasks)
+  const calItems  = state.calEvents.map(e => ({
+    _type:      'cal-event',
+    _sortTime:  e.start || '99:99',
+    id:         e.id,
+    name:       e.title,
+    time:       e.start,
+    end:        e.end,
+    business:   'personal',
+    done:       false,
+    calendar_event_id: e.id,
+  }));
+
+  const merged = [...taskItems, ...calItems].sort((a, b) => {
+    if (a._sortTime === b._sortTime) return 0;
+    return a._sortTime < b._sortTime ? -1 : 1;
+  });
+
+  if (!merged.length) {
     el.innerHTML = '<div class="empty-text">No tasks yet — add one below.</div>';
     return;
   }
 
-  const sorted = [...state.tasks].sort((a, b) => {
-    if (!a.time && !b.time) return 0;
-    if (!a.time) return 1;
-    if (!b.time) return -1;
-    return a.time.localeCompare(b.time);
-  });
-
-  el.innerHTML = sorted.map(t => {
+  el.innerHTML = merged.map(t => {
+    const isCal    = t._type === 'cal-event';
+    const isGcal   = t.calendar_source === 'google';
     const isAnchor = t.business === 'anchor';
     const isDone   = Boolean(t.done);
-    const rowCls   = ['task-row', isDone && 'done', isAnchor && 'anchor-row'].filter(Boolean).join(' ');
 
-    const priorityDot = t.priority === 'high'
+    const rowCls = [
+      'task-row',
+      isDone && 'done',
+      isAnchor && 'anchor-row',
+      isGcal && 'gcal-task',
+      isCal  && 'gcal-task gcal-event',
+    ].filter(Boolean).join(' ');
+
+    const priorityDot = !isCal && t.priority === 'high'
       ? `<div class="priority-dot priority-high"></div>`
-      : t.priority === 'low'
+      : !isCal && t.priority === 'low'
       ? `<div class="priority-dot priority-low"></div>`
       : '';
 
-    const rightCtrl = isAnchor
-      ? `<span class="anchor-lock"><i class="ti ti-lock"></i></span>`
-      : `${!isDone ? `<button class="task-carry" onclick="event.stopPropagation();carryTask(${t.id})" aria-label="Carry to tomorrow"><i class="ti ti-arrow-right"></i></button>` : ''}
-         <button class="task-del" onclick="event.stopPropagation();deleteTask(${t.id})" aria-label="Delete">
-           <i class="ti ti-x"></i>
-         </button>`;
+    const calIcon = (isGcal || isCal)
+      ? `<i class="ti ti-calendar gcal-icon" title="Google Calendar"></i>`
+      : '';
+
+    let rightCtrl;
+    if (isCal) {
+      // Calendar preview — read only, just show a delete from calendar button
+      rightCtrl = `<button class="task-del" onclick="event.stopPropagation();deleteCalEvent('${t.id}')" aria-label="Remove from calendar"><i class="ti ti-x"></i></button>`;
+    } else if (isAnchor) {
+      rightCtrl = `<span class="anchor-lock"><i class="ti ti-lock"></i></span>`;
+    } else {
+      const carryBtn = !isDone && !isGcal
+        ? `<button class="task-carry" onclick="event.stopPropagation();carryTask(${t.id})" aria-label="Carry to tomorrow"><i class="ti ti-arrow-right"></i></button>`
+        : '';
+      const delFn = isGcal
+        ? `deleteGcalTask(${t.id},'${t.calendar_event_id}')`
+        : `deleteTask(${t.id})`;
+      rightCtrl = `${carryBtn}<button class="task-del" onclick="event.stopPropagation();${delFn}" aria-label="Delete"><i class="ti ti-x"></i></button>`;
+    }
+
+    const clickFn = isCal ? '' : `onclick="toggleTask(${t.id})"`;
 
     return `
-      <div class="${rowCls}" onclick="toggleTask(${t.id})">
+      <div class="${rowCls}" ${clickFn}>
         <div class="task-check${isDone ? ' checked' : ''}"></div>
         ${priorityDot}
+        ${calIcon}
         <span class="task-name${isDone ? ' done' : ''}">${esc(t.name)}</span>
         ${tagHtml(t.business)}
         <span class="task-time">${t.time ? esc(t.time) : ''}</span>
@@ -2500,6 +2566,27 @@ async function deleteTask(id) {
     state.tasks = state.tasks.filter(t => t.id !== id);
     renderToday();
   } catch (e) { console.error('delete:', e); }
+}
+
+async function deleteGcalTask(id, eventId) {
+  // Delete task from DAYWAN AND remove from Google Calendar
+  try {
+    await Promise.all([
+      api(`/api/tasks/${id}`, { method: 'DELETE' }),
+      eventId ? api(`/api/calendar/events/${eventId}`, { method: 'DELETE' }) : Promise.resolve(),
+    ]);
+    state.tasks = state.tasks.filter(t => t.id !== id);
+    renderToday();
+  } catch (e) { console.error('deleteGcalTask:', e); }
+}
+
+async function deleteCalEvent(eventId) {
+  // Remove a calendar preview event (not yet a task) from Google Calendar
+  try {
+    await api(`/api/calendar/events/${eventId}`, { method: 'DELETE' });
+    state.calEvents = state.calEvents.filter(e => e.id !== eventId);
+    renderToday();
+  } catch (e) { console.error('deleteCalEvent:', e); }
 }
 
 // ── CARRY FORWARD ─────────────────────────────────────────────────────────────
@@ -3998,22 +4085,33 @@ async function loadSettings() {
 async function loadGcalStatus() {
   try {
     const { connected } = await api('/api/calendar/status');
-    const statusEl = document.getElementById('gcal-status-text');
-    const connUI   = document.getElementById('gcal-connected-ui');
-    const discUI   = document.getElementById('gcal-disconnected-ui');
+    const statusEl  = document.getElementById('gcal-status-text');
+    const connUI    = document.getElementById('gcal-connected-ui');
+    const discUI    = document.getElementById('gcal-disconnected-ui');
+    const watchEl   = document.getElementById('gcal-watch-status');
 
     if (connected) {
       statusEl.textContent = 'Connected';
       statusEl.style.color = '#1a6646';
       connUI.style.display = '';
       discUI.style.display = 'none';
-      // Load calendar list
-      const cals = await api('/api/calendar/calendars').catch(() => []);
-      const savedRow = await api('/api/settings').catch(() => ({}));
-      const savedId  = savedRow.google_calendar_id || 'primary';
-      const sel = document.getElementById('gcal-cal-select');
+
+      // Calendar selector
+      const [cals, settings] = await Promise.all([
+        api('/api/calendar/calendars').catch(() => []),
+        api('/api/settings').catch(() => ({})),
+      ]);
+      const savedId = settings.google_calendar_id || 'primary';
+      const sel     = document.getElementById('gcal-cal-select');
       sel.innerHTML = '<option value="primary">Primary calendar</option>' +
         cals.map(c => `<option value="${c.id}" ${c.id === savedId ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
+
+      // Push sync status
+      if (watchEl) {
+        const hasWatch = !!settings.google_watch_channel;
+        watchEl.textContent = hasWatch ? 'Active' : 'Inactive';
+        watchEl.style.color = hasWatch ? '#1a6646' : '#999';
+      }
     } else {
       statusEl.textContent = 'Not connected';
       statusEl.style.color = '#888';
@@ -4021,6 +4119,33 @@ async function loadGcalStatus() {
       discUI.style.display = '';
     }
   } catch {}
+}
+
+async function runSyncTest() {
+  const btn    = document.getElementById('sync-test-btn');
+  const result = document.getElementById('sync-test-result');
+  btn.disabled = true;
+  btn.textContent = 'Creating test event…';
+  result.textContent = '';
+  try {
+    const { message } = await api('/api/calendar/sync-test', { method: 'POST' });
+    result.textContent = message;
+    // After 12 seconds check if the task appeared
+    setTimeout(async () => {
+      btn.disabled    = false;
+      btn.textContent = 'Test sync';
+      try {
+        const tasks = await api('/api/tasks');
+        const found = tasks.some(t => t.name === 'DAYWAN Sync Test' && t.calendar_source === 'google');
+        result.textContent = found ? 'Sync working ✓' : 'Sync not responding — webhook may need a public URL';
+        result.style.color = found ? '#1a6646' : '#c0392b';
+      } catch {}
+    }, 12000);
+  } catch (e) {
+    result.textContent = `Error: ${e.message}`;
+    btn.disabled    = false;
+    btn.textContent = 'Test sync';
+  }
 }
 
 async function saveCalendarId() {

@@ -1,6 +1,7 @@
 require('dotenv').config();
 const { generateMorningBriefing, generateEODReview } = require('./ai');
 const { sendMessage, sendNudgeDigest } = require('./telegram');
+const gcal = require('./google-calendar');
 const {
   getTasksByDate, populateRecurring, watToday,
   getPendingNudges, getSetting,
@@ -53,6 +54,18 @@ function getTodayTasks() {
 
 // ── job actions ───────────────────────────────────────────────────────────────
 
+async function renewCalWatch() {
+  const row = getSetting.get('google_watch_channel');
+  if (!row) return;
+  const channel = JSON.parse(row.value);
+  const age     = Date.now() - (channel.created_at || 0);
+  if (age < 6 * 24 * 60 * 60 * 1000) return; // not old enough yet
+  const serverUrl = process.env.SERVER_URL;
+  if (!serverUrl || serverUrl.includes('localhost')) return;
+  await gcal.renewCalendarWatch(serverUrl);
+  console.log('[scheduler] Calendar watch channel renewed');
+}
+
 async function morningBriefing() {
   if (!notifEnabled('briefing')) return;
   const tasks    = getTodayTasks();
@@ -76,7 +89,9 @@ function midnight() {
 
 const JOBS = [
   // midnight — seed recurring tasks before morning briefing (silent, bypasses quiet hours)
-  { time: '00:01', label: 'midnight',       action: midnight,                                                                noQuiet: true },
+  { time: '00:01', label: 'midnight',         action: midnight,                                                              noQuiet: true },
+  // renew Google Calendar watch channel if it's 6+ days old
+  { time: '03:00', label: 'renew-cal-watch',  action: renewCalWatch,                                                         noQuiet: true },
 
   // anchor blocks
   { time: '05:25', label: 'prayer-5min',    action: () => notifEnabled('block_reminders') && sendMessage('Prayer block in 5 minutes')                                        },

@@ -125,6 +125,8 @@ try { db.exec(`ALTER TABLE recurring_tasks ADD COLUMN days TEXT DEFAULT 'daily'`
 try { db.exec(`ALTER TABLE recurring_tasks ADD COLUMN time_block TEXT`); } catch {}
 try { db.exec(`ALTER TABLE tasks ADD COLUMN source TEXT`); } catch {}
 try { db.exec(`ALTER TABLE tasks ADD COLUMN event_id TEXT`); } catch {}
+try { db.exec(`ALTER TABLE tasks ADD COLUMN calendar_event_id TEXT`); } catch {}
+try { db.exec(`ALTER TABLE tasks ADD COLUMN calendar_source TEXT`); } catch {}
 
 // ── WAT helpers ───────────────────────────────────────────────────────────────
 
@@ -352,6 +354,22 @@ const getGoalProgress = db.prepare(
 
 const updateTaskEventId = db.prepare('UPDATE tasks SET event_id = ? WHERE id = ?');
 
+// ── prepared statements — Google Calendar import ──────────────────────────────
+
+const getTaskByEventId = db.prepare(
+  'SELECT * FROM tasks WHERE calendar_event_id = ? LIMIT 1'
+);
+const insertCalendarTask = db.prepare(
+  `INSERT INTO tasks (date, name, business, time, done, priority, calendar_source, calendar_event_id)
+   VALUES (?, ?, ?, ?, 0, 'normal', 'google', ?)`
+);
+const updateTaskFromCalendar = db.prepare(
+  'UPDATE tasks SET name = ?, time = ?, date = ? WHERE calendar_event_id = ?'
+);
+const deleteTaskByEventId = db.prepare(
+  'DELETE FROM tasks WHERE calendar_event_id = ?'
+);
+
 // ── prepared statements — settings ───────────────────────────────────────────
 
 const getSetting    = db.prepare('SELECT value FROM settings WHERE key = ?');
@@ -477,6 +495,12 @@ module.exports = {
 
   // event sync
   updateTaskEventId,
+
+  // calendar import
+  getTaskByEventId,
+  insertCalendarTask,
+  updateTaskFromCalendar,
+  deleteTaskByEventId,
 
   // settings
   getSetting,
