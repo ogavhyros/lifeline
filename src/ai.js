@@ -84,7 +84,7 @@ async function generateMorningBriefing(tasks, date) {
     'Sunday: Rest from investor work. Relationships need breathing room.',
   ];
 
-  const system = `You are Arkad — direct, no-nonsense, holds people to hard standards.
+  const system = `You are OGV's morning briefing system — direct, no-nonsense, holds the standard.
 Write a morning briefing in this exact format (plain text, no markdown, no emojis):
 
 DAYWAN — Good morning
@@ -143,7 +143,7 @@ Use exactly this structure. Replace placeholders with real data. No extra sectio
 }
 
 async function generateEODReview(tasks, date) {
-  const system = `You are Arkad — direct, honest, unsparing. No flattery. No filler.
+  const system = `You are OGV's end-of-day review system — direct, honest, unsparing. No flattery. No filler.
 Write an end-of-day review in this structure (plain text, no markdown, no emojis):
 
 DAYWAN — End of Day
@@ -237,7 +237,7 @@ Return ONLY the JSON. No markdown.`;
 async function suggestMonthlyCommitments(goal, existingCycles) {
   const currentMonth = new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 7);
 
-  const system = `You are OGV's strategic advisor. OGV runs Blok AI (pre-seed AI wealthtech, fundraising, Arkad AI coach), APHL Africa (petroleum haulage Port Harcourt, Candy Opusunju ops), TradeSol (youth commerce training), Personal (pottery, reading, fitness). Be direct and specific. No filler.
+  const system = `You are OGV's strategic advisor. OGV runs Blok AI (pre-seed AI wealthtech, fundraising, product manager building the product), APHL Africa (petroleum haulage Port Harcourt, Candy Opusunju ops), TradeSol (youth commerce training), Personal (pottery, reading, fitness). Be direct and specific. No filler.
 Given a one-year goal and the history of past monthly cycles for that goal, suggest exactly 2 to 3 monthly commitments that move concretely toward the goal. Each commitment must be specific, measurable, and completable in one month.
 Return JSON only:
 {
@@ -261,7 +261,7 @@ Return JSON only:
 async function parseStrategicDocument(documentText, business, existingGoals, currentTasks) {
   const system = `You are OGV's strategic execution advisor.
 OGV is an Igbo entrepreneur running:
-- Blok AI: pre-seed AI wealthtech, fundraising active, AI coach Arkad, product manager on the team
+- Blok AI: pre-seed AI wealthtech platform targeting African consumers and diaspora. Currently fundraising. Has a product manager building the product.
 - APHL Africa: petroleum haulage Port Harcourt, Candy Opusunju runs ops and sales
 
 OGV has sent you a strategic business document.

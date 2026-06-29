@@ -1,11 +1,25 @@
 const Database = require('better-sqlite3');
 const path     = require('path');
+const fs       = require('fs');
+
+// On Render: disk must be mounted at /app/data
+// On local: data/ directory in project root
+// Never store the database in the project directory
+// on production as it gets wiped on every deploy.
+
+const DATA_DIR = process.env.DATA_DIR ||
+  (process.env.NODE_ENV === 'production'
+    ? '/app/data'
+    : path.join(__dirname, '..', 'data'));
+
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+
+const dbPath = process.env.DB_PATH || path.join(DATA_DIR, 'ogv.db');
+console.log(`[db] database at ${dbPath}`);
 
 // ── open ──────────────────────────────────────────────────────────────────────
 
-const db = new Database(
-  process.env.DB_PATH || path.join(__dirname, '..', 'tasks.db')
-);
+const db = new Database(dbPath);
 
 // ── schema ────────────────────────────────────────────────────────────────────
 
@@ -153,6 +167,29 @@ db.exec(`
     contact  TEXT,
     active   INTEGER DEFAULT 1
   );
+
+  CREATE TABLE IF NOT EXISTS businesses (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT    NOT NULL,
+    slug       TEXT    NOT NULL UNIQUE,
+    color_bg   TEXT    DEFAULT '#f0f0ee',
+    color_text TEXT    DEFAULT '#333333',
+    active     INTEGER DEFAULT 1,
+    created_at TEXT    DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS pending_recurring (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    date              TEXT    NOT NULL,
+    recurring_task_id INTEGER REFERENCES recurring_tasks(id),
+    name              TEXT    NOT NULL,
+    business          TEXT    NOT NULL,
+    scheduled_time    TEXT,
+    status            TEXT    DEFAULT 'pending'
+      CHECK(status IN ('pending','confirmed','rejected')),
+    created_at        TEXT    DEFAULT (datetime('now')),
+    UNIQUE(date, recurring_task_id)
+  );
 `);
 
 // Add columns that may not exist yet (safe to run every startup)
@@ -191,6 +228,9 @@ function weekStart() {
 
 const getTasksByDate  = db.prepare('SELECT * FROM tasks WHERE date = ? ORDER BY time, id');
 const getTaskById     = db.prepare('SELECT * FROM tasks WHERE id = ?');
+const getMostRecentTaskDate = db.prepare(
+  'SELECT date, COUNT(*) AS count FROM tasks GROUP BY date ORDER BY date DESC LIMIT 1'
+);
 const insertTask      = db.prepare(
   `INSERT INTO tasks (date, name, business, time, done, priority)
    VALUES (?, ?, ?, ?, 0, ?)`
@@ -242,6 +282,71 @@ const insertRecurringTask  = db.prepare(
   `INSERT INTO tasks (date, name, business, time, done, priority, source)
    VALUES (?, ?, ?, ?, 0, 'normal', 'recurring')`
 );
+const insertCarriedTask = db.prepare(
+  `INSERT INTO tasks (date, name, business, time, done, priority, source)
+   VALUES (?, ?, ?, ?, 0, ?, 'carried')`
+);
+
+function insertTaskSafe(date, name, business, time, priority) {
+  const exists = checkTaskExists.get(date, name);
+  if (exists) return getTaskById.get(exists.id);
+  const info = insertTask.run(date, name, business, time || null, priority || 'normal');
+  return getTaskById.get(info.lastInsertRowid);
+}
+
+// ── prepared statements — pending recurring ───────────────────────────────────
+
+const insertPendingRecurring = db.prepare(`
+  INSERT OR IGNORE INTO pending_recurring (date, recurring_task_id, name, business, scheduled_time)
+  VALUES (?, ?, ?, ?, ?)
+`);
+const getPendingRecurring = db.prepare(`
+  SELECT pr.*, rt.days, rt.time_block
+  FROM   pending_recurring pr
+  LEFT JOIN recurring_tasks rt ON rt.id = pr.recurring_task_id
+  WHERE  pr.date = ? AND pr.status = 'pending'
+  ORDER  BY pr.scheduled_time, pr.id
+`);
+const getConfirmedRecurring = db.prepare(
+  `SELECT * FROM pending_recurring WHERE date = ? AND status = 'confirmed'`
+);
+const rejectRecurring = db.prepare(
+  `UPDATE pending_recurring SET status = 'rejected' WHERE id = ?`
+);
+const rejectAllPendingRecurring = db.prepare(
+  `UPDATE pending_recurring SET status = 'rejected' WHERE date = ? AND status = 'pending'`
+);
+const confirmPendingById = db.prepare(
+  `UPDATE pending_recurring SET status = 'confirmed' WHERE id = ?`
+);
+const getPendingRecurringById = db.prepare(
+  `SELECT * FROM pending_recurring WHERE id = ?`
+);
+
+function confirmRecurring(id) {
+  const row = getPendingRecurringById.get(id);
+  if (!row) return null;
+  const existing = checkTaskExists.get(row.date, row.name);
+  if (!existing) {
+    insertRecurringTask.run(row.date, row.name, row.business, row.scheduled_time || null);
+  }
+  confirmPendingById.run(id);
+  return getTasksByDate.all(row.date).find(t => t.name === row.name) || null;
+}
+
+function confirmAllRecurring(date) {
+  const pending = getPendingRecurring.all(date);
+  db.transaction((tasks) => {
+    for (const t of tasks) {
+      const existing = checkTaskExists.get(t.date, t.name);
+      if (!existing) {
+        insertRecurringTask.run(t.date, t.name, t.business, t.scheduled_time || null);
+      }
+      confirmPendingById.run(t.id);
+    }
+  })(pending);
+  return getTasksByDate.all(date);
+}
 
 function populateRecurring(date) {
   const dayOfWeek = new Date(date + 'T12:00:00Z').getUTCDay(); // 0=Sun … 6=Sat
@@ -253,12 +358,28 @@ function populateRecurring(date) {
         const allowed = days.split(',').map(d => parseInt(d.trim(), 10));
         if (!allowed.includes(dayOfWeek)) continue;
       }
-      const exists = checkTaskExists.get(date, t.name);
-      if (!exists) {
-        insertRecurringTask.run(date, t.name, t.business, t.scheduled_time || null);
-      }
+      insertPendingRecurring.run(date, t.id, t.name, t.business, t.scheduled_time || null);
     }
   })(recurring);
+}
+
+function getTodayTasksIncludingPending(date) {
+  const tasks    = getTasksByDate.all(date);
+  const pending  = getPendingRecurring.all(date);
+  const taskNames = new Set(tasks.map(t => t.name));
+  const pendingAsTasks = pending
+    .filter(p => !taskNames.has(p.name))
+    .map(p => ({
+      id:       null,
+      date,
+      name:     p.name,
+      business: p.business,
+      time:     p.scheduled_time,
+      done:     0,
+      source:   'recurring',
+      priority: 'normal',
+    }));
+  return [...tasks, ...pendingAsTasks];
 }
 
 function getRecurringGrouped() {
@@ -411,6 +532,33 @@ const deleteTaskByEventId = db.prepare(
   'DELETE FROM tasks WHERE calendar_event_id = ?'
 );
 
+// ── prepared statements — task/recurring time update ─────────────────────────
+
+const updateTaskTime      = db.prepare('UPDATE tasks SET time = ? WHERE id = ?');
+const updateRecurringTime = db.prepare('UPDATE recurring_tasks SET scheduled_time = ? WHERE id = ?');
+
+// ── prepared statements — businesses ─────────────────────────────────────────
+
+const getBusinesses    = db.prepare('SELECT * FROM businesses WHERE active = 1 ORDER BY id');
+const addBusiness      = db.prepare(
+  `INSERT INTO businesses (name, slug, color_bg, color_text) VALUES (?, ?, ?, ?)`
+);
+const deactivateBusiness = db.prepare('UPDATE businesses SET active = 0 WHERE id = ?');
+const getBusinessBySlug  = db.prepare('SELECT * FROM businesses WHERE slug = ?');
+
+// ── prepared statements — toggle recurring active ─────────────────────────────
+
+function toggleRecurringActive(id) {
+  const row = db.prepare('SELECT active FROM recurring_tasks WHERE id = ?').get(id);
+  if (!row) throw new Error(`Recurring task ${id} not found`);
+  if (row.active) {
+    deactivateRecurring.run(id);
+  } else {
+    activateRecurring.run(id);
+  }
+  return { id: Number(id), active: row.active ? 0 : 1 };
+}
+
 // ── prepared statements — settings ───────────────────────────────────────────
 
 const getSetting    = db.prepare('SELECT value FROM settings WHERE key = ?');
@@ -500,6 +648,24 @@ const getMembersByBusiness = db.prepare(
       stmt.run('OGV', 'CEO', 'all', '');
     })();
     console.log('[db] Team members seeded');
+  }
+}
+
+// ── businesses seed (runs once if table is empty) ─────────────────────────────
+
+{
+  const count = db.prepare('SELECT COUNT(*) AS n FROM businesses').get();
+  if (!count || count.n === 0) {
+    const stmt = db.prepare(
+      'INSERT INTO businesses (name, slug, color_bg, color_text) VALUES (?, ?, ?, ?)'
+    );
+    db.transaction(() => {
+      stmt.run('Blok AI',     'blok',     '#f0effe', '#4a3fa0');
+      stmt.run('APHL Africa', 'aphl',     '#edf7f2', '#1a6646');
+      stmt.run('TradeSol',    'trade',    '#fef8ec', '#7a4a0a');
+      stmt.run('Personal',    'personal', '#fdf0f4', '#8a2a4a');
+    })();
+    console.log('[db] Businesses seeded');
   }
 }
 
@@ -612,6 +778,9 @@ module.exports = {
   getTasksByDate,
   getTaskById,
   insertTask,
+  insertCarriedTask,
+  insertTaskSafe,
+  getMostRecentTaskDate,
   toggleTask,
   markTaskDone,
   updatePriority,
@@ -634,6 +803,17 @@ module.exports = {
   activateRecurring,
   getCategoryRecurring,
   populateRecurring,
+  toggleRecurringActive,
+  updateRecurringTime,
+
+  // pending recurring
+  getPendingRecurring,
+  getConfirmedRecurring,
+  rejectRecurring,
+  rejectAllPendingRecurring,
+  confirmRecurring,
+  confirmAllRecurring,
+  getTodayTasksIncludingPending,
 
   // carry
   carryTask,
@@ -673,6 +853,15 @@ module.exports = {
 
   // event sync
   updateTaskEventId,
+
+  // task time update
+  updateTaskTime,
+
+  // businesses
+  getBusinesses,
+  addBusiness,
+  deactivateBusiness,
+  getBusinessBySlug,
 
   // calendar import
   getTaskByEventId,

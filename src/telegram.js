@@ -21,6 +21,7 @@ const {
   addGoalProgress, getGoalProgress,
   getSetting, saveDocumentAnalysis,
   saveUploadedDocument, getAllUploadedDocuments, linkDocumentToAnalysis, updateUploadedDocumentStatus,
+  getPendingRecurring, confirmRecurring, confirmAllRecurring, rejectRecurring, rejectAllPendingRecurring,
 } = require('./db');
 
 // WAT datetime helpers (kept local — not needed in other modules)
@@ -54,6 +55,9 @@ const pendingVoiceDoc = new Map();
 
 // chatId → { parsedText, wordCount, docId } — uploaded file awaiting business selection
 const pendingDocument = new Map();
+
+// chatId → { date, tasks } — pending recurring tasks awaiting confirmation
+const pendingRecurring = new Map();
 
 const TEMP_DIR = path.join(__dirname, '..', 'uploads', 'temp');
 try { require('fs').mkdirSync(TEMP_DIR, { recursive: true }); } catch {}
@@ -407,6 +411,57 @@ async function handleUpdate(update) {
         await sendMessage(`Analysis failed: ${err.message}`);
       }
       return;
+    }
+
+    // ── pending recurring confirmation (CONFIRM ALL / CONFIRM N / SKIP / EDIT) ─
+    if (pendingRecurring.has(chatId) && !voice && msg.text) {
+      const { date, tasks } = pendingRecurring.get(chatId);
+
+      if (upper === 'CONFIRM ALL') {
+        pendingRecurring.delete(chatId);
+        confirmAllRecurring(date);
+        await sendMessage(`${tasks.length} recurring task${tasks.length !== 1 ? 's' : ''} added to today.`);
+        return;
+      }
+
+      if (upper.startsWith('CONFIRM ')) {
+        const nums = upper.slice(8).trim().split(/\s+/)
+          .map(n => parseInt(n, 10))
+          .filter(n => !isNaN(n) && n > 0 && n <= tasks.length);
+        if (nums.length) {
+          pendingRecurring.delete(chatId);
+          for (const n of nums) confirmRecurring(tasks[n - 1].id);
+          for (let i = 0; i < tasks.length; i++) {
+            if (!nums.includes(i + 1)) rejectRecurring.run(tasks[i].id);
+          }
+          const skipped = tasks.length - nums.length;
+          await sendMessage(`${nums.length} task${nums.length !== 1 ? 's' : ''} confirmed${skipped ? `, ${skipped} skipped` : ''}.`);
+          return;
+        }
+      }
+
+      if (upper === 'SKIP') {
+        pendingRecurring.delete(chatId);
+        rejectAllPendingRecurring.run(date);
+        await sendMessage('Starting fresh today. Add tasks manually or via brain dump.');
+        return;
+      }
+
+      if (upper === 'EDIT') {
+        pendingRecurring.delete(chatId);
+        rejectAllPendingRecurring.run(date);
+        await sendMessage(
+          'Send me the list of tasks you want today.\n' +
+          'One per line, format:\n' +
+          '[business] task name at HH:MM\n\n' +
+          'Example:\n' +
+          'aphl Get depot price at 06:30\n' +
+          'blok Investor touchpoint at 07:30\n' +
+          'personal Morning journal at 05:45'
+        );
+        return;
+      }
+      // Other text falls through to normal handlers below
     }
 
     // ── pending brain-dump task confirmation (YES/ADD → save, NO → discard) ──
@@ -1276,4 +1331,32 @@ async function handleDocumentFile(doc, chatId) {
   }
 }
 
-module.exports = { initBot, handleUpdate, registerWebhook, sendMessage, sendNudgeDigest, POLLING };
+// ── recurring task confirmation message ───────────────────────────────────────
+
+async function sendRecurringConfirmation(date) {
+  try {
+    const pending = getPendingRecurring.all(date);
+    if (!pending.length) return;
+
+    const chatId = String(process.env.TELEGRAM_CHAT_ID);
+    pendingRecurring.set(chatId, { date, tasks: pending });
+
+    const lines = pending.map((t, i) =>
+      `${i + 1}. [${t.business.toUpperCase()}] ${t.scheduled_time || '--'} ${t.name}`
+    ).join('\n');
+
+    await sendMessage(
+      `DAILY ROUTINES — confirm for today\n\n` +
+      `These recurring tasks are ready to add:\n\n` +
+      `${lines}\n\n` +
+      `Reply CONFIRM ALL to add everything\n` +
+      `Reply CONFIRM 1 3 5 to add specific tasks by number\n` +
+      `Reply SKIP to start fresh with no recurring tasks today\n` +
+      `Reply EDIT to adjust before confirming`
+    );
+  } catch (err) {
+    console.error('[telegram] sendRecurringConfirmation error:', err.message);
+  }
+}
+
+module.exports = { initBot, handleUpdate, registerWebhook, sendMessage, sendNudgeDigest, POLLING, sendRecurringConfirmation };

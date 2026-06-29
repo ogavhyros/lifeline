@@ -8,6 +8,8 @@ const {
   getTasksByDate, getTaskById, insertTask, toggleTask, markTaskDone, updatePriority, deleteTask,
   getHistory, getKpis, upsertKpi,
   getRecurring, getFutureRecurring, getRecurringGrouped, addRecurring, deactivateRecurring, activateRecurring, populateRecurring,
+  toggleRecurringActive, updateRecurringTime,
+  getPendingRecurring, confirmRecurring, confirmAllRecurring, rejectRecurring, rejectAllPendingRecurring,
   carryTask, addIdea, getIdeas, addNote, getNotes, syncDayLog,
   getGoals, getAllGoals, addGoal, updateGoalStatus, updateGoalTitle,
   getCycles, getCyclesByGoal, getCycleById, addCycle, updateCycleCommitment, updateCycleReflection,
@@ -17,6 +19,8 @@ const {
   saveUploadedDocument, getUploadedDocument, getAllUploadedDocuments, getUploadedDocumentsByBusiness,
   updateUploadedDocumentStatus, linkDocumentToAnalysis, archiveUploadedDocument, searchUploadedDocuments,
   getTeamMembers, getMembersByBusiness,
+  updateTaskTime,
+  getBusinesses, addBusiness, deactivateBusiness,
 } = require('./db');
 const { parseDocument, cleanDocumentText } = require('./document-parser');
 const gcal = require('./google-calendar');
@@ -29,7 +33,7 @@ const DEFAULT_BLOCKS = [
   { time: '07:00', end: '07:30', name: 'Morning command: floor price, driver call',biz: 'aphl'     },
   { time: '07:30', end: '09:00', name: 'Raise: investor relations',                 biz: 'blok'     },
   { time: '08:00', end: '10:00', name: 'Sales push: Candy runs outbound',          biz: 'aphl'     },
-  { time: '09:00', end: '10:30', name: 'Product: PM review, Arkad user flow',      biz: 'blok'     },
+  { time: '09:00', end: '10:30', name: 'Product: PM review, product user flow',     biz: 'blok'     },
   { time: '10:00', end: '13:00', name: 'Operations: payments, loading, tracking',  biz: 'aphl'     },
   { time: '10:30', end: '11:30', name: 'Comms: Slack, async check-ins',            biz: 'blok'     },
   { time: '11:30', end: '12:30', name: 'Brand: creative review, social metrics',   biz: 'blok'     },
@@ -90,6 +94,13 @@ const docUpload = multer({
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
+// ── startup: verify task persistence ─────────────────────────────────────────
+{
+  const today = watToday();
+  const count = getTasksByDate.all(today).length;
+  console.log(`[db] ${count} task${count !== 1 ? 's' : ''} found for today (${today})`);
+}
+
 // ── tasks ─────────────────────────────────────────────────────────────────────
 
 app.get('/api/tasks', (req, res) => {
@@ -121,6 +132,14 @@ app.patch('/api/tasks/:id/priority', (req, res) => {
   if (!task) return res.status(404).json({ error: 'not found' });
   updatePriority.run(priority, task.id);
   res.json(getTasksByDate.all(watToday()));
+});
+
+app.patch('/api/tasks/:id/time', (req, res) => {
+  const task = getTaskById.get(req.params.id);
+  if (!task) return res.status(404).json({ error: 'not found' });
+  const { scheduled_time } = req.body;
+  updateTaskTime.run(scheduled_time || null, task.id);
+  res.json(getTasksByDate.all(task.date || watToday()));
 });
 
 app.delete('/api/tasks/:id', (req, res) => {
@@ -199,6 +218,92 @@ app.patch('/api/recurring/:id/activate', (req, res) => {
   const info = activateRecurring.run(req.params.id);
   if (!info.changes) return res.status(404).json({ error: 'not found' });
   res.json({ ok: true });
+});
+
+app.patch('/api/recurring/:id/time', (req, res) => {
+  const { scheduled_time } = req.body;
+  const info = updateRecurringTime.run(scheduled_time || null, req.params.id);
+  if (!info.changes) return res.status(404).json({ error: 'not found' });
+  res.json({ ok: true });
+});
+
+app.patch('/api/recurring/:id/toggle-active', (req, res) => {
+  try {
+    const result = toggleRecurringActive(req.params.id);
+    res.json(result);
+  } catch (e) {
+    res.status(404).json({ error: e.message });
+  }
+});
+
+// ── pending recurring confirmation ────────────────────────────────────────────
+
+app.get('/api/recurring/pending/:date', (req, res) => {
+  const date = req.params.date === 'today' ? watToday() : req.params.date;
+  res.json(getPendingRecurring.all(date));
+});
+
+app.post('/api/recurring/confirm/:id', (req, res) => {
+  try {
+    const task = confirmRecurring(req.params.id);
+    res.json({ ok: true, task });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/recurring/confirm-all/:date', (req, res) => {
+  const date = req.params.date === 'today' ? watToday() : req.params.date;
+  try {
+    const tasks = confirmAllRecurring(date);
+    res.json(tasks);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post('/api/recurring/reject/:id', (req, res) => {
+  const info = rejectRecurring.run(req.params.id);
+  if (!info.changes) return res.status(404).json({ error: 'not found' });
+  res.json({ ok: true });
+});
+
+app.post('/api/recurring/skip/:date', (req, res) => {
+  const date = req.params.date === 'today' ? watToday() : req.params.date;
+  rejectAllPendingRecurring.run(date);
+  res.json({ ok: true });
+});
+
+// ── businesses ────────────────────────────────────────────────────────────────
+
+app.get('/api/businesses', (_req, res) => {
+  res.json(getBusinesses.all());
+});
+
+app.post('/api/businesses', (req, res) => {
+  const { name, color_bg, color_text } = req.body;
+  if (!name) return res.status(400).json({ error: 'name is required' });
+  const slug = name.toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .slice(0, 30);
+  if (!slug) return res.status(400).json({ error: 'invalid name — no valid slug characters' });
+  try {
+    addBusiness.run(name, slug, color_bg || '#f0f0ee', color_text || '#333333');
+    res.status(201).json(getBusinesses.all());
+  } catch (e) {
+    if (e.message.includes('UNIQUE')) {
+      return res.status(409).json({ error: `Business slug '${slug}' already exists` });
+    }
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/businesses/:id', (req, res) => {
+  const info = deactivateBusiness.run(req.params.id);
+  if (!info.changes) return res.status(404).json({ error: 'not found' });
+  res.json(getBusinesses.all());
 });
 
 // ── document analyses ─────────────────────────────────────────────────────────

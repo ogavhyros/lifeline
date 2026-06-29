@@ -1,10 +1,14 @@
 require('dotenv').config();
 const { generateMorningBriefing, generateEODReview } = require('./ai');
-const { sendMessage, sendNudgeDigest } = require('./telegram');
+const { sendMessage, sendNudgeDigest, sendRecurringConfirmation } = require('./telegram');
 const gcal = require('./google-calendar');
 const {
   getTasksByDate, populateRecurring, watToday,
   getPendingNudges, getSetting,
+  getTaskByEventId, updateTaskFromCalendar,
+  getTodayTasksIncludingPending, getPendingRecurring,
+  insertCarriedTask,
+  db,
 } = require('./db');
 
 // ── WAT helpers (UTC+1) ───────────────────────────────────────────────────────
@@ -68,9 +72,15 @@ async function renewCalWatch() {
 
 async function morningBriefing() {
   if (!notifEnabled('briefing')) return;
-  const tasks    = getTodayTasks();
-  const briefing = await generateMorningBriefing(tasks, watToday());
+  const today   = watToday();
+  const tasks   = getTodayTasksIncludingPending(today);
+  const briefing = await generateMorningBriefing(tasks, today);
   await sendMessage(briefing);
+  // Follow-up: send recurring tasks confirmation prompt
+  const pending = getPendingRecurring.all(today);
+  if (pending.length) {
+    await sendRecurringConfirmation(today);
+  }
 }
 
 async function eodReview() {
@@ -80,16 +90,60 @@ async function eodReview() {
   await sendMessage(review);
 }
 
-function midnight() {
-  populateRecurring(watToday());
+async function midnightCarry() {
+  const today     = watToday();
+  const yesterday = new Date(Date.now() + 60 * 60 * 1000 - 86400000).toISOString().slice(0, 10);
+
+  // Carry incomplete non-recurring tasks from yesterday
+  const yesterdayTasks = getTasksByDate.all(yesterday);
+  const todayTasks     = getTasksByDate.all(today);
+  const todayNames     = new Set(todayTasks.map(t => t.name));
+
+  const toCarry = yesterdayTasks.filter(t =>
+    !t.done &&
+    t.source !== 'recurring' &&
+    t.business !== 'anchor'
+  );
+
+  let carried = 0;
+  for (const t of toCarry) {
+    if (todayNames.has(t.name)) continue;
+    insertCarriedTask.run(today, t.name, t.business, t.time || null, t.priority || 'normal');
+    todayNames.add(t.name);
+    carried++;
+  }
+
+  // Queue recurring tasks for today's confirmation
+  populateRecurring(today);
+  db.prepare('INSERT OR IGNORE INTO day_log (date) VALUES (?)').run(today);
+
+  console.log(`[scheduler] midnight — carried ${carried} task(s) from ${yesterday}`);
+
+  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const dayLabel = DAYS[new Date(today + 'T12:00:00Z').getUTCDay()];
+
+  if (carried > 0) {
+    await sendMessage(
+      `New day started — ${dayLabel}, ${today}\n\n` +
+      `Carried forward from yesterday:\n${carried} incomplete task${carried !== 1 ? 's' : ''}\n\n` +
+      `Recurring tasks will be confirmed at morning briefing.\n\n` +
+      `Rest well.`
+    );
+  } else {
+    await sendMessage(
+      `New day — ${dayLabel}, ${today}\n\n` +
+      `Yesterday was clean. Well done.\n` +
+      `Recurring tasks confirmed at morning briefing.`
+    );
+  }
 }
 
 // ── job table ─────────────────────────────────────────────────────────────────
 // noQuiet: true — job runs even during quiet hours (silent jobs only)
 
 const JOBS = [
-  // midnight — seed recurring tasks before morning briefing (silent, bypasses quiet hours)
-  { time: '00:01', label: 'midnight',         action: midnight,                                                              noQuiet: true },
+  // midnight — carry incomplete tasks + seed pending recurring for new day
+  { time: '00:01', label: 'midnight',         action: midnightCarry,                                                         noQuiet: true },
   // renew Google Calendar watch channel if it's 6+ days old
   { time: '03:00', label: 'renew-cal-watch',  action: renewCalWatch,                                                         noQuiet: true },
 
@@ -106,7 +160,7 @@ const JOBS = [
 
   // work blocks
   { time: '07:20', label: 'raise',          action: () => sendMessage('Raise: investor relations — one genuine touchpoint today [BLOK]')  },
-  { time: '08:50', label: 'product',        action: () => sendMessage('Product: PM review, Arkad flow [BLOK]')                             },
+  { time: '08:50', label: 'product',        action: () => sendMessage('Product: PM review, product user flow [BLOK]')                   },
   { time: '09:50', label: 'operations',     action: () => sendMessage('Operations: payments, loading, tracking [APHL]')                    },
   { time: '10:20', label: 'comms',          action: () => sendMessage('Comms: Slack, async check-ins [BLOK]')                              },
   { time: '11:20', label: 'brand',          action: () => sendMessage('Brand: creative review, social metrics [BLOK]')                     },
@@ -193,6 +247,51 @@ async function nudgeTick() {
   }
 }
 
+// ── Google Calendar polling fallback (every 15 min) ──────────────────────────
+
+async function calendarPoll() {
+  const tokenRow = getSetting.get('google_tokens');
+  if (!tokenRow) return; // not connected
+
+  if (isQuietHours()) return; // includes stop-after-20:30
+
+  const today = watToday();
+  let events;
+  try {
+    events = await gcal.getEventsForDate(today);
+  } catch (err) {
+    if (err.message !== 'Not authenticated') {
+      console.error('[calendar] poll error:', err.message);
+    }
+    return;
+  }
+
+  let checked = 0;
+  for (const ev of events) {
+    const existing = getTaskByEventId.get(ev.id);
+    if (!existing) {
+      // Reconstruct raw-format event that processCalendarEvent expects
+      const rawEv = {
+        id:          ev.id,
+        summary:     ev.title,
+        description: ev.description || '',
+        status:      'confirmed',
+        start:       ev.allDay ? { date: ev.startRaw } : { dateTime: ev.startRaw },
+        end:         ev.allDay ? { date: ev.endRaw }   : { dateTime: ev.endRaw },
+      };
+      await gcal.processCalendarEvent(rawEv).catch(err =>
+        console.error('[calendar] processCalendarEvent failed:', err.message)
+      );
+    } else if (existing.name !== ev.title) {
+      // Silent update — event was renamed in Google Calendar
+      updateTaskFromCalendar.run(ev.title, ev.start || null, today, ev.id);
+    }
+    checked++;
+  }
+
+  console.log(`[calendar] polled — ${checked} event${checked !== 1 ? 's' : ''} checked`);
+}
+
 // ── init ──────────────────────────────────────────────────────────────────────
 
 function initScheduler() {
@@ -202,7 +301,11 @@ function initScheduler() {
     () => nudgeTick().catch(err => console.error('[scheduler] nudgeTick error:', err.message)),
     30 * 60 * 1000
   );
-  console.log('[scheduler] started — tick every 60s, nudge every 30m (WAT UTC+1)');
+  setInterval(
+    () => calendarPoll().catch(err => console.error('[scheduler] calendarPoll error:', err.message)),
+    15 * 60 * 1000
+  );
+  console.log('[scheduler] started — tick every 60s, nudge every 30m, cal-poll every 15m (WAT UTC+1)');
 }
 
 module.exports = { initScheduler };

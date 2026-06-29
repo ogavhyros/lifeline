@@ -1937,6 +1937,61 @@
       margin-left: auto;
     }
     .routine-activate-btn:hover { border-color: #1a1a1a; color: #1a1a1a; }
+    .routine-time-editable { cursor: pointer; }
+    .routine-time-editable:hover { color: #1a1a1a; text-decoration: underline dotted; }
+    .routine-pause-btn {
+      background: none;
+      border: 1px solid #e8e8e6;
+      border-radius: 3px;
+      font-size: 10px;
+      color: #aaa;
+      cursor: pointer;
+      padding: 1px 6px;
+      flex-shrink: 0;
+    }
+    .routine-pause-btn:hover { border-color: #f0a020; color: #f0a020; }
+    .task-time-editable { cursor: pointer; }
+    .task-time-editable:hover { color: #1a1a1a; text-decoration: underline dotted; }
+    .task-time-input {
+      width: 70px;
+      font-size: 11px;
+      font-family: 'Geist Mono', monospace;
+      border: none;
+      border-bottom: 1px solid #1a1a1a;
+      outline: none;
+      background: transparent;
+      color: #1a1a1a;
+      padding: 0;
+    }
+    /* ── pending recurring banner ──────────────────────────────────────────────── */
+    .pending-rec-banner {
+      background: #fafafa;
+      border: 1px solid #e8e8e6;
+      border-radius: 6px;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+    }
+    .pending-rec-head { font-size: 13px; font-weight: 500; color: #1a1a1a; margin-bottom: 2px; }
+    .pending-rec-sub  { font-size: 11px; color: #999; margin-bottom: 12px; }
+    .pending-rec-row  { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+    .pending-rec-actions { display: flex; align-items: center; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+    /* ── businesses settings ───────────────────────────────────────────────────── */
+    .biz-swatch-row { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 10px; }
+    .biz-color-swatch {
+      width: 24px; height: 24px; border-radius: 50%;
+      cursor: pointer; border: 2px solid transparent;
+    }
+    .biz-color-swatch.selected { border-color: #1a1a1a; }
+    .biz-color-swatch:hover { transform: scale(1.15); }
+    .biz-add-preview {
+      display: inline-block;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 3px;
+      background: #f0f0ee;
+      color: #555;
+      margin-bottom: 8px;
+    }
     .goal-link-table {
       width: 100%;
       border-collapse: collapse;
@@ -2158,6 +2213,7 @@
 
 
       <div class="all-tasks-label">All tasks</div>
+      <div id="pending-recurring-banner" style="display:none"></div>
       <div id="task-list">
         <div class="loading-text">Loading…</div>
       </div>
@@ -2170,11 +2226,11 @@
           placeholder="+ Add a task"
           autocomplete="off"
         />
-        <select class="add-select" id="add-biz">
-          <option value="blok">blok</option>
-          <option value="aphl">aphl</option>
-          <option value="trade">trade</option>
-          <option value="personal">personal</option>
+        <select class="add-select biz-select" id="add-biz">
+          <option value="blok">Blok AI</option>
+          <option value="aphl">APHL Africa</option>
+          <option value="trade">TradeSol</option>
+          <option value="personal">Personal</option>
         </select>
         <input class="add-time" id="add-time" type="text" placeholder="time" />
         <select class="add-select" id="add-priority">
@@ -2518,6 +2574,26 @@
           </div>
         </div>
       </div>
+
+      <!-- Businesses and categories -->
+      <div class="settings-section">
+        <div class="settings-section-head">Businesses and categories</div>
+        <div id="businesses-list"></div>
+
+        <div style="margin-top:16px">
+          <div style="font-size:12px;color:#888;margin-bottom:8px">Add business</div>
+          <input id="biz-add-name" type="text" placeholder="e.g. Real Estate"
+                 style="border:none;border-bottom:1px solid #e8e8e6;outline:none;font-size:13px;font-family:inherit;padding:2px 0;width:100%;max-width:200px;margin-bottom:10px"
+                 oninput="updateBizPreview()" />
+          <div style="font-size:11px;color:#aaa;margin-bottom:6px">Background color</div>
+          <div class="biz-swatch-row" id="biz-color-swatches"></div>
+          <div style="font-size:11px;color:#aaa;margin-bottom:4px">Preview</div>
+          <span class="biz-add-preview" id="biz-add-preview">New business</span>
+          <div style="margin-top:10px">
+            <button class="secondary-btn" onclick="addNewBusiness()">Add business</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- DOCUMENTS ───────────────────────────────────────────────────────────── -->
@@ -2717,9 +2793,9 @@
 
       </div>
 
-      <!-- Future routines -->
-      <div class="section-head" style="margin-top:28px;color:#ccc">Planned — not active yet</div>
-      <p style="font-size:11px;color:#ccc;margin-bottom:10px">Add routines here that you will activate later.</p>
+      <!-- Paused / Future routines -->
+      <div class="section-head" style="margin-top:28px;color:#ccc">Paused &amp; planned routines</div>
+      <p style="font-size:11px;color:#ccc;margin-bottom:10px">Paused routines and routines you plan to activate later.</p>
       <div id="rt-future-list"></div>
       <div class="rec-add-row" style="margin-top:8px">
         <input class="rec-add-input" id="rt-future-name" type="text" placeholder="Future routine name" autocomplete="off" />
@@ -2745,7 +2821,7 @@
           <tr><td>Read for 20 minutes</td><td style="color:#999">Personal growth and knowledge</td></tr>
           <tr><td>Investor relationship touchpoint</td><td style="color:#999">Blok AI: Raise $500k pre-seed — build genuine relationships</td></tr>
           <tr><td>Family check-in call</td><td style="color:#999">Personal: family connection</td></tr>
-          <tr><td>Review Arkad product progress</td><td style="color:#999">Blok AI: Ship Arkad v1</td></tr>
+          <tr><td>Review product progress</td><td style="color:#999">Blok AI: product milestones</td></tr>
           <tr><td>Get daily depot price from Yinusi</td><td style="color:#999">APHL: Daily ops execution</td></tr>
           <tr><td>Log daily revenue and close ops</td><td style="color:#999">APHL: Revenue tracking and growth</td></tr>
         </tbody>
@@ -2771,7 +2847,7 @@ let BLOCKS = [
   { time: '07:00', end: '07:30', name: 'Morning command: floor price, driver call',  biz: 'aphl'     },
   { time: '07:30', end: '09:00', name: 'Raise: investor relations',                 biz: 'blok'     },
   { time: '08:00', end: '10:00', name: 'Sales push: Candy runs outbound',           biz: 'aphl'     },
-  { time: '09:00', end: '10:30', name: 'Product: PM review, Arkad user flow',       biz: 'blok'     },
+  { time: '09:00', end: '10:30', name: 'Product: PM review, product user flow',      biz: 'blok'     },
   { time: '10:00', end: '13:00', name: 'Operations: payments, loading, tracking',   biz: 'aphl'     },
   { time: '10:30', end: '11:30', name: 'Comms: Slack, async check-ins',             biz: 'blok'     },
   { time: '11:30', end: '12:30', name: 'Brand: creative review, social metrics',    biz: 'blok'     },
@@ -2926,12 +3002,41 @@ async function api(path, opts = {}) {
   return data;
 }
 
+// ── businesses (dynamic, loaded from API) ─────────────────────────────────────
+
+let BUSINESSES = [];
+
+async function loadBusinesses() {
+  try {
+    BUSINESSES = await api('/api/businesses');
+    for (const b of BUSINESSES) BIZ_LABEL[b.slug] = b.name;
+    updateAllBizSelects();
+  } catch {}
+}
+
+function updateAllBizSelects() {
+  document.querySelectorAll('select.biz-select').forEach(sel => {
+    const val = sel.value;
+    sel.innerHTML = BUSINESSES
+      .map(b => `<option value="${esc(b.slug)}" ${b.slug === val ? 'selected' : ''}>${esc(b.name)}</option>`)
+      .join('');
+  });
+}
+
 function tagHtml(biz) {
-  const b     = String(biz || '').toLowerCase();
+  const b = String(biz || '').toLowerCase();
+  const bizData = BUSINESSES.find(x => x.slug === b);
+  if (bizData) {
+    return `<span class="tag" style="background:${bizData.color_bg};color:${bizData.color_text}">${esc(bizData.name)}</span>`;
+  }
   const known = { blok: 1, aphl: 1, trade: 1, personal: 1, anchor: 1 };
   const cls   = known[b] ? `tag-${b}` : 'tag-anchor';
   return `<span class="tag ${cls}">${esc(BIZ_LABEL[b] || biz)}</span>`;
 }
+
+// ── focus blocks: use BUSINESSES for biz cards ────────────────────────────────
+
+// (BIZLIST inside renderFocusBlocks is now derived from BUSINESSES)
 
 // ── tab switching ─────────────────────────────────────────────────────────────
 
@@ -2957,14 +3062,31 @@ function switchTab(name) {
 
 // ── TODAY VIEW ────────────────────────────────────────────────────────────────
 
+let lastFetchedDate = null;
+
 async function fetchTasks() {
+  const today = watDateStr();
+
+  // Show existing tasks immediately while request is in-flight
+  if (state.tasks.length && lastFetchedDate === today) {
+    renderToday();
+  }
+
   try {
     const [tasks, history] = await Promise.all([
       api('/api/tasks'),
       state.history.length ? Promise.resolve(state.history) : api('/api/history?days=35'),
     ]);
-    state.tasks   = tasks;
-    state.history = history;
+
+    // Clear stale data if the date rolled over
+    if (lastFetchedDate && lastFetchedDate !== today) {
+      state.calEvents = [];
+    }
+
+    lastFetchedDate = today;
+    state.tasks     = tasks;
+    state.history   = history;
+    checkPendingRecurring();
 
     // Fetch Google Calendar events in the background (non-blocking)
     api('/api/calendar/status').then(({ connected }) => {
@@ -2980,8 +3102,12 @@ async function fetchTasks() {
 
     renderToday();
   } catch (e) {
-    document.getElementById('task-list').innerHTML =
-      `<div class="empty-text">Error: ${esc(e.message)}</div>`;
+    // Keep showing existing tasks on error — don't wipe the list
+    if (!state.tasks.length) {
+      document.getElementById('task-list').innerHTML =
+        `<div class="empty-text">Error loading tasks: ${esc(e.message)}</div>`;
+    }
+    console.error('fetchTasks error:', e);
   }
 }
 
@@ -3100,8 +3226,9 @@ function renderTaskList() {
         ${priorityDot}
         ${calIcon}
         <span class="task-name${isDone ? ' done' : ''}">${esc(t.name)}</span>
+        ${t.source === 'carried' ? '<span style="font-size:10px;color:#bbb;font-style:italic;flex-shrink:0">carried</span>' : ''}
         ${tagHtml(t.business)}
-        <span class="task-time">${t.time ? esc(t.time) : ''}</span>
+        ${isCal ? `<span class="task-time">${t.time ? esc(t.time) : ''}</span>` : `<span class="task-time task-time-editable" onclick="event.stopPropagation();editTaskTime(${t.id},'${t.time || ''}')" title="Click to change time">${t.time ? esc(t.time) : '+'}</span>`}
         ${rightCtrl}
       </div>
     `;
@@ -3135,6 +3262,151 @@ async function deleteGcalTask(id, eventId) {
     state.tasks = state.tasks.filter(t => t.id !== id);
     renderToday();
   } catch (e) { console.error('deleteGcalTask:', e); }
+}
+
+// ── task time inline editing ──────────────────────────────────────────────────
+
+function editTaskTime(id, current) {
+  const span = event.currentTarget || event.target;
+  const inp = document.createElement('input');
+  inp.type = 'time';
+  if (current) inp.value = current;
+  inp.className = 'task-time-input';
+  inp.setAttribute('aria-label', 'Set task time');
+  span.replaceWith(inp);
+  inp.focus();
+
+  let saved = false;
+  async function save() {
+    if (saved) return;
+    saved = true;
+    const val = inp.value || null;
+    try {
+      const tasks = await api(`/api/tasks/${id}/time`, { method: 'PATCH', body: { scheduled_time: val } });
+      state.tasks = tasks;
+      renderToday();
+    } catch { renderToday(); }
+  }
+  inp.addEventListener('blur', save);
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') inp.blur();
+    if (e.key === 'Escape') { saved = true; renderToday(); }
+  });
+}
+
+// ── recurring time inline editing ─────────────────────────────────────────────
+
+function editRecurringTime(id, current) {
+  const span = event.currentTarget || event.target;
+  const inp = document.createElement('input');
+  inp.type = 'time';
+  if (current) inp.value = current;
+  inp.style.cssText = 'width:60px;font-size:11px;font-family:Geist Mono,monospace;border:none;border-bottom:1px solid #1a1a1a;outline:none;background:transparent;padding:0';
+  span.replaceWith(inp);
+  inp.focus();
+
+  let saved = false;
+  async function save() {
+    if (saved) return;
+    saved = true;
+    const val = inp.value || null;
+    try {
+      await api(`/api/recurring/${id}/time`, { method: 'PATCH', body: { scheduled_time: val } });
+      loadRoutines();
+    } catch { loadRoutines(); }
+  }
+  inp.addEventListener('blur', save);
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') inp.blur();
+    if (e.key === 'Escape') { saved = true; loadRoutines(); }
+  });
+}
+
+// ── toggle routine active/paused ─────────────────────────────────────────────
+
+async function toggleRoutineActive(id) {
+  try {
+    await api(`/api/recurring/${id}/toggle-active`, { method: 'PATCH' });
+    loadRoutines();
+    api('/api/recurring').then(g => { _focusRecurring = g.personal || []; renderFocusBlocks(); }).catch(() => {});
+  } catch (e) { console.error('toggleRoutineActive:', e); }
+}
+
+// ── pending recurring banner ──────────────────────────────────────────────────
+
+async function checkPendingRecurring() {
+  try {
+    const pending = await api('/api/recurring/pending/today');
+    renderPendingBanner(pending);
+  } catch {}
+}
+
+function renderPendingBanner(pending) {
+  const banner = document.getElementById('pending-recurring-banner');
+  if (!banner) return;
+  if (!pending || !pending.length) { banner.style.display = 'none'; return; }
+
+  banner.style.display = 'block';
+  banner.innerHTML = `
+    <div class="pending-rec-banner">
+      <div class="pending-rec-head">Recurring tasks for today</div>
+      <div class="pending-rec-sub">Confirm which routines to add</div>
+      <div id="pending-rec-list">
+        ${pending.map(t => `
+          <div class="pending-rec-row">
+            <input type="checkbox" id="prec-${t.id}" data-id="${t.id}" checked>
+            <label for="prec-${t.id}" style="display:flex;align-items:center;gap:6px;cursor:pointer;flex:1">
+              ${tagHtml(t.business)}
+              <span style="font-size:11px;color:#999;font-family:monospace;min-width:38px">${esc(t.scheduled_time || '')}</span>
+              <span style="font-size:13px">${esc(t.name)}</span>
+            </label>
+          </div>
+        `).join('')}
+      </div>
+      <div style="display:flex;gap:10px;margin:8px 0 4px">
+        <a href="#" style="font-size:11px;color:#999;text-decoration:none" onclick="event.preventDefault();document.querySelectorAll('#pending-rec-list input').forEach(c=>c.checked=true)">Select all</a>
+        <span style="color:#d0d0cc;font-size:11px">·</span>
+        <a href="#" style="font-size:11px;color:#999;text-decoration:none" onclick="event.preventDefault();document.querySelectorAll('#pending-rec-list input').forEach(c=>c.checked=false)">Deselect all</a>
+      </div>
+      <div class="pending-rec-actions">
+        <button class="add-btn" onclick="confirmSelectedRecurring()">Add selected</button>
+        <button class="add-btn" onclick="confirmAllRecurringToday()">Add all</button>
+        <a href="#" style="font-size:11px;color:#999;text-decoration:none;margin-left:4px" onclick="event.preventDefault();skipRecurringToday()">Skip today</a>
+      </div>
+    </div>
+  `;
+}
+
+async function confirmSelectedRecurring() {
+  const checked   = document.querySelectorAll('#pending-rec-list input:checked');
+  const unchecked = document.querySelectorAll('#pending-rec-list input:not(:checked)');
+  const confirmIds = Array.from(checked).map(c => c.dataset.id);
+  const rejectIds  = Array.from(unchecked).map(c => c.dataset.id);
+  if (!confirmIds.length && !rejectIds.length) return;
+  try {
+    for (const id of confirmIds) await api(`/api/recurring/confirm/${id}`, { method: 'POST' });
+    for (const id of rejectIds)  await api(`/api/recurring/reject/${id}`,  { method: 'POST' });
+    state.tasks = await api('/api/tasks');
+    document.getElementById('pending-recurring-banner').style.display = 'none';
+    renderToday();
+  } catch (e) { console.error('confirmSelectedRecurring:', e); }
+}
+
+async function confirmAllRecurringToday() {
+  try {
+    const tasks = await api('/api/recurring/confirm-all/today', { method: 'POST' });
+    state.tasks = tasks;
+    document.getElementById('pending-recurring-banner').style.display = 'none';
+    renderToday();
+  } catch (e) { console.error('confirmAllRecurring:', e); }
+}
+
+async function skipRecurringToday() {
+  try {
+    await api('/api/recurring/skip/today', { method: 'POST' });
+    document.getElementById('pending-recurring-banner').style.display = 'none';
+    showToast('Recurring tasks skipped for today');
+  } catch (e) { console.error('skipRecurringToday:', e); }
 }
 
 async function deleteCalEvent(eventId) {
@@ -3755,11 +4027,13 @@ function renderFocusBlocks() {
   const el = document.getElementById('focus-blocks-grid');
   if (!el) return;
 
-  const BIZLIST = [
-    { key: 'blok',  label: BIZ_LABEL.blok  || 'Blok AI' },
-    { key: 'aphl',  label: BIZ_LABEL.aphl  || 'APHL Africa' },
-    { key: 'trade', label: BIZ_LABEL.trade || 'TradeSol' },
-  ];
+  const BIZLIST = BUSINESSES.length
+    ? BUSINESSES.filter(b => b.slug !== 'personal').map(b => ({ key: b.slug, label: b.name }))
+    : [
+        { key: 'blok',  label: BIZ_LABEL.blok  || 'Blok AI' },
+        { key: 'aphl',  label: BIZ_LABEL.aphl  || 'APHL Africa' },
+        { key: 'trade', label: BIZ_LABEL.trade || 'TradeSol' },
+      ];
 
   const PRI = { high: 0, normal: 1, low: 2 };
 
@@ -4267,9 +4541,10 @@ function renderRoutineSection(elId, tasks, permanent = false) {
   el.innerHTML = tasks.map(t => `
     <div class="routine-row" style="flex-wrap:wrap">
       <i class="ti ti-refresh" style="font-size:11px;color:#ccc;flex-shrink:0"></i>
-      <span class="routine-time">${t.scheduled_time ? esc(t.scheduled_time) : ''}</span>
+      <span class="routine-time routine-time-editable" onclick="editRecurringTime(${t.id},'${t.scheduled_time || ''}')" title="Click to change time">${t.scheduled_time ? esc(t.scheduled_time) : '+'}</span>
       <span class="routine-name">${esc(t.name)}</span>
       <span class="routine-days">${formatDaysLabelShort(t.days)}</span>
+      <button class="routine-pause-btn" onclick="toggleRoutineActive(${t.id})" title="Pause this routine">Pause</button>
       <button class="routine-remove" onclick="removeRoutine(${t.id}, ${permanent})" aria-label="Remove"><i class="ti ti-x"></i></button>
       ${t.notes ? `<div style="width:100%;padding-left:27px;font-size:11px;color:#999;font-style:italic;margin-top:1px">${esc(t.notes)}</div>` : ''}
     </div>`).join('');
@@ -4296,7 +4571,7 @@ function renderFutureRoutines(tasks) {
       <span class="routine-time">${t.scheduled_time ? esc(t.scheduled_time) : ''}</span>
       <span class="routine-name" style="color:#aaa">${esc(t.name)}</span>
       <span class="routine-days">${formatDaysLabelShort(t.days)}</span>
-      <button class="routine-activate-btn" onclick="activateFutureRoutine(${t.id})">Activate</button>
+      <button class="routine-activate-btn" onclick="activateFutureRoutine(${t.id})">Resume</button>
       <button class="routine-remove" onclick="removeRoutine(${t.id}, false)" aria-label="Remove"><i class="ti ti-x"></i></button>
     </div>`).join('');
 }
@@ -5118,6 +5393,87 @@ async function syncTodayTasks() {
 
 async function loadSettings() {
   await Promise.all([loadGcalStatus(), loadSchedDefaults(), loadNotifPrefs()]);
+  renderBusinessesList();
+}
+
+// ── businesses settings ───────────────────────────────────────────────────────
+
+const BIZ_COLOR_PRESETS = [
+  '#f0effe', '#edf7f2', '#fef8ec', '#fdf0f4',
+  '#fef3e8', '#f0f4fe', '#fef0f0', '#f0fefc',
+];
+let _bizSelectedColor = BIZ_COLOR_PRESETS[0];
+
+function darkenBizColor(hex) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgb(${Math.floor(r * 0.35)},${Math.floor(g * 0.35)},${Math.floor(b * 0.35)})`;
+}
+
+function renderBusinessesList() {
+  const el = document.getElementById('businesses-list');
+  if (!el) return;
+  el.innerHTML = BUSINESSES.map(b => `
+    <div class="settings-row" style="gap:8px">
+      <span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${b.color_bg};border:1.5px solid ${b.color_text};flex-shrink:0"></span>
+      <span style="flex:1;font-size:13px">${esc(b.name)}</span>
+      <span style="font-size:10px;color:#aaa;font-family:monospace">${esc(b.slug)}</span>
+      <button class="secondary-btn" style="padding:2px 8px;font-size:11px;color:#c0392b;border-color:#f0d0d0" onclick="deactivateBusinessSetting(${b.id})">Deactivate</button>
+    </div>
+  `).join('') || '<div style="font-size:12px;color:#aaa;padding:4px 0">No businesses yet.</div>';
+
+  // Color swatches
+  const swatchEl = document.getElementById('biz-color-swatches');
+  if (swatchEl) {
+    swatchEl.innerHTML = BIZ_COLOR_PRESETS.map(c => `
+      <div class="biz-color-swatch${c === _bizSelectedColor ? ' selected' : ''}"
+           style="background:${c}" onclick="selectBizColor('${c}')"></div>
+    `).join('');
+  }
+  updateBizPreview();
+}
+
+function selectBizColor(color) {
+  _bizSelectedColor = color;
+  renderBusinessesList();
+}
+
+function updateBizPreview() {
+  const preview = document.getElementById('biz-add-preview');
+  const nameEl  = document.getElementById('biz-add-name');
+  if (!preview) return;
+  const label = (nameEl && nameEl.value.trim()) ? nameEl.value.trim() : 'New business';
+  preview.style.background = _bizSelectedColor;
+  preview.style.color      = darkenBizColor(_bizSelectedColor);
+  preview.textContent      = label;
+}
+
+async function addNewBusiness() {
+  const nameEl = document.getElementById('biz-add-name');
+  const name   = nameEl ? nameEl.value.trim() : '';
+  if (!name) { if (nameEl) nameEl.focus(); return; }
+  try {
+    BUSINESSES = await api('/api/businesses', {
+      method: 'POST',
+      body: { name, color_bg: _bizSelectedColor, color_text: darkenBizColor(_bizSelectedColor) },
+    });
+    for (const b of BUSINESSES) BIZ_LABEL[b.slug] = b.name;
+    if (nameEl) nameEl.value = '';
+    renderBusinessesList();
+    updateAllBizSelects();
+    showToast(`${name} added`);
+  } catch (e) { showToast(e.message); }
+}
+
+async function deactivateBusinessSetting(id) {
+  if (!confirm('Deactivate this business? It will be removed from selects.')) return;
+  try {
+    BUSINESSES = await api(`/api/businesses/${id}`, { method: 'DELETE' });
+    for (const b of BUSINESSES) BIZ_LABEL[b.slug] = b.name;
+    renderBusinessesList();
+    updateAllBizSelects();
+  } catch (e) { showToast(e.message); }
 }
 
 async function loadGcalStatus() {
@@ -5346,7 +5702,19 @@ document.addEventListener('DOMContentLoaded', () => {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   }
 
+  // Detect date change when user returns to the tab (e.g. next morning)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      const today = watDateStr();
+      if (lastFetchedDate !== today) {
+        document.getElementById('today-date').textContent = formatDate();
+        fetchTasks();
+      }
+    }
+  });
+
   // Initial load
+  loadBusinesses().then(() => renderFocusBlocks());
   fetchTasks();
   updateWeeklyStat();
 });
