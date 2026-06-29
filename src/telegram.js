@@ -1,11 +1,15 @@
 require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 const fetch = require('node-fetch');
+const fs    = require('fs');
+const path  = require('path');
 const {
   transcribeAudio, structureDump,
   generateMorningBriefing, generateEODReview,
   analyzeVoiceReport, suggestMonthlyCommitments, reviewGoalProgress,
+  parseStrategicDocument,
 } = require('./ai');
+const { parseDocument, cleanDocumentText } = require('./document-parser');
 const gcal = require('./google-calendar');
 const {
   db, watToday, watTomorrow,
@@ -15,7 +19,8 @@ const {
   getAllGoals, addGoal, updateGoalStatus,
   getCycles, getCyclesByGoal, addCycle, updateCycleCommitment,
   addGoalProgress, getGoalProgress,
-  getSetting,
+  getSetting, saveDocumentAnalysis,
+  saveUploadedDocument, getAllUploadedDocuments, linkDocumentToAnalysis, updateUploadedDocumentStatus,
 } = require('./db');
 
 // WAT datetime helpers (kept local — not needed in other modules)
@@ -40,6 +45,18 @@ const pendingTasks = new Map();
 
 // chatId → { goal_id, suggested_title, commitments } — pending /suggest result for /newcycle
 const pendingSuggestions = new Map();
+
+// chatId → array of document-sourced tasks awaiting ADD/NO confirmation
+const pendingDocTasks = new Map();
+
+// chatId → { transcript, step } — voice note identified as strategic doc
+const pendingVoiceDoc = new Map();
+
+// chatId → { parsedText, wordCount, docId } — uploaded file awaiting business selection
+const pendingDocument = new Map();
+
+const TEMP_DIR = path.join(__dirname, '..', 'uploads', 'temp');
+try { require('fs').mkdirSync(TEMP_DIR, { recursive: true }); } catch {}
 
 let bot;
 
@@ -235,6 +252,56 @@ async function registerWebhook(serverUrl) {
   console.log(`Webhook set: ${url}`);
 }
 
+// ── document helpers ──────────────────────────────────────────────────────────
+
+function hasDocPrefix(text) {
+  return /^(blok|aphl|trade|personal):\s*/i.test(text.trim());
+}
+
+function extractDocPrefix(text) {
+  const match = text.trim().match(/^(blok|aphl|trade|personal):\s*/i);
+  return { biz: match[1].toLowerCase(), docText: text.slice(match[0].length).trim() };
+}
+
+async function runDocAnalysis(biz, docText) {
+  const goals   = getAllGoals.all();
+  const tasks   = getTodayTasks();
+  const analysis = await parseStrategicDocument(docText, biz, goals, tasks);
+  saveDocumentAnalysis.run(
+    biz, docText.slice(0, 200),
+    analysis.summary, analysis.key_insight, analysis.risk,
+    JSON.stringify(analysis.tasks)
+  );
+  return analysis;
+}
+
+function formatDocAnalysisReply(biz, analysis) {
+  const taskLines = analysis.tasks.map((t, i) => {
+    const pri = t.priority === 'high' ? '[HIGH]' : '[NORMAL]';
+    return `${i + 1}. ${pri} ${t.name}\n   Why: ${t.rationale}`;
+  }).join('\n');
+  return (
+    `DOCUMENT ANALYSIS — ${biz.toUpperCase()}\n\n` +
+    `Summary:\n${analysis.summary}\n\n` +
+    `Key insight:\n${analysis.key_insight}\n\n` +
+    `Risk to watch:\n${analysis.risk}\n\n` +
+    `TASKS FOR TODAY (${analysis.tasks.length}):\n${taskLines}\n\n` +
+    'Reply ADD to add these to today, or NO to discard.'
+  );
+}
+
+function saveDocumentTasks(tasks) {
+  const today = watToday();
+  const stmt  = db.prepare(
+    `INSERT INTO tasks (date, name, business, time, done, priority, source)
+     VALUES (?, ?, ?, ?, 0, ?, 'document')`
+  );
+  db.transaction((ts) => {
+    for (const t of ts) stmt.run(today, t.name, t.business || 'blok', t.time || null, t.priority || 'normal');
+  })(tasks);
+  syncDayLog(today);
+}
+
 async function handleUpdate(update) {
   const chatId = String(process.env.TELEGRAM_CHAT_ID);
   const msg = update.message;
@@ -244,10 +311,106 @@ async function handleUpdate(update) {
   try {
     const voice = msg.voice || msg.audio;
     const text  = msg.text || '';
+    const upper = text.trim().toUpperCase();
 
-    // ── pending confirmation (YES/ADD → save, NO → discard) ───────────────────
+    // ── pending voice doc flow (TASKS/DUMP, then business) ───────────────────
+    if (pendingVoiceDoc.has(chatId) && !voice) {
+      const state = pendingVoiceDoc.get(chatId);
+
+      if (state.step === 'awaiting_format') {
+        if (upper === 'TASKS') {
+          pendingVoiceDoc.set(chatId, { ...state, step: 'awaiting_business' });
+          await sendMessage('Which business? Reply blok, aphl, trade, or personal');
+        } else if (upper === 'DUMP') {
+          pendingVoiceDoc.delete(chatId);
+          await handleDump(state.transcript);
+        } else {
+          pendingVoiceDoc.delete(chatId);
+        }
+        return;
+      }
+
+      if (state.step === 'awaiting_business') {
+        const biz = text.trim().toLowerCase();
+        if (!VALID_BUSINESSES.includes(biz)) {
+          await sendMessage('Reply blok, aphl, trade, or personal');
+          return;
+        }
+        pendingVoiceDoc.delete(chatId);
+        await sendMessage(`Analyzing your ${BIZ_LABEL[biz] || biz} document…`);
+        try {
+          const analysis = await runDocAnalysis(biz, state.transcript);
+          pendingDocTasks.set(chatId, analysis.tasks);
+          await sendMessage(formatDocAnalysisReply(biz, analysis));
+        } catch (err) {
+          await sendMessage(`Analysis failed: ${err.message}`);
+        }
+        return;
+      }
+    }
+
+    // ── pending document task confirmation (ADD/TOMORROW → save, NO → discard) ─
+    if (pendingDocTasks.has(chatId) && !voice) {
+      const tasks = pendingDocTasks.get(chatId);
+      pendingDocTasks.delete(chatId);
+      if (upper === 'ADD') {
+        saveDocumentTasks(tasks);
+        await sendMessage(`${tasks.length} task${tasks.length !== 1 ? 's' : ''} assigned to today.\n\n${formatTaskList(getTodayTasks())}`);
+      } else if (upper === 'TOMORROW') {
+        const today = watToday();
+        const tomorrow = watTomorrow();
+        const stmt = db.prepare(
+          `INSERT INTO tasks (date, name, business, time, done, priority, source)
+           VALUES (?, ?, ?, ?, 0, ?, 'document')`
+        );
+        db.transaction((ts) => {
+          for (const t of ts) stmt.run(tomorrow, t.name, t.business || 'blok', t.time || null, t.priority || 'normal');
+        })(tasks);
+        syncDayLog(tomorrow);
+        await sendMessage(`${tasks.length} task${tasks.length !== 1 ? 's' : ''} assigned to tomorrow.`);
+      } else if (upper === 'NO') {
+        await sendMessage('Discarded.');
+      } else if (text.startsWith('/')) {
+        await handleCommand(text);
+      }
+      return;
+    }
+
+    // ── pending document business selection ──────────────────────────────────
+    if (pendingDocument.has(chatId) && !voice && !text.startsWith('/')) {
+      const biz = text.trim().toLowerCase();
+      if (!VALID_BUSINESSES.includes(biz)) {
+        await sendMessage('Reply blok, aphl, trade, or personal');
+        return;
+      }
+      const { parsedText, wordCount, filename } = pendingDocument.get(chatId);
+      pendingDocument.delete(chatId);
+
+      const docInfo = saveUploadedDocument.run(filename, filename, 'text', null, biz, parsedText);
+      const docId   = docInfo.lastInsertRowid;
+      updateUploadedDocumentStatus.run('parsed', docId);
+
+      await sendMessage(`Document saved. Analyzing for ${BIZ_LABEL[biz] || biz}…`);
+      try {
+        const goals    = getAllGoals.all();
+        const tasks    = getTodayTasks();
+        const analysis = await parseStrategicDocument(parsedText, biz, goals, tasks);
+        const anaInfo  = saveDocumentAnalysis.run(
+          biz, parsedText.slice(0, 200),
+          analysis.summary, analysis.key_insight, analysis.risk,
+          JSON.stringify(analysis.tasks)
+        );
+        linkDocumentToAnalysis.run(anaInfo.lastInsertRowid, 'analyzed', docId);
+        pendingDocTasks.set(chatId, analysis.tasks.map(t => ({ ...t, business: t.business || biz })));
+        await sendMessage(formatDocAnalysisReply(biz, analysis));
+      } catch (err) {
+        await sendMessage(`Analysis failed: ${err.message}`);
+      }
+      return;
+    }
+
+    // ── pending brain-dump task confirmation (YES/ADD → save, NO → discard) ──
     if (pendingTasks.has(chatId) && !voice) {
-      const upper   = text.trim().toUpperCase();
       const pending = pendingTasks.get(chatId);
       pendingTasks.delete(chatId);
 
@@ -257,7 +420,6 @@ async function handleUpdate(update) {
       } else if (upper === 'NO') {
         await sendMessage('Discarded.');
       } else {
-        // process as a new message
         if (text.startsWith('/')) {
           await handleCommand(text);
         } else if (text.length > 20) {
@@ -267,12 +429,26 @@ async function handleUpdate(update) {
       return;
     }
 
+    if (msg.document) {
+      await handleDocumentFile(msg.document, chatId);
+      return;
+    }
+
     if (voice) {
-      // clear any stale pending tasks before processing new voice note
       pendingTasks.delete(chatId);
       await handleVoice(voice, chatId);
     } else if (text.startsWith('/')) {
       await handleCommand(text);
+    } else if (text.length > 200 && hasDocPrefix(text)) {
+      const { biz, docText } = extractDocPrefix(text);
+      await sendMessage(`Analyzing your ${BIZ_LABEL[biz] || biz} document…`);
+      try {
+        const analysis = await runDocAnalysis(biz, docText);
+        pendingDocTasks.set(chatId, analysis.tasks);
+        await sendMessage(formatDocAnalysisReply(biz, analysis));
+      } catch (err) {
+        await sendMessage(`Analysis failed: ${err.message}`);
+      }
     } else if (text.length > 20) {
       await handleDump(text);
     }
@@ -311,6 +487,14 @@ async function handleCommand(text) {
         '/snoozeall — snooze all pending tasks\n' +
         '/gcal — view today\'s calendar events\n' +
         '/calsync — sync pending tasks to Google Calendar\n\n' +
+        'PM & INVESTOR RELATIONS:\n' +
+        '/pm — daily PM check-in template\n' +
+        '/pmweekly — weekly PM session agenda (Mon/Wed/Fri)\n' +
+        '/investor — daily investor relationship prompt\n' +
+        '/analyze — instructions for strategic document analysis\n' +
+        '/docs — your uploaded document library\n' +
+        'blok: [text] or aphl: [text] — analyze a business document\n' +
+        'Send a PDF, Word, or text file to upload and analyze it.\n\n' +
         'GOALS & CYCLES:\n' +
         '/goals — view 2026 goals\n' +
         '/addgoal <biz> <dimension> <title> — add a goal\n' +
@@ -320,6 +504,8 @@ async function handleCommand(text) {
         '/newcycle <goal_id> — create cycle from suggestion\n' +
         '/review <goal_id> — AI review of goal progress\n' +
         '/logprogress <goal_id> <note> — log progress note\n\n' +
+        'PERSONAL:\n' +
+        '/family — family time reminder\n\n' +
         'Businesses: blok, aphl, trade, personal\n' +
         'Send voice to report completions or dump new tasks.'
       );
@@ -747,6 +933,154 @@ async function handleCommand(text) {
       break;
     }
 
+    case '/pm': {
+      const now    = new Date(Date.now() + 60 * 60 * 1000);
+      const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+      const days   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+      const label  = `${days[now.getUTCDay()]}, ${now.getUTCDate()} ${months[now.getUTCMonth()]}`;
+      await sendMessage(
+        `PM DAILY CHECK-IN — ${label}\n\n` +
+        `Send this to your PM:\n\n` +
+        `Morning sync:\n` +
+        `- What are you working on today?\n` +
+        `- Any blockers I need to unblock?\n` +
+        `- What needs my decision today?\n\n` +
+        `Copy and adapt as needed.\n` +
+        `Use /pmweekly for the weekly agenda template.`
+      );
+      break;
+    }
+
+    case '/pmweekly': {
+      const dow = new Date(Date.now() + 60 * 60 * 1000).getUTCDay();
+      if (dow === 1) {
+        await sendMessage(
+          `MONDAY — ROADMAP REVIEW AGENDA\n\n` +
+          `1. Review last week output — what shipped, what did not\n` +
+          `2. Set this week's top 3 priorities for the product\n` +
+          `3. Align on any investor-related product questions\n` +
+          `4. Confirm capacity and timeline for this week\n` +
+          `5. Any team issues to resolve\n\n` +
+          `Duration: 45 minutes max.`
+        );
+      } else if (dow === 3) {
+        await sendMessage(
+          `WEDNESDAY — MID-WEEK DECISION SYNC\n\n` +
+          `1. What decisions are blocked waiting for me?\n` +
+          `2. User feedback review — anything urgent?\n` +
+          `3. Any scope changes needed?\n` +
+          `4. Check on this week's priorities — on track?\n\n` +
+          `Duration: 30 minutes max.`
+        );
+      } else if (dow === 5) {
+        await sendMessage(
+          `FRIDAY — SPRINT CLOSE REVIEW\n\n` +
+          `1. What shipped this week?\n` +
+          `2. What did not ship and why?\n` +
+          `3. What carries to next week?\n` +
+          `4. One thing that went well, one thing to improve\n` +
+          `5. Set context for next week's Monday review\n\n` +
+          `Duration: 30 minutes max.`
+        );
+      } else {
+        await sendMessage(
+          `Weekly PM sessions are Monday (roadmap), Wednesday (decisions), Friday (sprint close).\n` +
+          `Daily check-in: /pm`
+        );
+      }
+      break;
+    }
+
+    case '/analyze': {
+      await sendMessage(
+        `Send me a strategic document to break into daily tasks.\n\n` +
+        `Paste your document as a text message — a business plan, investor memo, operations report, strategic note, or any business document.\n\n` +
+        `Prefix with the business name:\n` +
+        `blok: [paste document]\n` +
+        `aphl: [paste document]\n\n` +
+        `I will extract 2–3 specific daily tasks from it and tell you the key insight and risk.`
+      );
+      break;
+    }
+
+    case '/investor': {
+      const dow = new Date(Date.now() + 60 * 60 * 1000).getUTCDay();
+      const msgs = {
+        1: `INVESTOR TOUCHPOINT — Monday\n\nToday's focus: Research\nPick one investor or fund to research deeply.\n\nQuestions to answer:\n- What is their investment thesis?\n- What companies have they backed that are similar to Blok AI?\n- What have they posted or written recently?\n- Who in your network knows them?\n- What would make them care about Blok AI specifically?\n\nGoal: Know them well enough to have a real conversation, not pitch them blindly.`,
+        2: `INVESTOR TOUCHPOINT — Tuesday\n\nToday's focus: Warm intro mapping\n\nOpen your contact list. Who do you know who knows your target investors?\n\nQuestions to answer:\n- Who is one person who can introduce you to someone on your target list?\n- What do you need to send them to make the ask easy?\n- Have you kept this person warm recently?\n\nGoal: One intro request sent today to someone who can connect you.`,
+        3: `INVESTOR TOUCHPOINT — Wednesday\n\nToday's focus: Deepen an existing relationship\n\nPick someone already in your pipeline. Not a cold contact. Someone you have spoken to before.\n\nOptions:\n- Share a product update or milestone\n- Send an article relevant to their thesis\n- Ask for their honest feedback on something specific\n- Check in genuinely with no pitch attached\n\nGoal: One meaningful interaction that moves the relationship forward.`,
+        4: `INVESTOR TOUCHPOINT — Thursday\n\nToday's focus: Warm intro follow-up\n\nCheck your pending intro requests. Has anyone responded? Do you need to nudge a connector?\n\nAlso: Is there a founder in your network who has raised recently? They are often the best source of warm intros and honest advice.\n\nGoal: Move one intro request forward today.`,
+        5: `INVESTOR TOUCHPOINT — Friday\n\nToday's focus: Week recap and pipeline update\n\nBefore you close the week:\n- Who did you connect with this week?\n- What conversations are warm?\n- What needs follow-up next week?\n- Did any relationship go cold that needs attention?\n\nUpdate your pipeline notes now while it is fresh.\nGoal: Clean, current pipeline going into the weekend.`,
+      };
+      const msg = msgs[dow] || `Investor relations rest day.\n\nWeekend is for recovery, not outreach. Relationships need breathing room.\n\nUse the time to think about who you want to build a relationship with next week.`;
+      await sendMessage(msg);
+      break;
+    }
+
+    case '/docs': {
+      const docNum = parseInt(args[0], 10);
+      const allDocs = getAllUploadedDocuments.all().slice(0, 5);
+      if (docNum && docNum >= 1 && docNum <= allDocs.length) {
+        const doc = allDocs[docNum - 1];
+        if (!doc.parsed_text) {
+          await sendMessage(`Document ${docNum} has no parsed text. Re-upload via the dashboard.`);
+          return;
+        }
+        await sendMessage('Re-analyzing…');
+        try {
+          const goals    = getAllGoals.all();
+          const tasks    = getTodayTasks();
+          const analysis = await parseStrategicDocument(doc.parsed_text, doc.business || 'blok', goals, tasks);
+          const biz      = doc.business || 'blok';
+          const anaInfo  = saveDocumentAnalysis.run(
+            biz, doc.parsed_text.slice(0, 200),
+            analysis.summary, analysis.key_insight, analysis.risk,
+            JSON.stringify(analysis.tasks)
+          );
+          linkDocumentToAnalysis.run(anaInfo.lastInsertRowid, 'analyzed', doc.id);
+          pendingDocTasks.set(chatId, analysis.tasks.map(t => ({ ...t, business: t.business || biz })));
+          await sendMessage(formatDocAnalysisReply(biz, analysis));
+        } catch (err) {
+          await sendMessage(`Analysis failed: ${err.message}`);
+        }
+        return;
+      }
+      if (!allDocs.length) {
+        await sendMessage(
+          'YOUR DOCUMENTS\n\nNo documents uploaded yet.\n\nSend any PDF, Word, or text file to analyze it.'
+        );
+        return;
+      }
+      const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const lines = allDocs.map((d, i) => {
+        const date    = new Date(d.upload_date || '');
+        const dateStr = isNaN(date) ? '—' : `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]}`;
+        const status  = d.analysis_id ? 'analyzed' : 'uploaded';
+        return `${i + 1}. [${(d.business || '—').toUpperCase()}] ${d.original_name} — ${status} — ${dateStr}`;
+      });
+      await sendMessage(
+        `YOUR DOCUMENTS\n\n${lines.join('\n')}\n\n` +
+        'Send any PDF, Word, or text file to analyze it.\n' +
+        '/docs <number> to re-analyze a document.'
+      );
+      break;
+    }
+
+    case '/family': {
+      const now     = new Date(Date.now() + 60 * 60 * 1000);
+      const hourWAT = now.getUTCHours();
+      if (hourWAT >= 17) {
+        await sendMessage(
+          `Family time block — 17:30\n\nWho are you calling today?\n\nThis is protected time.\nThe business can wait 30 minutes.`
+        );
+      } else {
+        await sendMessage(
+          `Family time is at 17:30 today.\nProtect it.`
+        );
+      }
+      break;
+    }
+
     case '/gcal': {
       let connected = false;
       try { gcal.getClient(); connected = true; } catch { }
@@ -814,7 +1148,21 @@ async function handleVoice(voice, chatId) {
   const mimeType    = voice.mime_type || 'audio/ogg';
   const audioBuffer = await res.buffer();
 
-  const transcript = await transcribeAudio(audioBuffer, mimeType);
+  const transcript  = await transcribeAudio(audioBuffer, mimeType);
+  const wordCount   = transcript.split(/\s+/).filter(Boolean).length;
+
+  // Long transcript — may be a strategic document or plan
+  if (wordCount > 300) {
+    pendingVoiceDoc.set(chatId, { transcript, step: 'awaiting_format' });
+    await sendMessage(
+      `This sounds like a strategic document or detailed plan.\n` +
+      `How should I treat it?\n\n` +
+      `Reply TASKS to extract 2–3 daily tasks\n` +
+      `Reply DUMP to structure it as a brain dump`
+    );
+    return;
+  }
+
   const tasks      = getTodayTasks();
   const analysis   = await analyzeVoiceReport(transcript, tasks);
 
@@ -875,6 +1223,57 @@ async function handleVoice(voice, chatId) {
   }
 
   await sendMessage(reply);
+}
+
+async function handleDocumentFile(doc, chatId) {
+  const ALLOWED_DOC_EXTS = new Set(['.pdf', '.docx', '.doc', '.txt', '.md']);
+  const ext = path.extname(doc.file_name || '').toLowerCase();
+
+  if (!ALLOWED_DOC_EXTS.has(ext)) {
+    await sendMessage('Only PDF, Word, and text files are supported. Send a document file.');
+    return;
+  }
+  if (doc.file_size && doc.file_size > 10 * 1024 * 1024) {
+    await sendMessage('File too large. Maximum 10MB.');
+    return;
+  }
+
+  await sendMessage(`Got your document: ${doc.file_name}\nDownloading and parsing…`);
+
+  try {
+    const fileInfo = await bot.getFile(doc.file_id);
+    const fileUrl  = `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${fileInfo.file_path}`;
+    const res      = await fetch(fileUrl);
+    if (!res.ok) throw new Error(`Failed to download file: ${res.status}`);
+
+    const buf      = await res.buffer();
+    const tmpPath  = path.join(TEMP_DIR, `${Date.now()}-${doc.file_name}`);
+    fs.writeFileSync(tmpPath, buf);
+
+    const mimeByExt = {
+      '.pdf':  'application/pdf',
+      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      '.doc':  'application/msword',
+      '.txt':  'text/plain',
+      '.md':   'text/plain',
+    };
+    const mimeType = mimeByExt[ext] || 'text/plain';
+    const parsed   = await parseDocument(tmpPath, mimeType);
+    const cleaned  = cleanDocumentText(parsed.text);
+    const words    = cleaned.split(/\s+/).filter(Boolean).length;
+
+    fs.unlink(tmpPath, () => {});
+
+    pendingDocument.set(chatId, { parsedText: cleaned, wordCount: words, filename: doc.file_name });
+
+    await sendMessage(
+      `Parsed: ${words} words extracted.\n\n` +
+      `Which business is this for?\n` +
+      `Reply blok, aphl, trade, or personal`
+    );
+  } catch (err) {
+    await sendMessage(`Failed to process document: ${err.message}`);
+  }
 }
 
 module.exports = { initBot, handleUpdate, registerWebhook, sendMessage, sendNudgeDigest, POLLING };

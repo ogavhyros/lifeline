@@ -117,6 +117,42 @@ db.exec(`
     value      TEXT,
     updated_at TEXT DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS document_analyses (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    business         TEXT,
+    document_excerpt TEXT,
+    summary          TEXT,
+    key_insight      TEXT,
+    risk             TEXT,
+    tasks_json       TEXT,
+    created_at       TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS uploaded_documents (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    filename      TEXT    NOT NULL,
+    original_name TEXT    NOT NULL,
+    file_type     TEXT    NOT NULL,
+    file_size     INTEGER,
+    business      TEXT,
+    upload_date   TEXT    DEFAULT (datetime('now')),
+    parsed_text   TEXT,
+    analysis_id   INTEGER REFERENCES document_analyses(id),
+    status        TEXT    DEFAULT 'uploaded'
+      CHECK(status IN ('uploaded','parsed','analyzed','archived')),
+    assigned_to   TEXT    DEFAULT 'OGV',
+    tags          TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS team_members (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    name     TEXT    NOT NULL,
+    role     TEXT    NOT NULL,
+    business TEXT    NOT NULL,
+    contact  TEXT,
+    active   INTEGER DEFAULT 1
+  );
 `);
 
 // Add columns that may not exist yet (safe to run every startup)
@@ -128,6 +164,7 @@ try { db.exec(`ALTER TABLE tasks ADD COLUMN event_id TEXT`); } catch {}
 try { db.exec(`ALTER TABLE tasks ADD COLUMN calendar_event_id TEXT`); } catch {}
 try { db.exec(`ALTER TABLE tasks ADD COLUMN calendar_source TEXT`); } catch {}
 try { db.exec(`ALTER TABLE recurring_tasks ADD COLUMN category TEXT DEFAULT 'work'`); } catch {}
+try { db.exec(`ALTER TABLE recurring_tasks ADD COLUMN notes TEXT`); } catch {}
 
 // ── WAT helpers ───────────────────────────────────────────────────────────────
 
@@ -383,56 +420,173 @@ const upsertSetting = db.prepare(`
 `);
 const deleteSetting = db.prepare('DELETE FROM settings WHERE key = ?');
 
-// ── startup seeds (v2 — runs once, resets previous seeds) ────────────────────
+// ── prepared statements — document analyses ───────────────────────────────────
+
+const saveDocumentAnalysis = db.prepare(
+  `INSERT INTO document_analyses (business, document_excerpt, summary, key_insight, risk, tasks_json)
+   VALUES (?, ?, ?, ?, ?, ?)`
+);
+const getDocumentAnalyses = db.prepare(
+  'SELECT * FROM document_analyses ORDER BY created_at DESC LIMIT 10'
+);
+
+// ── prepared statements — uploaded documents ──────────────────────────────────
+
+const saveUploadedDocument = db.prepare(
+  `INSERT INTO uploaded_documents (filename, original_name, file_type, file_size, business, parsed_text)
+   VALUES (?, ?, ?, ?, ?, ?)`
+);
+const getUploadedDocument = db.prepare(
+  'SELECT * FROM uploaded_documents WHERE id = ?'
+);
+const getAllUploadedDocuments = db.prepare(
+  `SELECT d.id, d.filename, d.original_name, d.file_type, d.file_size, d.business,
+          d.upload_date, d.status, d.analysis_id, d.assigned_to, d.tags,
+          a.summary, a.key_insight, a.risk, a.tasks_json
+   FROM uploaded_documents d
+   LEFT JOIN document_analyses a ON a.id = d.analysis_id
+   WHERE d.status != 'archived'
+   ORDER BY d.upload_date DESC
+   LIMIT 50`
+);
+const getUploadedDocumentsByBusiness = db.prepare(
+  `SELECT d.id, d.filename, d.original_name, d.file_type, d.file_size, d.business,
+          d.upload_date, d.status, d.analysis_id, d.assigned_to,
+          a.summary
+   FROM uploaded_documents d
+   LEFT JOIN document_analyses a ON a.id = d.analysis_id
+   WHERE d.business = ? AND d.status != 'archived'
+   ORDER BY d.upload_date DESC`
+);
+const updateUploadedDocumentStatus = db.prepare(
+  'UPDATE uploaded_documents SET status = ? WHERE id = ?'
+);
+const linkDocumentToAnalysis = db.prepare(
+  'UPDATE uploaded_documents SET analysis_id = ?, status = ? WHERE id = ?'
+);
+const archiveUploadedDocument = db.prepare(
+  "UPDATE uploaded_documents SET status = 'archived' WHERE id = ?"
+);
+const searchUploadedDocuments = db.prepare(
+  `SELECT id, filename, original_name, file_type, business, upload_date, status,
+          substr(parsed_text, 1, 200) AS excerpt
+   FROM uploaded_documents
+   WHERE status != 'archived'
+     AND (original_name LIKE ? OR parsed_text LIKE ?)
+   ORDER BY upload_date DESC
+   LIMIT 20`
+);
+
+// ── prepared statements — team members ───────────────────────────────────────
+
+const getTeamMembers = db.prepare(
+  'SELECT * FROM team_members WHERE active = 1 ORDER BY business, name'
+);
+const getMembersByBusiness = db.prepare(
+  'SELECT * FROM team_members WHERE (business = ? OR business = ?) AND active = 1 ORDER BY name'
+);
+
+// ── team members seed (runs once if table is empty) ──────────────────────────
 
 {
-  const alreadySeeded = getSetting.get('recurring_seeded_v2');
+  const count = db.prepare('SELECT COUNT(*) AS n FROM team_members').get();
+  if (!count || count.n === 0) {
+    const stmt = db.prepare(
+      'INSERT INTO team_members (name, role, business, contact) VALUES (?, ?, ?, ?)'
+    );
+    db.transaction(() => {
+      stmt.run('Candy Opusunju', 'Operations and Sales', 'aphl', '');
+      stmt.run('Product Manager', 'Product Manager', 'blok', '');
+      stmt.run('OGV', 'CEO', 'all', '');
+    })();
+    console.log('[db] Team members seeded');
+  }
+}
+
+// ── startup seeds (v4 — runs once, resets previous seeds) ────────────────────
+
+{
+  const alreadySeeded = getSetting.get('recurring_seeded_v4');
   if (!alreadySeeded) {
-    const SEEDS_V2 = [
-      // BLOK AI
-      { name: 'Send investor emails',                    business: 'blok',     category: 'work',      scheduled_time: '07:30', days: '1,2,3,4,5', time_block: 'Raise: investor emails, CRM update',        active: 1 },
-      { name: 'Update CRM pipeline',                     business: 'blok',     category: 'work',      scheduled_time: '07:45', days: '1,2,3,4,5', time_block: 'Raise: investor emails, CRM update',        active: 1 },
-      { name: 'Review Arkad product progress',           business: 'blok',     category: 'work',      scheduled_time: '09:00', days: '1,2,3,4,5', time_block: 'Product: PM review, Arkad user flow',       active: 1 },
-      { name: 'Check and respond to Blok AI comms',      business: 'blok',     category: 'work',      scheduled_time: '10:30', days: 'daily',      time_block: 'Comms: Slack, async check-ins',             active: 1 },
+    const SEEDS_V4 = [
+      // BLOK AI — INVESTOR RELATIONSHIP BUILDING
+      { name: 'Investor relationship touchpoint',        business: 'blok',     category: 'work',     scheduled_time: '07:30', days: '1,2,3,4,5', time_block: 'Raise: investor relations', active: 1, notes: 'One meaningful touchpoint per day. Could be a WhatsApp check-in, sharing a relevant article, updating an investor on a milestone, requesting a warm intro, or following up on a conversation. Not mass email. One person, one genuine interaction.' },
+      { name: 'Update investor pipeline and notes',      business: 'blok',     category: 'work',     scheduled_time: '07:50', days: '1,2,3,4,5', time_block: 'Raise: investor relations', active: 1, notes: 'Log what happened with each investor contact today. Record conversation notes, next steps, relationship stage. Track relationship warmth not just email status.' },
+      { name: 'Research one target investor',            business: 'blok',     category: 'work',     scheduled_time: '08:05', days: '1,3,5',      time_block: 'Raise: investor relations', active: 1, notes: 'Monday, Wednesday, Friday only. Deep research on one investor or fund. Their portfolio, thesis, recent posts, mutual connections. Know them before you approach them.' },
+      { name: 'Identify one warm intro path',            business: 'blok',     category: 'work',     scheduled_time: '08:20', days: '2,4',        time_block: 'Raise: investor relations', active: 1, notes: 'Tuesday and Thursday. Look through your network for one connection who can introduce you to a target investor. Warm intros convert 10x better than cold outreach.' },
+      // BLOK AI — PRODUCT & PM
+      { name: 'Daily PM check-in with product manager',  business: 'blok',     category: 'work',     scheduled_time: '09:00', days: 'daily',      time_block: 'Product: PM check-in',      active: 1, notes: 'Quick sync — blockers, progress, priorities for today' },
+      { name: 'Review PM end of day update',             business: 'blok',     category: 'work',     scheduled_time: '16:00', days: '1,2,3,4,5', time_block: 'Unified day close: ops sync, revenue log', active: 1, notes: 'What shipped or moved today on the product side' },
+      { name: 'Weekly product roadmap review with PM',   business: 'blok',     category: 'work',     scheduled_time: '10:00', days: '1',          time_block: 'Product: PM review',        active: 1, notes: 'Monday — full roadmap review, set week priorities' },
+      { name: 'Weekly sprint check with PM',             business: 'blok',     category: 'work',     scheduled_time: '10:00', days: '5',          time_block: 'Product: PM review',        active: 1, notes: 'Friday — what shipped, what carries to next week' },
+      { name: 'Mid-week product decision sync with PM',  business: 'blok',     category: 'work',     scheduled_time: '10:00', days: '3',          time_block: 'Product: PM review',        active: 1, notes: 'Wednesday — unblock decisions, review user feedback' },
+      { name: 'Check and respond to Blok AI comms',      business: 'blok',     category: 'work',     scheduled_time: '10:30', days: 'daily',      time_block: 'Comms: Slack, async check-ins', active: 1, notes: null },
       // APHL AFRICA
-      { name: 'Get daily depot price from Yinusi',       business: 'aphl',     category: 'work',      scheduled_time: '06:30', days: 'daily',      time_block: 'Pre-day setup: depot price, brief Candy',   active: 1 },
-      { name: 'Brief Candy on daily sales targets',      business: 'aphl',     category: 'work',      scheduled_time: '06:40', days: 'daily',      time_block: 'Pre-day setup: depot price, brief Candy',   active: 1 },
-      { name: 'Confirm floor price and driver briefing', business: 'aphl',     category: 'work',      scheduled_time: '07:00', days: 'daily',      time_block: 'Morning command: floor price, driver call',  active: 1 },
-      { name: 'Track loading progress and trip status',  business: 'aphl',     category: 'work',      scheduled_time: '10:00', days: 'daily',      time_block: 'Operations: payments, loading, tracking',   active: 1 },
-      { name: 'Log daily revenue and close ops',         business: 'aphl',     category: 'work',      scheduled_time: '16:30', days: 'daily',      time_block: 'Unified day close: ops sync, revenue log',  active: 1 },
-      { name: 'Review Candy daily sales report',         business: 'aphl',     category: 'work',      scheduled_time: '16:45', days: 'daily',      time_block: 'Unified day close: ops sync, revenue log',  active: 1 },
+      { name: 'Get daily depot price from Yinusi',       business: 'aphl',     category: 'work',     scheduled_time: '06:30', days: 'daily',      time_block: 'Pre-day setup: depot price, brief Candy',   active: 1, notes: null },
+      { name: 'Brief Candy on daily sales targets',      business: 'aphl',     category: 'work',     scheduled_time: '06:40', days: 'daily',      time_block: 'Pre-day setup: depot price, brief Candy',   active: 1, notes: null },
+      { name: 'Confirm floor price and driver briefing', business: 'aphl',     category: 'work',     scheduled_time: '07:00', days: 'daily',      time_block: 'Morning command: floor price, driver call',  active: 1, notes: null },
+      { name: 'Track loading progress and trip status',  business: 'aphl',     category: 'work',     scheduled_time: '10:00', days: 'daily',      time_block: 'Operations: payments, loading, tracking',   active: 1, notes: null },
+      { name: 'Log daily revenue and close ops',         business: 'aphl',     category: 'work',     scheduled_time: '16:30', days: 'daily',      time_block: 'Unified day close: ops sync, revenue log',  active: 1, notes: null },
+      { name: 'Review Candy daily sales report',         business: 'aphl',     category: 'work',     scheduled_time: '16:45', days: 'daily',      time_block: 'Unified day close: ops sync, revenue log',  active: 1, notes: null },
       // PERSONAL — SPIRITUAL
-      { name: 'Morning prayer',                          business: 'personal', category: 'spiritual', scheduled_time: '05:30', days: 'daily',      time_block: 'Prayer',                                    active: 1 },
-      { name: 'Evening gratitude and reflection',        business: 'personal', category: 'spiritual', scheduled_time: '20:30', days: 'daily',      time_block: 'Evening wind-down and next day planning',   active: 1 },
+      { name: 'Morning prayer',                          business: 'personal', category: 'spiritual', scheduled_time: '05:30', days: 'daily',      time_block: 'Prayer',                                    active: 1, notes: null },
+      { name: 'Evening gratitude and reflection',        business: 'personal', category: 'spiritual', scheduled_time: '20:30', days: 'daily',      time_block: 'Evening wind-down and next day planning',   active: 1, notes: null },
       // PERSONAL — MENTAL
-      { name: 'Morning journaling — brain and intention', business: 'personal', category: 'mental',   scheduled_time: '05:45', days: 'daily',      time_block: 'Journaling',                                active: 1 },
-      { name: 'Midday mindfulness check-in (5 minutes)', business: 'personal', category: 'mental',   scheduled_time: '13:00', days: 'daily',      time_block: 'MD strategic hour: depot, pricing',         active: 1 },
-      { name: 'Evening wind-down and plan tomorrow',     business: 'personal', category: 'mental',    scheduled_time: '20:30', days: 'daily',      time_block: 'Evening wind-down and next day planning',   active: 1 },
+      { name: 'Morning journaling — brain and intention', business: 'personal', category: 'mental',   scheduled_time: '05:45', days: 'daily',      time_block: 'Journaling',                                active: 1, notes: null },
+      { name: 'Midday mindfulness check-in (5 minutes)', business: 'personal', category: 'mental',   scheduled_time: '13:00', days: 'daily',      time_block: 'MD strategic hour: depot, pricing',         active: 1, notes: null },
+      { name: 'Evening wind-down and plan tomorrow',     business: 'personal', category: 'mental',    scheduled_time: '20:30', days: 'daily',      time_block: 'Evening wind-down and next day planning',   active: 1, notes: null },
       // PERSONAL — PHYSICAL
-      { name: 'Physical training session',               business: 'personal', category: 'physical',  scheduled_time: '19:00', days: 'daily',      time_block: 'Physical activity',                         active: 1 },
-      { name: 'Read for 20 minutes',                     business: 'personal', category: 'physical',  scheduled_time: '18:00', days: 'daily',      time_block: 'Pottery or reading',                        active: 1 },
+      { name: 'Physical training session',               business: 'personal', category: 'physical',  scheduled_time: '19:00', days: 'daily',      time_block: 'Physical activity',                         active: 1, notes: null },
+      { name: 'Read for 20 minutes',                     business: 'personal', category: 'physical',  scheduled_time: '18:00', days: 'daily',      time_block: 'Pottery or reading',                        active: 1, notes: null },
       // PERSONAL — GROOMING
-      { name: 'Morning hygiene and grooming routine',    business: 'personal', category: 'grooming',  scheduled_time: '06:00', days: 'daily',      time_block: 'Orient and daily priority',                 active: 1 },
+      { name: 'Morning hygiene and grooming routine',    business: 'personal', category: 'grooming',  scheduled_time: '06:00', days: 'daily',      time_block: 'Orient and daily priority',                 active: 1, notes: null },
+      // PERSONAL — FAMILY
+      { name: 'Calls to loved ones and family',          business: 'personal', category: 'family',    scheduled_time: '17:30', days: 'daily',      time_block: 'Calls to loved ones and family',            active: 1, notes: 'Family first. Then close friends. Be present in the conversation.' },
+      { name: 'Family check-in call',                    business: 'personal', category: 'family',    scheduled_time: '17:30', days: 'daily',      time_block: 'Calls to loved ones and family',            active: 1, notes: 'Call at least one family member today. Parents, siblings, close relatives. Not WhatsApp. A real call.' },
+      { name: 'Weekly family time (longer call or visit)', business: 'personal', category: 'family',  scheduled_time: '17:30', days: '6',          time_block: 'Calls to loved ones and family',            active: 1, notes: 'Saturday. Longer call or in-person time with family. No business talk.' },
       // FUTURE (not yet active)
-      { name: 'Pottery session',                         business: 'personal', category: 'physical',  scheduled_time: '18:00', days: '1,3,5',      time_block: 'Pottery or reading',                        active: 0 },
+      { name: 'Pottery session',                         business: 'personal', category: 'physical',  scheduled_time: '18:00', days: '1,3,5',      time_block: 'Pottery or reading',                        active: 0, notes: null },
     ];
 
     const seedStmt = db.prepare(
-      `INSERT INTO recurring_tasks (name, business, scheduled_time, days, time_block, category, active)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO recurring_tasks (name, business, scheduled_time, days, time_block, category, notes, active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     );
 
     db.prepare('DELETE FROM recurring_tasks').run();
     db.transaction(() => {
-      for (const s of SEEDS_V2) {
+      for (const s of SEEDS_V4) {
         seedStmt.run(
           s.name, s.business, s.scheduled_time || null, s.days || 'daily',
-          s.time_block || null, s.category || 'work', s.active !== undefined ? s.active : 1
+          s.time_block || null, s.category || 'work', s.notes || null,
+          s.active !== undefined ? s.active : 1
         );
       }
     })();
-    upsertSetting.run('recurring_seeded_v2', '1');
-    console.log('[db] Recurring tasks reset to v2');
+    upsertSetting.run('recurring_seeded_v4', '1');
+    console.log('[db] Recurring tasks reset to v4');
+  }
+}
+
+// ── anchors migration (v2) — renames schedule blocks in stored settings ───────
+
+{
+  const alreadyMigrated = getSetting.get('anchors_seeded_v2');
+  if (!alreadyMigrated) {
+    const stored = getSetting.get('schedule_blocks');
+    if (stored) {
+      try {
+        let blocks = JSON.parse(stored.value);
+        blocks = blocks.map(b => {
+          if (b.name === 'Calls to loved ones') return { ...b, name: 'Calls to loved ones and family' };
+          if (b.name === 'Raise: 5 investor emails, CRM update') return { ...b, name: 'Raise: investor relations' };
+          return b;
+        });
+        upsertSetting.run('schedule_blocks', JSON.stringify(blocks));
+      } catch {}
+    }
+    upsertSetting.run('anchors_seeded_v2', '1');
+    console.log('[db] Anchor blocks migrated to v2');
   }
 }
 
@@ -530,6 +684,24 @@ module.exports = {
   getSetting,
   upsertSetting,
   deleteSetting,
+
+  // document analyses
+  saveDocumentAnalysis,
+  getDocumentAnalyses,
+
+  // uploaded documents
+  saveUploadedDocument,
+  getUploadedDocument,
+  getAllUploadedDocuments,
+  getUploadedDocumentsByBusiness,
+  updateUploadedDocumentStatus,
+  linkDocumentToAnalysis,
+  archiveUploadedDocument,
+  searchUploadedDocuments,
+
+  // team members
+  getTeamMembers,
+  getMembersByBusiness,
 
   // day log
   syncDayLog,

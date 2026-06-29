@@ -1633,6 +1633,226 @@
     .toggle-switch input:checked + .toggle-track { background: #1a1a1a; }
     .toggle-switch input:checked + .toggle-track::after { transform: translateX(16px); }
 
+    /* ── documents view ─────────────────────────────────────────────────────── */
+    .doc-biz-pills { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+    .doc-biz-pill {
+      padding: 5px 12px;
+      border: 1px solid #e8e8e6;
+      border-radius: 4px;
+      background: white;
+      font-size: 12px;
+      cursor: pointer;
+      color: #6b6b6b;
+      font-family: 'Geist', system-ui, sans-serif;
+      transition: all 0.1s;
+    }
+    .doc-biz-pill:hover { border-color: #1a1a1a; color: #1a1a1a; }
+    .doc-biz-pill.selected { border-color: #1a1a1a; background: #f5f5f4; color: #1a1a1a; font-weight: 500; }
+    .doc-textarea-wrapper {
+      margin-top: 12px;
+      border: 1px solid #e8e8e6;
+      border-radius: 6px;
+      transition: border-color 0.15s;
+    }
+    .doc-textarea-wrapper:focus-within { border-color: #1a1a1a; }
+    .doc-textarea {
+      width: 100%;
+      min-height: 250px;
+      border: none;
+      outline: none;
+      font-family: 'Geist', system-ui, sans-serif;
+      font-size: 14px;
+      line-height: 1.8;
+      padding: 16px;
+      resize: vertical;
+      background: transparent;
+      border-radius: 6px;
+      color: #1a1a1a;
+    }
+    .doc-textarea::placeholder { color: #ccc; }
+    .doc-charcount { font-size: 11px; color: #ccc; text-align: right; margin-top: 4px; }
+    .doc-charcount.ok { color: #999; }
+    .doc-analyze-btn {
+      border: 1px solid #1a1a1a;
+      background: white;
+      padding: 8px 20px;
+      font-size: 13px;
+      font-family: 'Geist', system-ui, sans-serif;
+      cursor: pointer;
+      border-radius: 4px;
+      color: #1a1a1a;
+      transition: background 0.1s;
+    }
+    .doc-analyze-btn:hover:not(:disabled) { background: #f5f5f4; }
+    .doc-analyze-btn:disabled { border-color: #e8e8e6; color: #ccc; cursor: default; }
+    .doc-result {
+      background: #f9f9f8;
+      border: 1px solid #e8e8e6;
+      border-radius: 6px;
+      padding: 20px;
+      margin-top: 16px;
+    }
+    .doc-section-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #999;
+      margin-bottom: 6px;
+    }
+    .doc-summary { font-size: 14px; color: #6b6b6b; font-style: italic; line-height: 1.7; margin-bottom: 16px; }
+    .doc-insight {
+      font-size: 14px; color: #1a1a1a; line-height: 1.6;
+      border-left: 3px solid #1a1a1a; padding-left: 12px; margin-bottom: 4px;
+    }
+    .doc-risk {
+      font-size: 14px; color: #cc3300; line-height: 1.6;
+      border-left: 3px solid #cc3300; padding-left: 12px; margin-bottom: 4px;
+    }
+    .doc-task-row {
+      display: flex; gap: 10px; padding: 10px 0;
+      border-bottom: 1px solid #e8e8e6; align-items: flex-start;
+    }
+    .doc-task-row:last-child { border-bottom: none; }
+    .doc-task-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 6px; }
+    .doc-task-dot.high { background: #cc3300; }
+    .doc-task-dot.normal { background: #ccc; }
+    .doc-task-body { flex: 1; }
+    .doc-task-name { font-size: 14px; color: #1a1a1a; }
+    .doc-task-time { font-size: 11px; color: #999; font-family: 'Geist Mono', monospace; margin-left: 8px; }
+    .doc-task-rationale { font-size: 11px; color: #6b6b6b; font-style: italic; margin-top: 3px; }
+    .doc-action-row { display: flex; gap: 12px; align-items: center; margin-top: 16px; }
+    .doc-import-btn {
+      border: 1px solid #1a1a1a; background: white;
+      padding: 7px 16px; font-size: 13px;
+      font-family: 'Geist', system-ui, sans-serif;
+      cursor: pointer; border-radius: 4px;
+    }
+    .doc-import-btn:hover { background: #f5f5f4; }
+    .doc-discard-btn {
+      background: none; border: none; font-size: 13px; color: #999;
+      cursor: pointer; font-family: 'Geist', system-ui, sans-serif;
+    }
+    .doc-discard-btn:hover { color: #1a1a1a; }
+    .doc-upload-zone {
+      margin-top: 14px;
+      border: 2px dashed #e8e8e6;
+      border-radius: 8px;
+      padding: 32px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .doc-upload-zone.drag-over { border-color: #1a1a1a; background: #fafafa; }
+    .doc-upload-zone-title { font-size: 14px; color: #6b6b6b; margin: 8px 0 4px; }
+    .doc-upload-zone-sub { font-size: 11px; color: #999; }
+    .doc-choose-btn {
+      margin-top: 12px;
+      border: 1px solid #e8e8e6;
+      background: white;
+      padding: 6px 16px;
+      font-size: 12px;
+      font-family: 'Geist', system-ui, sans-serif;
+      cursor: pointer;
+      border-radius: 4px;
+      color: #6b6b6b;
+      transition: border-color 0.1s, color 0.1s;
+    }
+    .doc-choose-btn:hover { border-color: #1a1a1a; color: #1a1a1a; }
+    .doc-file-info { margin-top: 10px; font-size: 12px; color: #999; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .doc-file-name-disp { color: #1a1a1a; font-weight: 500; }
+    .doc-upload-actions { display: flex; gap: 10px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+    .doc-upload-btn {
+      border: 1px solid #1a1a1a;
+      background: white;
+      padding: 7px 16px;
+      font-size: 12px;
+      font-family: 'Geist', system-ui, sans-serif;
+      cursor: pointer;
+      border-radius: 4px;
+      color: #1a1a1a;
+      transition: background 0.1s;
+    }
+    .doc-upload-btn:hover { background: #f5f5f4; }
+    .doc-upload-btn:disabled { border-color: #e8e8e6; color: #ccc; cursor: default; }
+    .doc-upload-status { font-size: 12px; color: #999; margin-top: 8px; min-height: 16px; }
+    .doc-info-bar {
+      display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+      padding: 10px 0; border-bottom: 1px solid #f0f0ee; margin-bottom: 14px;
+    }
+    .doc-type-badge {
+      font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em;
+      padding: 2px 7px; border-radius: 3px; background: #f0f0ee; color: #6b6b6b;
+    }
+    .doc-info-name { font-size: 13px; color: #1a1a1a; font-weight: 500; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .doc-info-meta { font-size: 11px; color: #999; }
+    .doc-task-check {
+      width: 16px; height: 16px; border: 1.5px solid #ccc; border-radius: 3px;
+      flex-shrink: 0; cursor: pointer; transition: background 0.1s, border-color 0.1s;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .doc-task-check.checked { background: #1a1a1a; border-color: #1a1a1a; }
+    .doc-task-check.checked::after { content: '✓'; font-size: 10px; color: white; }
+    .doc-assign-row { display: flex; gap: 10px; align-items: center; margin-top: 16px; flex-wrap: wrap; }
+    .doc-assign-input {
+      border: 1px solid #e8e8e6; background: white; padding: 6px 10px;
+      font-size: 12px; font-family: 'Geist', system-ui, sans-serif;
+      border-radius: 4px; color: #1a1a1a; width: 140px;
+    }
+    .doc-assign-select {
+      border: 1px solid #e8e8e6; background: white; padding: 6px 8px;
+      font-size: 12px; font-family: 'Geist', system-ui, sans-serif;
+      border-radius: 4px; color: #1a1a1a;
+    }
+    .doc-assign-btn {
+      border: 1px solid #1a1a1a; background: white;
+      padding: 6px 14px; font-size: 12px;
+      font-family: 'Geist', system-ui, sans-serif;
+      cursor: pointer; border-radius: 4px; color: #1a1a1a;
+      transition: background 0.1s;
+    }
+    .doc-assign-btn:hover { background: #f5f5f4; }
+    .doc-filter-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+    .doc-filter-pill {
+      padding: 4px 10px; border: 1px solid #e8e8e6; border-radius: 4px;
+      background: white; font-size: 11px; cursor: pointer; color: #6b6b6b;
+      font-family: 'Geist', system-ui, sans-serif; transition: all 0.1s;
+    }
+    .doc-filter-pill:hover { border-color: #1a1a1a; color: #1a1a1a; }
+    .doc-filter-pill.selected { border-color: #1a1a1a; background: #f5f5f4; color: #1a1a1a; font-weight: 500; }
+    .doc-search-input {
+      border: 1px solid #e8e8e6; background: white; padding: 5px 10px;
+      font-size: 12px; font-family: 'Geist', system-ui, sans-serif;
+      border-radius: 4px; color: #1a1a1a; width: 160px;
+    }
+    .doc-search-input:focus { outline: none; border-color: #1a1a1a; }
+    .doc-lib-row {
+      display: flex; align-items: center; gap: 8px; padding: 9px 0;
+      border-bottom: 1px solid #f5f5f4; cursor: pointer;
+      transition: background 0.1s;
+    }
+    .doc-lib-row:hover { background: #fafafa; margin: 0 -8px; padding: 9px 8px; }
+    .doc-lib-badge {
+      font-size: 10px; font-weight: 600; text-transform: uppercase;
+      padding: 2px 6px; border-radius: 3px; background: #f0f0ee;
+      color: #6b6b6b; flex-shrink: 0;
+    }
+    .doc-lib-name { font-size: 13px; color: #1a1a1a; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .doc-lib-date { font-size: 11px; color: #bbb; flex-shrink: 0; font-family: 'Geist Mono', monospace; }
+    .doc-lib-status-analyzed { font-size: 11px; color: #3a9e6c; flex-shrink: 0; }
+    .doc-lib-status-uploaded { font-size: 11px; color: #bbb; flex-shrink: 0; }
+    .doc-lib-action { font-size: 11px; color: #ccc; cursor: pointer; padding: 2px 4px; flex-shrink: 0; }
+    .doc-lib-action:hover { color: #1a1a1a; }
+    .doc-lib-expand { padding: 10px 0 14px; border-bottom: 1px solid #f5f5f4; }
+    .doc-lib-summary { font-size: 12px; color: #6b6b6b; font-style: italic; margin-bottom: 8px; line-height: 1.6; }
+    .doc-history-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 0; border-bottom: 1px solid #f4f4f2;
+      cursor: pointer; font-size: 13px;
+    }
+    .doc-history-row:hover { background: #fafafa; }
+    .doc-history-excerpt { flex: 1; color: #6b6b6b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .doc-history-date { font-size: 11px; color: #bbb; flex-shrink: 0; }
+
     /* ── personal care categories (today view) ──────────────────────────────── */
     .focus-card-personal { grid-column: 1 / -1; }
     .pers-cat-label {
@@ -1862,6 +2082,7 @@
       <a class="nav-item" data-view="dump" data-tooltip="Brain Dump"><i class="ti ti-brain"></i><span class="nav-text">Brain Dump</span></a>
       <a class="nav-item" data-view="ideas" data-tooltip="Ideas"><i class="ti ti-bulb"></i><span class="nav-text">Ideas</span></a>
       <a class="nav-item" data-view="notes" data-tooltip="Notes"><i class="ti ti-notes"></i><span class="nav-text">Notes</span></a>
+      <a class="nav-item" data-view="documents" data-tooltip="Documents"><i class="ti ti-file-analytics"></i><span class="nav-text">Documents</span></a>
     </div>
 
     <div class="nav-section">
@@ -2299,6 +2520,102 @@
       </div>
     </div>
 
+    <!-- DOCUMENTS ───────────────────────────────────────────────────────────── -->
+    <div class="view" id="v-documents">
+      <h1 class="page-title">Strategic Documents</h1>
+      <p class="page-sub" style="font-size:13px;color:#999">Upload a document to extract tasks and strategic insight.</p>
+
+      <!-- Business selector -->
+      <div class="doc-biz-pills" id="doc-biz-pills">
+        <button class="doc-biz-pill selected" data-biz="blok" onclick="selectDocBiz(this)">Blok AI</button>
+        <button class="doc-biz-pill" data-biz="aphl" onclick="selectDocBiz(this)">APHL Africa</button>
+        <button class="doc-biz-pill" data-biz="trade" onclick="selectDocBiz(this)">TradeSol</button>
+        <button class="doc-biz-pill" data-biz="personal" onclick="selectDocBiz(this)">Personal</button>
+      </div>
+
+      <!-- Upload zone -->
+      <div class="doc-upload-zone" id="doc-upload-zone"
+        ondragover="docDragOver(event)" ondragleave="docDragLeave(event)" ondrop="docDrop(event)"
+        onclick="document.getElementById('doc-file-input').click()">
+        <i class="ti ti-upload" style="font-size:24px;color:#ccc"></i>
+        <div class="doc-upload-zone-title">Drop a document here</div>
+        <div class="doc-upload-zone-sub">PDF, Word, or text file — max 10MB</div>
+        <button class="doc-choose-btn" type="button" onclick="event.stopPropagation();document.getElementById('doc-file-input').click()">Choose file</button>
+        <input type="file" id="doc-file-input" style="display:none"
+          accept=".pdf,.docx,.doc,.txt,.md"
+          onchange="handleDocFileSelect(this)">
+      </div>
+
+      <div class="doc-file-info" id="doc-file-info" style="display:none">
+        <span class="doc-file-name-disp" id="doc-file-name-disp"></span>
+        <span id="doc-file-size-disp"></span>
+      </div>
+      <div class="doc-upload-actions" id="doc-upload-actions" style="display:none">
+        <button class="doc-upload-btn" id="doc-upload-analyze-btn" onclick="docUploadAndAnalyze()">Upload and analyze</button>
+        <button class="doc-upload-btn" id="doc-upload-only-btn" onclick="docUploadOnly()">Upload only</button>
+      </div>
+      <div class="doc-upload-status" id="doc-upload-status"></div>
+
+      <!-- Analysis result -->
+      <div class="doc-result" id="doc-result" style="display:none;margin-top:20px">
+        <div class="doc-info-bar" id="doc-info-bar"></div>
+
+        <div class="doc-section-label">Summary</div>
+        <p class="doc-summary" id="doc-summary"></p>
+
+        <div class="doc-section-label">Key insight</div>
+        <div class="doc-insight" id="doc-insight"></div>
+
+        <div class="doc-section-label" style="margin-top:16px">Risk to watch</div>
+        <div class="doc-risk" id="doc-risk"></div>
+
+        <div class="doc-section-label" style="margin-top:16px">Assigned tasks</div>
+        <div id="doc-tasks"></div>
+
+        <div class="doc-assign-row">
+          <input class="doc-assign-input" id="doc-assignee" type="text" value="OGV" placeholder="Assignee">
+          <select class="doc-assign-select" id="doc-assign-date">
+            <option value="today">Today</option>
+            <option value="tomorrow">Tomorrow</option>
+          </select>
+          <button class="doc-assign-btn" id="doc-assign-btn" onclick="assignDocTasks()">Assign selected</button>
+          <button class="doc-discard-btn" onclick="discardDocAnalysis()">Discard</button>
+        </div>
+      </div>
+
+      <!-- Paste option -->
+      <details style="margin-top:20px">
+        <summary style="font-size:12px;color:#999;cursor:pointer;user-select:none">Paste text instead</summary>
+        <div style="margin-top:10px">
+          <div class="doc-textarea-wrapper" id="doc-textarea-wrapper">
+            <textarea class="doc-textarea" id="doc-textarea"
+              placeholder="Paste your business plan, investor memo, operations report, or strategic note here."
+              oninput="onDocInput()"></textarea>
+          </div>
+          <div class="doc-charcount" id="doc-charcount">Minimum 100 characters</div>
+          <div style="display:flex;gap:10px;align-items:center;margin-top:12px">
+            <button class="doc-analyze-btn" id="doc-analyze-btn" onclick="analyzeDocument()" disabled>Analyze →</button>
+            <span id="doc-analyze-status" style="font-size:12px;color:#999"></span>
+          </div>
+        </div>
+      </details>
+
+      <!-- Document library -->
+      <div class="section-head" style="margin-top:28px">Document library</div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+        <div class="doc-filter-pills" id="doc-filter-pills">
+          <button class="doc-filter-pill selected" data-biz="all" onclick="filterDocLib(this,'all')">All</button>
+          <button class="doc-filter-pill" data-biz="blok" onclick="filterDocLib(this,'blok')">Blok AI</button>
+          <button class="doc-filter-pill" data-biz="aphl" onclick="filterDocLib(this,'aphl')">APHL Africa</button>
+          <button class="doc-filter-pill" data-biz="trade" onclick="filterDocLib(this,'trade')">TradeSol</button>
+          <button class="doc-filter-pill" data-biz="personal" onclick="filterDocLib(this,'personal')">Personal</button>
+        </div>
+        <input class="doc-search-input" id="doc-search-input" type="text" placeholder="Search documents…" oninput="searchDocLib(this.value)">
+      </div>
+      <div id="doc-lib-list"></div>
+
+    </div>
+
     <!-- ROUTINES ────────────────────────────────────────────────────────────── -->
     <div class="view" id="v-routines">
       <h1 class="page-title">Daily Routines</h1>
@@ -2387,6 +2704,17 @@
           </div>
         </div>
 
+        <div class="routine-card routine-card-personal" style="background:#fafafa;border:1px solid #e8e8e6">
+          <div class="routine-card-head"><i class="ti ti-home" style="font-size:13px;color:#c07a3c"></i> Family</div>
+          <div class="routine-task-list" id="rt-family-list"></div>
+          <div class="rec-add-row">
+            <input class="rec-add-input" id="rt-family-name" type="text" placeholder="+ Add family routine" autocomplete="off" />
+            <input class="rec-add-time" id="rt-family-time" type="text" placeholder="time" />
+            <button class="add-btn" type="button" onclick="addRoutineTask('personal','family','rt-family')">Add</button>
+          </div>
+          <p style="font-size:11px;color:#999;margin:6px 0 0;padding:0">Family time is protected. It does not move for business.</p>
+        </div>
+
       </div>
 
       <!-- Future routines -->
@@ -2415,7 +2743,8 @@
           <tr><td>Midday mindfulness check-in</td><td style="color:#999">Mental clarity, emotional health</td></tr>
           <tr><td>Physical training session</td><td style="color:#999">Physical health and fitness</td></tr>
           <tr><td>Read for 20 minutes</td><td style="color:#999">Personal growth and knowledge</td></tr>
-          <tr><td>Send investor emails</td><td style="color:#999">Blok AI: Raise $500k pre-seed</td></tr>
+          <tr><td>Investor relationship touchpoint</td><td style="color:#999">Blok AI: Raise $500k pre-seed — build genuine relationships</td></tr>
+          <tr><td>Family check-in call</td><td style="color:#999">Personal: family connection</td></tr>
           <tr><td>Review Arkad product progress</td><td style="color:#999">Blok AI: Ship Arkad v1</td></tr>
           <tr><td>Get daily depot price from Yinusi</td><td style="color:#999">APHL: Daily ops execution</td></tr>
           <tr><td>Log daily revenue and close ops</td><td style="color:#999">APHL: Revenue tracking and growth</td></tr>
@@ -2440,7 +2769,7 @@ let BLOCKS = [
   { time: '06:00', end: '06:30', name: 'Orient and daily priority',                 biz: 'blok'     },
   { time: '06:30', end: '07:00', name: 'Pre-day setup: depot price, brief Candy',   biz: 'aphl'     },
   { time: '07:00', end: '07:30', name: 'Morning command: floor price, driver call',  biz: 'aphl'     },
-  { time: '07:30', end: '09:00', name: 'Raise: 5 investor emails, CRM update',      biz: 'blok'     },
+  { time: '07:30', end: '09:00', name: 'Raise: investor relations',                 biz: 'blok'     },
   { time: '08:00', end: '10:00', name: 'Sales push: Candy runs outbound',           biz: 'aphl'     },
   { time: '09:00', end: '10:30', name: 'Product: PM review, Arkad user flow',       biz: 'blok'     },
   { time: '10:00', end: '13:00', name: 'Operations: payments, loading, tracking',   biz: 'aphl'     },
@@ -2449,7 +2778,7 @@ let BLOCKS = [
   { time: '13:00', end: '14:00', name: 'MD strategic hour: depot, pricing',         biz: 'aphl'     },
   { time: '14:00', end: '15:30', name: 'Strategy: priorities, decision log',        biz: 'blok'     },
   { time: '16:00', end: '17:30', name: 'Unified day close: ops sync, revenue log',  biz: 'blok'     },
-  { time: '17:30', end: '18:00', name: 'Calls to loved ones',                       biz: 'anchor'   },
+  { time: '17:30', end: '18:00', name: 'Calls to loved ones and family',            biz: 'anchor'   },
   { time: '18:00', end: '19:00', name: 'Pottery or reading',                        biz: 'personal' },
   { time: '19:00', end: '20:00', name: 'Physical activity',                         biz: 'personal' },
   { time: '20:30', end: '21:00', name: 'Evening wind-down and next day planning',   biz: 'anchor'   },
@@ -2465,8 +2794,10 @@ const BIZ_LABEL = {
 
 const KPI_DEFS = [
   { biz: 'blok', label: 'Blok AI', items: [
-    { k: 'investor_emails',  label: 'Investor emails',      target: '5/day'   },
-    { k: 'pipeline_entries', label: 'Pipeline entries',     target: 'Weekly'  },
+    { k: 'investor_touchpoints',  label: 'Investor touchpoints (quality)', target: '1/day'  },
+    { k: 'warm_relationships',    label: 'Warm relationships building',    target: 'Weekly' },
+    { k: 'investor_meetings',     label: 'Investor meetings/calls',        target: 'Weekly' },
+    { k: 'warm_intros_requested', label: 'Warm intros requested',          target: 'Weekly' },
   ]},
   { biz: 'aphl', label: 'APHL Africa', items: [
     { k: 'outbound_calls',   label: 'Outbound calls',       target: '20+/day' },
@@ -2621,6 +2952,7 @@ function switchTab(name) {
   if (name === 'monthly')   loadMonthly();
   if (name === 'settings')  loadSettings();
   if (name === 'routines')  loadRoutines();
+  if (name === 'documents') loadDocuments();
 }
 
 // ── TODAY VIEW ────────────────────────────────────────────────────────────────
@@ -3477,6 +3809,7 @@ function renderFocusBlocks() {
     { key: 'mental',    label: 'MENTAL' },
     { key: 'physical',  label: 'PHYSICAL' },
     { key: 'grooming',  label: 'GROOMING' },
+    { key: 'family',    label: 'FAMILY' },
   ];
 
   const persByCat = {};
@@ -3539,9 +3872,359 @@ function focusQuickAdd(biz) {
   if (inp) { inp.focus(); inp.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
 }
 
+// ── DOCUMENTS VIEW ────────────────────────────────────────────────────────────
+
+let _docCurrentAnalysis = null;
+let _docCurrentId       = null;
+let _docSelectedBiz     = 'blok';
+let _docSelectedFile    = null;
+let _docLibAll          = [];
+let _docLibFilter       = 'all';
+
+function selectDocBiz(pill) {
+  document.querySelectorAll('.doc-biz-pill').forEach(p => p.classList.remove('selected'));
+  pill.classList.add('selected');
+  _docSelectedBiz = pill.dataset.biz;
+}
+
+// ── upload zone ───────────────────────────────────────────────────────────────
+
+function docDragOver(e) {
+  e.preventDefault();
+  document.getElementById('doc-upload-zone').classList.add('drag-over');
+}
+function docDragLeave() {
+  document.getElementById('doc-upload-zone').classList.remove('drag-over');
+}
+function docDrop(e) {
+  e.preventDefault();
+  document.getElementById('doc-upload-zone').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) setDocFile(file);
+}
+function handleDocFileSelect(input) {
+  const file = input.files[0];
+  if (file) setDocFile(file);
+}
+function setDocFile(file) {
+  _docSelectedFile = file;
+  const nameEl = document.getElementById('doc-file-name-disp');
+  const sizeEl = document.getElementById('doc-file-size-disp');
+  if (nameEl) nameEl.textContent = file.name;
+  if (sizeEl) sizeEl.textContent = `${(file.size / 1024).toFixed(0)} KB`;
+  document.getElementById('doc-file-info').style.display    = 'flex';
+  document.getElementById('doc-upload-actions').style.display = 'flex';
+  document.getElementById('doc-upload-status').textContent   = '';
+}
+
+function setUploadStatus(msg) {
+  const el = document.getElementById('doc-upload-status');
+  if (el) el.textContent = msg;
+}
+function setUploadBtnsDisabled(val) {
+  ['doc-upload-analyze-btn','doc-upload-only-btn'].forEach(id => {
+    const b = document.getElementById(id);
+    if (b) b.disabled = val;
+  });
+}
+
+async function docUploadAndAnalyze() {
+  if (!_docSelectedFile) return;
+  setUploadBtnsDisabled(true);
+  setUploadStatus('Uploading…');
+  try {
+    const fd = new FormData();
+    fd.append('document', _docSelectedFile);
+    fd.append('business', _docSelectedBiz);
+    setUploadStatus('Parsing document…');
+    const res  = await fetch('/api/documents/upload/analyze', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Upload failed');
+    setUploadStatus('Analyzed.');
+    _docCurrentId       = data.documentId;
+    _docCurrentAnalysis = data.analysis;
+    renderDocAnalysis(data.analysis, {
+      name: _docSelectedFile.name,
+      type: data.type,
+      words: data.wordCount,
+      biz: _docSelectedBiz,
+      date: new Date().toISOString().slice(0, 10),
+    });
+    loadDocuments();
+  } catch (e) {
+    setUploadStatus(e.message || 'Upload failed');
+  } finally {
+    setUploadBtnsDisabled(false);
+  }
+}
+
+async function docUploadOnly() {
+  if (!_docSelectedFile) return;
+  setUploadBtnsDisabled(true);
+  setUploadStatus('Uploading…');
+  try {
+    const fd = new FormData();
+    fd.append('document', _docSelectedFile);
+    fd.append('business', _docSelectedBiz);
+    const res  = await fetch('/api/documents/upload', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Upload failed');
+    setUploadStatus(`Uploaded — ${data.wordCount} words parsed.`);
+    loadDocuments();
+  } catch (e) {
+    setUploadStatus(e.message || 'Upload failed');
+  } finally {
+    setUploadBtnsDisabled(false);
+  }
+}
+
+// ── analysis rendering ────────────────────────────────────────────────────────
+
+function renderDocAnalysis(analysis, meta) {
+  const infoBar   = document.getElementById('doc-info-bar');
+  const summaryEl = document.getElementById('doc-summary');
+  const insightEl = document.getElementById('doc-insight');
+  const riskEl    = document.getElementById('doc-risk');
+  const tasksEl   = document.getElementById('doc-tasks');
+  const resultEl  = document.getElementById('doc-result');
+
+  if (infoBar && meta) {
+    infoBar.innerHTML =
+      `<span class="doc-type-badge">${esc(meta.type || 'doc')}</span>` +
+      `<span class="doc-info-name">${esc(meta.name || '')}</span>` +
+      (meta.biz ? tagHtml(meta.biz) : '') +
+      (meta.words ? `<span class="doc-info-meta">${meta.words} words</span>` : '') +
+      (meta.date ? `<span class="doc-info-meta">${esc(meta.date)}</span>` : '');
+  }
+
+  if (summaryEl) summaryEl.textContent  = analysis.summary || '';
+  if (insightEl) insightEl.textContent  = analysis.key_insight || '';
+  if (riskEl)    riskEl.textContent     = analysis.risk || '';
+
+  if (tasksEl) {
+    tasksEl.innerHTML = (analysis.tasks || []).map((t, i) => `
+      <div class="doc-task-row" style="display:flex;gap:10px;align-items:flex-start">
+        <div class="doc-task-check checked" id="doc-tc-${i}" onclick="toggleDocTaskCheck(${i})" style="margin-top:2px"></div>
+        <div class="doc-task-dot ${t.priority === 'high' ? 'high' : 'normal'}" style="margin-top:6px"></div>
+        <div class="doc-task-body">
+          <div>
+            <span class="doc-task-name">${esc(t.name)}</span>
+            ${t.time ? `<span class="doc-task-time">${esc(t.time)}</span>` : ''}
+            ${tagHtml(t.business)}
+          </div>
+          <div class="doc-task-rationale">${esc(t.rationale || '')}</div>
+        </div>
+      </div>`).join('');
+  }
+
+  // Pre-fill assignee based on business
+  const assigneeEl = document.getElementById('doc-assignee');
+  if (assigneeEl) {
+    const bizAssignee = { aphl: 'Candy Opusunju', blok: 'Product Manager' };
+    assigneeEl.value = bizAssignee[_docSelectedBiz] || 'OGV';
+  }
+
+  if (resultEl) {
+    resultEl.style.display = 'block';
+    resultEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
+
+function toggleDocTaskCheck(idx) {
+  const el = document.getElementById(`doc-tc-${idx}`);
+  if (el) el.classList.toggle('checked');
+}
+
+async function assignDocTasks() {
+  if (!_docCurrentAnalysis || !_docCurrentId) return;
+  const assignee = (document.getElementById('doc-assignee') || {}).value || 'OGV';
+  const dateVal  = (document.getElementById('doc-assign-date') || {}).value || 'today';
+  const tasks    = (_docCurrentAnalysis.tasks || []).filter((_, i) => {
+    const el = document.getElementById(`doc-tc-${i}`);
+    return el && el.classList.contains('checked');
+  });
+  if (!tasks.length) { showToast('No tasks selected'); return; }
+  try {
+    await api(`/api/documents/library/${_docCurrentId}/assign`, {
+      method: 'POST',
+      body: { tasks, assignee, date: dateVal === 'tomorrow' ? 'tomorrow' : undefined },
+    });
+    showToast(`${tasks.length} task${tasks.length !== 1 ? 's' : ''} assigned`);
+    discardDocAnalysis();
+    fetchTasks();
+    if (dateVal === 'today') switchTab('today');
+  } catch (e) { console.error('assignDocTasks:', e); }
+}
+
+function discardDocAnalysis() {
+  _docCurrentAnalysis = null;
+  _docCurrentId       = null;
+  const resultEl = document.getElementById('doc-result');
+  if (resultEl) resultEl.style.display = 'none';
+}
+
+// ── paste / text analysis (legacy) ───────────────────────────────────────────
+
+function onDocInput() {
+  const ta  = document.getElementById('doc-textarea');
+  const cc  = document.getElementById('doc-charcount');
+  const btn = document.getElementById('doc-analyze-btn');
+  const len = (ta ? ta.value : '').length;
+  if (len < 100) {
+    cc.textContent = 'Minimum 100 characters';
+    cc.classList.remove('ok');
+    if (btn) btn.disabled = true;
+  } else {
+    cc.textContent = `${len} characters`;
+    cc.classList.add('ok');
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function analyzeDocument() {
+  const ta   = document.getElementById('doc-textarea');
+  const text = ta ? ta.value.trim() : '';
+  if (text.length < 100) return;
+  const btn    = document.getElementById('doc-analyze-btn');
+  const status = document.getElementById('doc-analyze-status');
+  if (btn) btn.disabled = true;
+  if (status) status.textContent = 'Analyzing…';
+  try {
+    const result = await api('/api/documents/analyze', {
+      method: 'POST',
+      body: { text, business: _docSelectedBiz },
+    });
+    _docCurrentAnalysis = result.analysis;
+    _docCurrentId       = result.id;
+    renderDocAnalysis(result.analysis, { biz: _docSelectedBiz, name: 'Pasted text', type: 'text', date: new Date().toISOString().slice(0, 10) });
+    if (status) status.textContent = '';
+  } catch (e) {
+    if (status) status.textContent = e.message || 'Analysis failed.';
+  } finally {
+    if (btn && ta) btn.disabled = ta.value.length < 100;
+  }
+}
+
+// ── document library ──────────────────────────────────────────────────────────
+
+async function loadDocuments() {
+  try {
+    const docs = await api('/api/documents/library');
+    _docLibAll = docs;
+    renderDocLib(docs, _docLibFilter);
+  } catch (e) { console.error('loadDocuments:', e); }
+}
+
+function filterDocLib(pill, biz) {
+  document.querySelectorAll('.doc-filter-pill').forEach(p => p.classList.remove('selected'));
+  if (pill) pill.classList.add('selected');
+  _docLibFilter = biz;
+  const filtered = biz === 'all' ? _docLibAll : _docLibAll.filter(d => d.business === biz);
+  renderDocLib(filtered, biz);
+}
+
+async function searchDocLib(q) {
+  if (!q || q.length < 2) {
+    renderDocLib(_docLibFilter === 'all' ? _docLibAll : _docLibAll.filter(d => d.business === _docLibFilter), _docLibFilter);
+    return;
+  }
+  try {
+    const docs = await api(`/api/documents/library/search?q=${encodeURIComponent(q)}`);
+    renderDocLib(docs, _docLibFilter);
+  } catch (e) { console.error('searchDocLib:', e); }
+}
+
+function renderDocLib(docs, _filter) {
+  const el = document.getElementById('doc-lib-list');
+  if (!el) return;
+  if (!docs || !docs.length) {
+    el.innerHTML = '<div style="font-size:12px;color:#ccc;padding:8px 0">No documents yet. Upload a business plan, investor memo, or operations document to get started.</div>';
+    return;
+  }
+  el.innerHTML = docs.map(d => {
+    const date    = (d.upload_date || '').slice(0, 10);
+    const isAna   = !!d.analysis_id || d.status === 'analyzed';
+    const typeStr = (d.file_type || 'doc').toUpperCase().slice(0, 4);
+    return `
+      <div class="doc-lib-row" onclick="toggleDocLibRow(${d.id}, this)">
+        <span class="doc-lib-badge">${esc(typeStr)}</span>
+        <span class="doc-lib-name">${esc(d.original_name || d.filename || '')}</span>
+        ${tagHtml(d.business)}
+        <span class="doc-lib-date">${esc(date)}</span>
+        <span class="${isAna ? 'doc-lib-status-analyzed' : 'doc-lib-status-uploaded'}">${isAna ? 'Analyzed' : 'Uploaded'}</span>
+        ${isAna ? '' : `<span class="doc-lib-action ti ti-chart-bar" title="Analyze" onclick="event.stopPropagation();reanalyzeDoc(${d.id})"></span>`}
+        <span class="doc-lib-action ti ti-trash" title="Archive" onclick="event.stopPropagation();archiveDoc(${d.id})"></span>
+      </div>
+      <div class="doc-lib-expand" id="doc-lib-exp-${d.id}" style="display:none">
+        ${d.summary ? `<div class="doc-lib-summary">${esc(d.summary)}</div>` : ''}
+        ${d.key_insight ? `<div style="font-size:12px;color:#1a1a1a;font-weight:500;border-left:2px solid #1a1a1a;padding-left:8px;margin-bottom:8px">${esc(d.key_insight)}</div>` : ''}
+        ${d.summary || d.key_insight ? `<button class="doc-assign-btn" style="font-size:11px;padding:4px 10px" onclick="viewDocAnalysis(${d.id})">View full analysis</button>` : ''}
+        ${!isAna ? `<button class="doc-assign-btn" style="font-size:11px;padding:4px 10px" onclick="reanalyzeDoc(${d.id})">Analyze now</button>` : ''}
+      </div>`;
+  }).join('');
+}
+
+function toggleDocLibRow(id, row) {
+  const exp = document.getElementById(`doc-lib-exp-${id}`);
+  if (!exp) return;
+  const isOpen = exp.style.display !== 'none';
+  // Close all
+  document.querySelectorAll('.doc-lib-expand').forEach(e => e.style.display = 'none');
+  if (!isOpen) exp.style.display = 'block';
+}
+
+async function reanalyzeDoc(id) {
+  setUploadStatus('Re-analyzing…');
+  try {
+    const result = await api(`/api/documents/library/${id}/analyze`, { method: 'POST' });
+    _docCurrentId       = id;
+    _docCurrentAnalysis = result.analysis;
+    const doc = _docLibAll.find(d => d.id === id);
+    renderDocAnalysis(result.analysis, {
+      name: doc ? (doc.original_name || doc.filename) : '',
+      type: doc ? doc.file_type : '',
+      biz:  doc ? doc.business : _docSelectedBiz,
+      date: new Date().toISOString().slice(0, 10),
+    });
+    setUploadStatus('');
+    loadDocuments();
+  } catch (e) {
+    setUploadStatus(e.message || 'Analysis failed');
+  }
+}
+
+async function viewDocAnalysis(id) {
+  try {
+    const doc = await api(`/api/documents/library/${id}`);
+    if (!doc.tasks_json && !doc.summary) { showToast('No analysis yet'); return; }
+    const analysis = {
+      summary:     doc.summary     || '',
+      key_insight: doc.key_insight || '',
+      risk:        doc.risk        || '',
+      tasks:       doc.tasks_json  ? JSON.parse(doc.tasks_json) : [],
+    };
+    _docCurrentId       = id;
+    _docCurrentAnalysis = analysis;
+    renderDocAnalysis(analysis, {
+      name: doc.original_name || doc.filename,
+      type: doc.file_type,
+      biz:  doc.business,
+      date: (doc.upload_date || '').slice(0, 10),
+    });
+  } catch (e) { console.error('viewDocAnalysis:', e); }
+}
+
+async function archiveDoc(id) {
+  try {
+    await api(`/api/documents/library/${id}`, { method: 'DELETE' });
+    _docLibAll = _docLibAll.filter(d => d.id !== id);
+    renderDocLib(_docLibFilter === 'all' ? _docLibAll : _docLibAll.filter(d => d.business === _docLibFilter));
+  } catch (e) { console.error('archiveDoc:', e); }
+}
+
 // ── ROUTINES VIEW ─────────────────────────────────────────────────────────────
 
-const PERMANENT_PERSONAL = ['spiritual', 'mental', 'grooming'];
+const PERMANENT_PERSONAL = ['spiritual', 'mental', 'grooming', 'family'];
 
 function formatDaysLabelShort(days) {
   if (!days || days === 'daily') return 'Daily';
@@ -3567,6 +4250,7 @@ async function loadRoutines() {
     renderRoutineSection('rt-mental-list',    personal.filter(r => r.category === 'mental'),    true);
     renderRoutineSection('rt-physical-list',  personal.filter(r => r.category === 'physical'));
     renderRoutineSection('rt-grooming-list',  personal.filter(r => r.category === 'grooming'),  true);
+    renderRoutineSection('rt-family-list',    personal.filter(r => r.category === 'family'),    true);
 
     // Future routines
     renderFutureRoutines(future);
@@ -3581,12 +4265,13 @@ function renderRoutineSection(elId, tasks, permanent = false) {
     return;
   }
   el.innerHTML = tasks.map(t => `
-    <div class="routine-row">
+    <div class="routine-row" style="flex-wrap:wrap">
       <i class="ti ti-refresh" style="font-size:11px;color:#ccc;flex-shrink:0"></i>
       <span class="routine-time">${t.scheduled_time ? esc(t.scheduled_time) : ''}</span>
       <span class="routine-name">${esc(t.name)}</span>
       <span class="routine-days">${formatDaysLabelShort(t.days)}</span>
       <button class="routine-remove" onclick="removeRoutine(${t.id}, ${permanent})" aria-label="Remove"><i class="ti ti-x"></i></button>
+      ${t.notes ? `<div style="width:100%;padding-left:27px;font-size:11px;color:#999;font-style:italic;margin-top:1px">${esc(t.notes)}</div>` : ''}
     </div>`).join('');
 }
 

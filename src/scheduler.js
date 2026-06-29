@@ -105,7 +105,7 @@ const JOBS = [
   { time: '06:50', label: 'morning-cmd',    action: () => sendMessage('Morning command: floor price, driver call [APHL]')                  },
 
   // work blocks
-  { time: '07:20', label: 'raise',          action: () => sendMessage('Raise: investor emails, CRM update [BLOK]')                         },
+  { time: '07:20', label: 'raise',          action: () => sendMessage('Raise: investor relations — one genuine touchpoint today [BLOK]')  },
   { time: '08:50', label: 'product',        action: () => sendMessage('Product: PM review, Arkad flow [BLOK]')                             },
   { time: '09:50', label: 'operations',     action: () => sendMessage('Operations: payments, loading, tracking [APHL]')                    },
   { time: '10:20', label: 'comms',          action: () => sendMessage('Comms: Slack, async check-ins [BLOK]')                              },

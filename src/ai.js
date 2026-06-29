@@ -74,6 +74,16 @@ Do not include any explanation or markdown — only the raw JSON object.`;
 }
 
 async function generateMorningBriefing(tasks, date) {
+  const INVESTOR_FOCUS = [
+    'Monday: Research a new target investor today — know their thesis before you reach out.',
+    'Tuesday: Find one warm intro path — who in your network can connect you to a target?',
+    'Wednesday: Research an investor deeply — portfolio, thesis, recent posts, mutual connections.',
+    'Thursday: Identify another warm intro path and send the ask today.',
+    'Friday: Follow up on this week\'s conversations — update your pipeline while it\'s fresh.',
+    'Saturday: Rest from investor work. Relationships need breathing room.',
+    'Sunday: Rest from investor work. Relationships need breathing room.',
+  ];
+
   const system = `You are Arkad — direct, no-nonsense, holds people to hard standards.
 Write a morning briefing in this exact format (plain text, no markdown, no emojis):
 
@@ -88,9 +98,14 @@ APHL AFRICA
 
 BLOK AI (weekdays only)
 [List blok recurring tasks sorted by time: HH:MM  task name — skip if weekend]
+[On weekdays, after listing Blok tasks, add this line:]
+Investor relations: one meaningful touchpoint today
+[Then the day-specific investor note provided in user content]
 
 CLOSE THE DAY WELL
-[List evening personal tasks: 19:00 Physical training, 20:30 Evening gratitude and plan tomorrow]
+17:30  Calls to loved ones and family — call someone today
+19:00  Physical training
+20:30  Evening gratitude, plan tomorrow
 
 X tasks total. Make today count.
 
@@ -100,9 +115,9 @@ Use exactly this structure. Replace placeholders with real data. No extra sectio
 
   const d       = new Date(date + 'T12:00:00Z');
   const DAYS    = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-  const MONTHS  = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   const weekday = DAYS[d.getUTCDay()];
   const isWeekend = d.getUTCDay() === 0 || d.getUTCDay() === 6;
+  const investorNote = INVESTOR_FOCUS[d.getUTCDay()];
 
   const recurring = tasks.filter(t => t.source === 'recurring');
   const manual    = tasks.filter(t => t.source !== 'recurring');
@@ -117,6 +132,7 @@ Use exactly this structure. Replace placeholders with real data. No extra sectio
   const userContent =
     `Date: ${weekday}, ${date}\n` +
     `Is weekend: ${isWeekend}\n` +
+    `Investor focus for today: ${investorNote}\n\n` +
     `Personal recurring:\n${personalRec.map(fmtRec).join('\n') || '(none)'}\n\n` +
     `APHL recurring:\n${aphlRec.map(fmtRec).join('\n') || '(none)'}\n\n` +
     `Blok AI recurring:\n${blokRec.map(fmtRec).join('\n') || '(none weekday only)'}\n\n` +
@@ -138,12 +154,13 @@ Spiritual: [did they pray and reflect? one sentence, direct]
 Mental: [did they journal and check in? one sentence]
 Physical: [did they train and read? one sentence]
 Grooming: [did they maintain their routine? one sentence]
+Family: [did they call a family member today? name it directly if skipped — this is non-negotiable]
 
 APHL AFRICA
 [2-3 sentences: what ops happened, what was missed, pattern to flag if any]
 
 BLOK AI
-[2-3 sentences: investor emails sent? CRM updated? product reviewed? be direct]
+[2-3 sentences: investor relationship building — did they have one genuine touchpoint? did they update their pipeline? product progress? be direct]
 
 THE DAY
 [One sentence: did the day succeed or fall short? Name the single biggest reason]
@@ -192,8 +209,8 @@ Return JSON only in this format:
 completed: array of task IDs from the provided task list that \
 match what was described as done. Be liberal in matching — \
 if he says "I called Candy" match it to any task about briefing \
-or calling Candy. If he says "done with emails" match investor \
-email tasks.
+or calling Candy. If he says "spoke to an investor" or "sent a message" \
+match investor relationship building touchpoint tasks.
 
 new_tasks: any new tasks mentioned that are not in the current list.
 
@@ -241,6 +258,60 @@ Return JSON only:
   return JSON.parse(match[0]);
 }
 
+async function parseStrategicDocument(documentText, business, existingGoals, currentTasks) {
+  const system = `You are OGV's strategic execution advisor.
+OGV is an Igbo entrepreneur running:
+- Blok AI: pre-seed AI wealthtech, fundraising active, AI coach Arkad, product manager on the team
+- APHL Africa: petroleum haulage Port Harcourt, Candy Opusunju runs ops and sales
+
+OGV has sent you a strategic business document.
+Your job is to read it and extract ONLY 2 to 3 daily tasks that move the overall vision forward.
+
+Rules:
+- Tasks must be specific and completable in one day
+- Tasks must connect directly to what the document describes
+- Do not create generic tasks — be specific to the document content
+- Prioritize tasks that unblock the most downstream work
+- If the document describes a problem, the tasks should solve it
+- If it describes a goal, the tasks should move toward it
+- If it is a plan, the tasks should execute the next step
+
+Also write:
+- A one paragraph strategic summary of the document
+- The single most important insight from the document
+- One risk OGV should be aware of
+
+Return JSON only:
+{
+  "summary": "one paragraph summary of the document",
+  "key_insight": "the single most important thing from this document",
+  "risk": "one risk to be aware of",
+  "tasks": [
+    {
+      "name": "specific actionable task",
+      "business": "blok or aphl or trade or personal",
+      "time": "suggested HH:MM or empty string",
+      "priority": "high or normal",
+      "rationale": "one sentence explaining why this task matters"
+    }
+  ]
+}
+
+Maximum 3 tasks. Minimum 2. No more, no less.
+Return ONLY the JSON. No markdown. No explanation.`;
+
+  const userContent =
+    `Business context: ${business}\n\n` +
+    `Current active goals:\n${JSON.stringify(existingGoals)}\n\n` +
+    `Today's existing tasks (avoid duplicating these):\n${currentTasks.map(t => t.name).join(', ')}\n\n` +
+    `Strategic document:\n${documentText}`;
+
+  const reply = await claudeMessage(system, userContent, 'claude-sonnet-4-6');
+  const match = reply.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('Claude did not return valid JSON for document analysis');
+  return JSON.parse(match[0]);
+}
+
 async function reviewGoalProgress(goal, cycles, progressNotes) {
   const system = `You are OGV's strategic advisor. Direct strategic review voice. No flattery.
 Given a goal, all its monthly cycles, and progress notes, write a short honest assessment: what has moved, what has not, what needs to change. 3-5 sentences. Plain text.`;
@@ -261,4 +332,5 @@ module.exports = {
   analyzeVoiceReport,
   suggestMonthlyCommitments,
   reviewGoalProgress,
+  parseStrategicDocument,
 };

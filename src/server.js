@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const multer  = require('multer');
 const path    = require('path');
+const fs      = require('fs');
 const {
   db, watToday, watTomorrow, watCutoff, weekStart,
   getTasksByDate, getTaskById, insertTask, toggleTask, markTaskDone, updatePriority, deleteTask,
@@ -12,7 +13,12 @@ const {
   getCycles, getCyclesByGoal, getCycleById, addCycle, updateCycleCommitment, updateCycleReflection,
   addGoalProgress, getGoalProgress,
   getSetting, upsertSetting, deleteSetting,
+  saveDocumentAnalysis, getDocumentAnalyses,
+  saveUploadedDocument, getUploadedDocument, getAllUploadedDocuments, getUploadedDocumentsByBusiness,
+  updateUploadedDocumentStatus, linkDocumentToAnalysis, archiveUploadedDocument, searchUploadedDocuments,
+  getTeamMembers, getMembersByBusiness,
 } = require('./db');
+const { parseDocument, cleanDocumentText } = require('./document-parser');
 const gcal = require('./google-calendar');
 
 const DEFAULT_BLOCKS = [
@@ -21,7 +27,7 @@ const DEFAULT_BLOCKS = [
   { time: '06:00', end: '06:30', name: 'Orient and daily priority',                biz: 'blok'     },
   { time: '06:30', end: '07:00', name: 'Pre-day setup: depot price, brief Candy',  biz: 'aphl'     },
   { time: '07:00', end: '07:30', name: 'Morning command: floor price, driver call',biz: 'aphl'     },
-  { time: '07:30', end: '09:00', name: 'Raise: 5 investor emails, CRM update',     biz: 'blok'     },
+  { time: '07:30', end: '09:00', name: 'Raise: investor relations',                 biz: 'blok'     },
   { time: '08:00', end: '10:00', name: 'Sales push: Candy runs outbound',          biz: 'aphl'     },
   { time: '09:00', end: '10:30', name: 'Product: PM review, Arkad user flow',      biz: 'blok'     },
   { time: '10:00', end: '13:00', name: 'Operations: payments, loading, tracking',  biz: 'aphl'     },
@@ -30,12 +36,12 @@ const DEFAULT_BLOCKS = [
   { time: '13:00', end: '14:00', name: 'MD strategic hour: depot, pricing',        biz: 'aphl'     },
   { time: '14:00', end: '15:30', name: 'Strategy: priorities, decision log',       biz: 'blok'     },
   { time: '16:00', end: '17:30', name: 'Unified day close: ops sync, revenue log', biz: 'blok'     },
-  { time: '17:30', end: '18:00', name: 'Calls to loved ones',                      biz: 'anchor'   },
+  { time: '17:30', end: '18:00', name: 'Calls to loved ones and family',           biz: 'anchor'   },
   { time: '18:00', end: '19:00', name: 'Pottery or reading',                       biz: 'personal' },
   { time: '19:00', end: '20:00', name: 'Physical activity',                        biz: 'personal' },
   { time: '20:30', end: '21:00', name: 'Evening wind-down and next day planning',  biz: 'anchor'   },
 ];
-const { structureDump, transcribeAudio } = require('./ai');
+const { structureDump, transcribeAudio, parseStrategicDocument } = require('./ai');
 const { initBot, handleUpdate, registerWebhook, POLLING, sendMessage } = require('./telegram');
 const { initScheduler } = require('./scheduler');
 
@@ -44,8 +50,42 @@ gcal.setMessageSender(sendMessage);
 
 // ── app setup ─────────────────────────────────────────────────────────────────
 
-const app    = express();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
+const app         = express();
+const audioUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
+
+const UPLOAD_DIR = path.join(__dirname, '..', 'uploads', 'documents');
+const TEMP_DIR   = path.join(__dirname, '..', 'uploads', 'temp');
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+fs.mkdirSync(TEMP_DIR,   { recursive: true });
+
+const ALLOWED_DOC_MIMES = new Set([
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/msword',
+  'text/plain',
+  'text/markdown',
+]);
+const ALLOWED_DOC_EXTS = new Set(['.pdf', '.docx', '.doc', '.txt', '.md']);
+
+const docStorage = multer.diskStorage({
+  destination: UPLOAD_DIR,
+  filename: (_req, file, cb) => {
+    const safe = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+    cb(null, `${Date.now()}-${safe}`);
+  },
+});
+const docUpload = multer({
+  storage: docStorage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (ALLOWED_DOC_MIMES.has(file.mimetype) || ALLOWED_DOC_EXTS.has(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF, Word documents, and text files are supported'));
+    }
+  },
+});
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'public')));
@@ -161,6 +201,217 @@ app.patch('/api/recurring/:id/activate', (req, res) => {
   res.json({ ok: true });
 });
 
+// ── document analyses ─────────────────────────────────────────────────────────
+
+app.post('/api/documents/analyze', async (req, res) => {
+  const { text, business } = req.body;
+  if (!text || text.length < 100) {
+    return res.status(400).json({ error: 'Document too short. Paste the full document content.' });
+  }
+  try {
+    const goals   = getAllGoals.all();
+    const tasks   = getTasksByDate.all(watToday());
+    const analysis = await parseStrategicDocument(text, business || 'blok', goals, tasks);
+    const info     = saveDocumentAnalysis.run(
+      business || 'blok',
+      text.slice(0, 200),
+      analysis.summary,
+      analysis.key_insight,
+      analysis.risk,
+      JSON.stringify(analysis.tasks)
+    );
+    res.json({ ok: true, id: info.lastInsertRowid, analysis });
+  } catch (err) {
+    console.error('[documents/analyze]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/documents/analyze/import', (req, res) => {
+  const { tasks } = req.body;
+  if (!Array.isArray(tasks) || !tasks.length) {
+    return res.status(400).json({ error: 'tasks array required' });
+  }
+  const today = watToday();
+  const stmt  = db.prepare(
+    `INSERT INTO tasks (date, name, business, time, done, priority, source)
+     VALUES (?, ?, ?, ?, 0, ?, 'document')`
+  );
+  db.transaction((ts) => {
+    for (const t of ts) {
+      stmt.run(today, t.name, t.business || 'blok', t.time || null, t.priority || 'normal');
+    }
+  })(tasks);
+  syncDayLog(today);
+  res.json(getTasksByDate.all(today));
+});
+
+app.get('/api/documents', (_req, res) => {
+  res.json(getDocumentAnalyses.all());
+});
+
+// ── uploaded document library ─────────────────────────────────────────────────
+
+app.get('/api/documents/library', (req, res) => {
+  const { biz } = req.query;
+  if (biz && biz !== 'all') {
+    res.json(getUploadedDocumentsByBusiness.all(biz));
+  } else {
+    res.json(getAllUploadedDocuments.all());
+  }
+});
+
+app.get('/api/documents/library/search', (req, res) => {
+  const { q } = req.query;
+  if (!q || q.length < 2) return res.json([]);
+  const like = `%${q}%`;
+  res.json(searchUploadedDocuments.all(like, like));
+});
+
+app.get('/api/documents/library/:id', (req, res) => {
+  const doc = getUploadedDocument.get(req.params.id);
+  if (!doc) return res.status(404).json({ error: 'not found' });
+  res.json(doc);
+});
+
+app.post('/api/documents/upload', docUpload.single('document'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  const { business, tags, assigned_to } = req.body;
+  try {
+    const parsed   = await parseDocument(req.file.path, req.file.mimetype);
+    const cleaned  = cleanDocumentText(parsed.text);
+    const words    = cleaned.split(/\s+/).filter(Boolean).length;
+    const info     = saveUploadedDocument.run(
+      req.file.filename,
+      req.file.originalname,
+      parsed.type,
+      req.file.size,
+      business || null,
+      cleaned
+    );
+    const docId = info.lastInsertRowid;
+    if (tags || assigned_to) {
+      db.prepare('UPDATE uploaded_documents SET tags = ?, assigned_to = ? WHERE id = ?')
+        .run(tags || null, assigned_to || 'OGV', docId);
+    }
+    updateUploadedDocumentStatus.run('parsed', docId);
+    fs.unlink(req.file.path, () => {});
+    res.json({
+      ok: true,
+      documentId: docId,
+      preview: cleaned.slice(0, 200),
+      wordCount: words,
+      type: parsed.type,
+    });
+  } catch (err) {
+    fs.unlink(req.file.path, () => {});
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/documents/upload/analyze', docUpload.single('document'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+  const { business, tags, assigned_to } = req.body;
+  const biz = business || 'blok';
+  try {
+    const parsed  = await parseDocument(req.file.path, req.file.mimetype);
+    const cleaned = cleanDocumentText(parsed.text);
+    const words   = cleaned.split(/\s+/).filter(Boolean).length;
+
+    const docInfo = saveUploadedDocument.run(
+      req.file.filename, req.file.originalname, parsed.type,
+      req.file.size, biz, cleaned
+    );
+    const docId = docInfo.lastInsertRowid;
+    if (tags || assigned_to) {
+      db.prepare('UPDATE uploaded_documents SET tags = ?, assigned_to = ? WHERE id = ?')
+        .run(tags || null, assigned_to || 'OGV', docId);
+    }
+    updateUploadedDocumentStatus.run('parsed', docId);
+    fs.unlink(req.file.path, () => {});
+
+    const goals    = getAllGoals.all();
+    const tasks    = getTasksByDate.all(watToday());
+    const analysis = await parseStrategicDocument(cleaned, biz, goals, tasks);
+    const anaInfo  = saveDocumentAnalysis.run(
+      biz, cleaned.slice(0, 200),
+      analysis.summary, analysis.key_insight, analysis.risk,
+      JSON.stringify(analysis.tasks)
+    );
+    linkDocumentToAnalysis.run(anaInfo.lastInsertRowid, 'analyzed', docId);
+
+    res.json({
+      ok: true,
+      documentId: docId,
+      analysisId: anaInfo.lastInsertRowid,
+      wordCount: words,
+      type: parsed.type,
+      analysis,
+    });
+  } catch (err) {
+    fs.unlink(req.file.path, () => {});
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/documents/library/:id/analyze', async (req, res) => {
+  const doc = getUploadedDocument.get(req.params.id);
+  if (!doc) return res.status(404).json({ error: 'not found' });
+  if (!doc.parsed_text) return res.status(400).json({ error: 'No parsed text available' });
+  try {
+    const goals    = getAllGoals.all();
+    const tasks    = getTasksByDate.all(watToday());
+    const analysis = await parseStrategicDocument(doc.parsed_text, doc.business || 'blok', goals, tasks);
+    const anaInfo  = saveDocumentAnalysis.run(
+      doc.business || 'blok', doc.parsed_text.slice(0, 200),
+      analysis.summary, analysis.key_insight, analysis.risk,
+      JSON.stringify(analysis.tasks)
+    );
+    linkDocumentToAnalysis.run(anaInfo.lastInsertRowid, 'analyzed', doc.id);
+    res.json({ ok: true, analysisId: anaInfo.lastInsertRowid, analysis });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/documents/library/:id/assign', (req, res) => {
+  const doc = getUploadedDocument.get(req.params.id);
+  if (!doc) return res.status(404).json({ error: 'not found' });
+  const { tasks, assignee, date } = req.body;
+  if (!Array.isArray(tasks) || !tasks.length) {
+    return res.status(400).json({ error: 'tasks array required' });
+  }
+  const targetDate = date || watToday();
+  const stmt = db.prepare(
+    `INSERT INTO tasks (date, name, business, time, done, priority, source)
+     VALUES (?, ?, ?, ?, 0, ?, 'document')`
+  );
+  db.transaction((ts) => {
+    for (const t of ts) {
+      stmt.run(targetDate, t.name, t.business || doc.business || 'blok', t.time || null, t.priority || 'normal');
+    }
+  })(tasks);
+  if (assignee) {
+    db.prepare('UPDATE uploaded_documents SET assigned_to = ? WHERE id = ?').run(assignee, doc.id);
+  }
+  syncDayLog(targetDate);
+  res.json({ ok: true, tasksAdded: tasks.length });
+});
+
+app.delete('/api/documents/library/:id', (req, res) => {
+  const info = archiveUploadedDocument.run(req.params.id);
+  if (!info.changes) return res.status(404).json({ error: 'not found' });
+  res.json({ ok: true });
+});
+
+app.get('/api/team', (_req, res) => {
+  res.json(getTeamMembers.all());
+});
+
+app.get('/api/team/:business', (req, res) => {
+  res.json(getMembersByBusiness.all(req.params.business, 'all'));
+});
+
 // ── history ───────────────────────────────────────────────────────────────────
 
 app.get('/api/history', (req, res) => {
@@ -207,7 +458,7 @@ app.post('/api/brain-dump/text', async (req, res) => {
   }
 });
 
-app.post('/api/brain-dump/voice', upload.single('audio'), async (req, res) => {
+app.post('/api/brain-dump/voice', audioUpload.single('audio'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'audio file required' });
     const mimeType   = req.file.mimetype || 'audio/webm';
