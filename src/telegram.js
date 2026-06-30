@@ -158,6 +158,24 @@ function getActiveBlockName() {
   } catch { return null; }
 }
 
+function handleBotError(chatId, err, context) {
+  console.error(`[telegram error] ${context}:`, err);
+  const msg = err.message || '';
+  let text;
+  if (/401|authentication|invalid x-api-key/i.test(msg)) {
+    text = 'My AI is not responding right now. There may be a configuration issue on the server. Try again in a moment or use /today to see your tasks.';
+  } else if (/429|rate.?limit/i.test(msg)) {
+    text = 'I am getting too many requests right now. Give me 30 seconds and try again.';
+  } else if (/500|overloaded/i.test(msg)) {
+    text = 'The AI service is temporarily overloaded. Try again in a minute.';
+  } else if (/ECONNREFUSED|network|fetch/i.test(msg)) {
+    text = 'I could not reach the server right now. Check your connection and try again.';
+  } else {
+    text = 'Something went wrong on my end. Try again or use /today to see your tasks.';
+  }
+  return sendMessage(text);
+}
+
 function buildContext() {
   const today = watToday();
   const tasks = getTasksByDate.all(today);
@@ -374,7 +392,7 @@ async function handleUpdate(update) {
           pendingDocTasks.set(chatId, analysis.tasks);
           await sendMessage(formatDocAnalysisReply(biz, analysis));
         } catch (err) {
-          await sendMessage(`Analysis failed: ${err.message}`);
+          await handleBotError(chatId, err, 'voice document analysis');
         }
         return;
       }
@@ -435,7 +453,7 @@ async function handleUpdate(update) {
         pendingDocTasks.set(chatId, analysis.tasks.map(t => ({ ...t, business: t.business || biz })));
         await sendMessage(formatDocAnalysisReply(biz, analysis));
       } catch (err) {
-        await sendMessage(`Analysis failed: ${err.message}`);
+        await handleBotError(chatId, err, 'document analysis');
       }
       return;
     }
@@ -534,7 +552,7 @@ async function handleUpdate(update) {
           pendingDocTasks.set(chatId, analysis.tasks);
           await sendMessage(formatDocAnalysisReply(biz, analysis));
         } catch (err) {
-          await sendMessage(`Analysis failed: ${err.message}`);
+          await handleBotError(chatId, err, 'document analysis');
         }
         return;
       }
@@ -561,8 +579,7 @@ async function handleUpdate(update) {
       await sendMessage(reply);
     }
   } catch (err) {
-    console.error('handleUpdate error:', err);
-    await sendMessage(`Error: ${err.message}`);
+    await handleBotError(chatId, err, 'message handling');
   }
 }
 
@@ -580,12 +597,13 @@ async function handleCasualCompletion(text, chatId) {
     markTaskDone.run(matched.id);
     upsertNudge.run(matched.id, today, 99, watNowDatetime());
     syncDayLog(today);
-    const ctx = buildContext();
-    const reply = await conversationalResponse(
-      `Just marked done: ${matched.name}`,
-      ctx
-    );
-    await sendMessage(reply);
+    try {
+      const ctx = buildContext();
+      const reply = await conversationalResponse(`Just marked done: ${matched.name}`, ctx);
+      await sendMessage(reply);
+    } catch (err) {
+      await handleBotError(chatId, err, 'conversational response');
+    }
   } else {
     await sendMessage('Which task did you finish? Send the number (/done N) or tell me the name.');
   }
@@ -594,9 +612,10 @@ async function handleCasualCompletion(text, chatId) {
 // ── command handlers ──────────────────────────────────────────────────────────
 
 async function handleCommand(text) {
-  const parts = text.split(' ');
-  const cmd   = parts[0].toLowerCase().split('@')[0]; // strip @botname suffix Telegram appends
-  const args  = parts.slice(1);
+  const chatId = String(process.env.TELEGRAM_CHAT_ID);
+  const parts  = text.split(' ');
+  const cmd    = parts[0].toLowerCase().split('@')[0]; // strip @botname suffix Telegram appends
+  const args   = parts.slice(1);
 
   switch (cmd) {
     case '/start': {
@@ -748,8 +767,12 @@ async function handleCommand(text) {
         await sendMessage('No tasks for today. Add some first.');
         return;
       }
-      const briefing = await generateMorningBriefing(tasks, watToday());
-      await sendMessage(briefing);
+      try {
+        const briefing = await generateMorningBriefing(tasks, watToday());
+        await sendMessage(briefing);
+      } catch (err) {
+        await handleBotError(chatId, err, 'morning briefing');
+      }
       break;
     }
 
@@ -759,8 +782,12 @@ async function handleCommand(text) {
         await sendMessage('No tasks recorded today.');
         return;
       }
-      const review = await generateEODReview(tasks, watToday());
-      await sendMessage(review);
+      try {
+        const review = await generateEODReview(tasks, watToday());
+        await sendMessage(review);
+      } catch (err) {
+        await handleBotError(chatId, err, 'EOD review');
+      }
       break;
     }
 
@@ -973,7 +1000,7 @@ async function handleCommand(text) {
         const commitmentText = updated[`commitment_${which}`];
         await sendMessage(`Done: ${commitmentText}`);
       } catch (e) {
-        await sendMessage(`Error: ${e.message}`);
+        await handleBotError(chatId, e, 'cycle commitment update');
       }
       break;
     }
@@ -985,17 +1012,18 @@ async function handleCommand(text) {
       if (!goal) { await sendMessage(`Goal ${goalId} not found.`); return; }
 
       await sendMessage('Thinking…');
-      const existingCycles = getCyclesByGoal.all(goalId);
-      const suggestion     = await suggestMonthlyCommitments(goal, existingCycles);
-
-      const chatId = String(process.env.TELEGRAM_CHAT_ID);
-      pendingSuggestions.set(chatId, { goal_id: goalId, ...suggestion });
-
-      const list = suggestion.commitments.map((c, i) => `${i + 1}. ${c}`).join('\n');
-      await sendMessage(
-        `Suggested focus: ${suggestion.suggested_title}\n\n${list}\n\n` +
-        `Reply /newcycle ${goalId} to set this as your cycle for the month.`
-      );
+      try {
+        const existingCycles = getCyclesByGoal.all(goalId);
+        const suggestion     = await suggestMonthlyCommitments(goal, existingCycles);
+        pendingSuggestions.set(chatId, { goal_id: goalId, ...suggestion });
+        const list = suggestion.commitments.map((c, i) => `${i + 1}. ${c}`).join('\n');
+        await sendMessage(
+          `Suggested focus: ${suggestion.suggested_title}\n\n${list}\n\n` +
+          `Reply /newcycle ${goalId} to set this as your cycle for the month.`
+        );
+      } catch (err) {
+        await handleBotError(chatId, err, 'goal suggestion');
+      }
       break;
     }
 
@@ -1005,7 +1033,6 @@ async function handleCommand(text) {
       const goal = getAllGoals.all().find(g => g.id === goalId);
       if (!goal) { await sendMessage(`Goal ${goalId} not found.`); return; }
 
-      const chatId = String(process.env.TELEGRAM_CHAT_ID);
       let suggestion;
       const pending = pendingSuggestions.get(chatId);
       if (pending && pending.goal_id === goalId) {
@@ -1013,8 +1040,13 @@ async function handleCommand(text) {
         pendingSuggestions.delete(chatId);
       } else {
         await sendMessage('Generating suggestions…');
-        const existingCycles = getCyclesByGoal.all(goalId);
-        suggestion = await suggestMonthlyCommitments(goal, existingCycles);
+        try {
+          const existingCycles = getCyclesByGoal.all(goalId);
+          suggestion = await suggestMonthlyCommitments(goal, existingCycles);
+        } catch (err) {
+          await handleBotError(chatId, err, 'cycle generation');
+          return;
+        }
       }
 
       const month = new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 7);
@@ -1045,10 +1077,14 @@ async function handleCommand(text) {
       if (!goal) { await sendMessage(`Goal ${goalId} not found.`); return; }
 
       await sendMessage('Reviewing…');
-      const cycles      = getCyclesByGoal.all(goalId);
-      const progress    = getGoalProgress.all(goalId);
-      const assessment  = await reviewGoalProgress(goal, cycles, progress);
-      await sendMessage(assessment);
+      try {
+        const cycles     = getCyclesByGoal.all(goalId);
+        const progress   = getGoalProgress.all(goalId);
+        const assessment = await reviewGoalProgress(goal, cycles, progress);
+        await sendMessage(assessment);
+      } catch (err) {
+        await handleBotError(chatId, err, 'goal review');
+      }
       break;
     }
 
@@ -1174,7 +1210,7 @@ async function handleCommand(text) {
           pendingDocTasks.set(chatId, analysis.tasks.map(t => ({ ...t, business: t.business || biz })));
           await sendMessage(formatDocAnalysisReply(biz, analysis));
         } catch (err) {
-          await sendMessage(`Analysis failed: ${err.message}`);
+          await handleBotError(chatId, err, 'document re-analysis');
         }
         return;
       }
@@ -1410,7 +1446,7 @@ async function handleDocumentFile(doc, chatId) {
       `Reply blok, aphl, trade, or personal`
     );
   } catch (err) {
-    await sendMessage(`Failed to process document: ${err.message}`);
+    await handleBotError(chatId, err, 'document file processing');
   }
 }
 
