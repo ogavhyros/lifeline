@@ -7,7 +7,7 @@ const {
   transcribeAudio, structureDump,
   generateMorningBriefing, generateEODReview,
   analyzeVoiceReport, suggestMonthlyCommitments, reviewGoalProgress,
-  parseStrategicDocument,
+  parseStrategicDocument, conversationalResponse,
 } = require('./ai');
 const { parseDocument, cleanDocumentText } = require('./document-parser');
 const gcal = require('./google-calendar');
@@ -156,6 +156,33 @@ function getActiveBlockName() {
     }
     return null;
   } catch { return null; }
+}
+
+function buildContext() {
+  const today = watToday();
+  const tasks = getTasksByDate.all(today);
+  const done = tasks.filter(t => t.done);
+  const pending = tasks.filter(t => !t.done);
+  const rate = tasks.length > 0 ? Math.round((done.length / tasks.length) * 100) : 0;
+  const activeBlock = getActiveBlockName();
+  const now = new Date();
+  const timeWAT = new Date(now.getTime() + 60 * 60 * 1000)
+    .toISOString().slice(11, 16) + ' WAT';
+
+  return {
+    date: today,
+    time: timeWAT,
+    done: done.length,
+    total: tasks.length,
+    rate,
+    activeBlock: activeBlock || 'No active block',
+    pendingTasks: pending.slice(0, 5)
+      .map(t => `[${t.business.toUpperCase()}] ${t.name}`)
+      .join(', ') || 'None',
+    recentCompleted: done.slice(-3)
+      .map(t => t.name)
+      .join(', ') || 'None yet',
+  };
 }
 
 // overdue  — tasks from getPendingNudges (time already passed, not snoozed, nudge_count < 3)
@@ -494,22 +521,73 @@ async function handleUpdate(update) {
       await handleVoice(voice, chatId);
     } else if (text.startsWith('/')) {
       await handleCommand(text);
-    } else if (text.length > 200 && hasDocPrefix(text)) {
-      const { biz, docText } = extractDocPrefix(text);
-      await sendMessage(`Analyzing your ${BIZ_LABEL[biz] || biz} document…`);
-      try {
-        const analysis = await runDocAnalysis(biz, docText);
-        pendingDocTasks.set(chatId, analysis.tasks);
-        await sendMessage(formatDocAnalysisReply(biz, analysis));
-      } catch (err) {
-        await sendMessage(`Analysis failed: ${err.message}`);
+    } else {
+      const lowerText = text.toLowerCase();
+      const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
+
+      // Document: >200 words with business prefix
+      if (wordCount > 200 && hasDocPrefix(text)) {
+        const { biz, docText } = extractDocPrefix(text);
+        await sendMessage(`Analyzing your ${BIZ_LABEL[biz] || biz} document…`);
+        try {
+          const analysis = await runDocAnalysis(biz, docText);
+          pendingDocTasks.set(chatId, analysis.tasks);
+          await sendMessage(formatDocAnalysisReply(biz, analysis));
+        } catch (err) {
+          await sendMessage(`Analysis failed: ${err.message}`);
+        }
+        return;
       }
-    } else if (text.length > 20) {
-      await handleDump(text);
+
+      // Brain dump: >150 words with task-like language
+      const taskKeywords = /\b(need to|have to|must|should|plan to|going to|will|today I|this week)\b/i;
+      if (wordCount > 150 && taskKeywords.test(text)) {
+        await handleDump(text);
+        return;
+      }
+
+      // Casual completion: short message mentioning done/finished/completed
+      const isCompletion =
+        (lowerText.includes('done') || lowerText.includes('finished') || lowerText.includes('completed')) &&
+        wordCount < 20;
+      if (isCompletion) {
+        await handleCasualCompletion(text, chatId);
+        return;
+      }
+
+      // Everything else: conversational
+      const ctx = buildContext();
+      const reply = await conversationalResponse(text, ctx);
+      await sendMessage(reply);
     }
   } catch (err) {
     console.error('handleUpdate error:', err);
     await sendMessage(`Error: ${err.message}`);
+  }
+}
+
+// ── casual completion handler ─────────────────────────────────────────────────
+
+async function handleCasualCompletion(text, chatId) {
+  const today = watToday();
+  const pending = getTasksByDate.all(today).filter(t => !t.done);
+  const words = text.toLowerCase().split(/\W+/).filter(w => w.length > 3);
+  const matched = pending.find(t =>
+    words.some(w => t.name.toLowerCase().includes(w))
+  );
+
+  if (matched) {
+    markTaskDone.run(matched.id);
+    upsertNudge.run(matched.id, today, 99, watNowDatetime());
+    syncDayLog(today);
+    const ctx = buildContext();
+    const reply = await conversationalResponse(
+      `Just marked done: ${matched.name}`,
+      ctx
+    );
+    await sendMessage(reply);
+  } else {
+    await sendMessage('Which task did you finish? Send the number (/done N) or tell me the name.');
   }
 }
 
@@ -1189,8 +1267,10 @@ async function handleCommand(text) {
 async function handleDump(text) {
   const structured = await structureDump(text);
   saveTasks(structured.tasks);
-  const tasks = getTodayTasks();
-  await sendMessage(`Focus: ${structured.focus}\n\n${formatTaskList(tasks)}`);
+  const ctx = buildContext();
+  const convMsg = `Brain dump processed. ${structured.tasks.length} tasks added — ${structured.tasks.map(t => t.name).join(', ')}. Focus: ${structured.focus}`;
+  const reply = await conversationalResponse(convMsg, ctx);
+  await sendMessage(reply);
 }
 
 async function handleVoice(voice, chatId) {
@@ -1226,17 +1306,19 @@ async function handleVoice(voice, chatId) {
   // ── dump: show structured tasks and ask YES/NO ────────────────────────────
   if (type === 'dump') {
     if (!new_tasks.length) {
-      await sendMessage(`Transcript: "${transcript}"\n\nNo tasks found.`);
+      const ctx = buildContext();
+      const reply = await conversationalResponse(`Voice note received but no tasks were found in it: "${transcript}"`, ctx);
+      await sendMessage(reply);
       return;
     }
     pendingTasks.set(chatId, new_tasks);
     const preview = new_tasks
       .map((t, i) => `${i + 1}. [${t.business || 'personal'}] ${t.name}${t.time ? ` — ${t.time}` : ''}`)
       .join('\n');
-    await sendMessage(
-      `Transcript: "${transcript}"\n\nFocus: ${summary}\n\nTasks:\n${preview}\n\n` +
-      'Reply YES to add these tasks, or NO to discard.'
-    );
+    const ctx = buildContext();
+    const convMsg = `Voice brain dump captured ${new_tasks.length} tasks. Focus: ${summary}. Tasks: ${new_tasks.map(t => t.name).join(', ')}`;
+    const intro = await conversationalResponse(convMsg, ctx);
+    await sendMessage(`${intro}\n\nTasks captured:\n${preview}\n\nReply YES to add these, or NO to discard.`);
     return;
   }
 
@@ -1256,28 +1338,29 @@ async function handleVoice(voice, chatId) {
   const updatedTasks   = getTodayTasks();
   const completedNames = tasks
     .filter(t => completed.includes(t.id))
-    .map(t => `— ${t.name}`);
+    .map(t => t.name);
 
-  let reply;
+  const ctx = buildContext();
+  let convMsg;
   if (completedNames.length) {
-    reply =
-      `✓ Updated\n\nCompleted:\n${completedNames.join('\n')}\n\n` +
-      `${summary}\n\n${fmtRate(updatedTasks)}`;
+    convMsg = `Voice report processed. Just marked done: ${completedNames.join(', ')}. ${summary}`;
   } else {
-    reply = `Transcript: "${transcript}"\n\n${summary}`;
+    convMsg = `Voice note received: "${transcript}". ${summary}. No tasks matched for completion.`;
   }
+
+  const reply = await conversationalResponse(convMsg, ctx);
 
   if (new_tasks.length) {
     const preview = new_tasks
       .map((t, i) => `${i + 1}. [${t.business || 'personal'}] ${t.name}${t.time ? ` — ${t.time}` : ''}`)
       .join('\n');
-    reply +=
-      `\n\nAlso noted ${new_tasks.length} new task${new_tasks.length !== 1 ? 's' : ''} — ` +
-      `reply ADD to save them or ignore.\n${preview}`;
     pendingTasks.set(chatId, new_tasks);
+    await sendMessage(
+      `${reply}\n\nAlso captured ${new_tasks.length} new task${new_tasks.length !== 1 ? 's' : ''}:\n${preview}\n\nReply ADD to save or ignore.`
+    );
+  } else {
+    await sendMessage(reply);
   }
-
-  await sendMessage(reply);
 }
 
 async function handleDocumentFile(doc, chatId) {

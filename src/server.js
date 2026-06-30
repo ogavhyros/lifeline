@@ -57,10 +57,21 @@ gcal.setMessageSender(sendMessage);
 const app         = express();
 const audioUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
-const UPLOAD_DIR = path.join(__dirname, '..', 'uploads', 'documents');
-const TEMP_DIR   = path.join(__dirname, '..', 'uploads', 'temp');
-fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-fs.mkdirSync(TEMP_DIR,   { recursive: true });
+const UPLOAD_DIR = process.env.NODE_ENV === 'production'
+  ? '/app/data/uploads'
+  : path.join(__dirname, '..', 'uploads', 'documents');
+const TEMP_DIR = path.join(__dirname, '..', 'uploads', 'temp');
+
+try {
+  if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+} catch (err) {
+  if (err.code !== 'EEXIST') console.error('Upload dir error:', err);
+}
+try {
+  if (!fs.existsSync(TEMP_DIR)) fs.mkdirSync(TEMP_DIR, { recursive: true });
+} catch (err) {
+  if (err.code !== 'EEXIST') console.error('Upload dir error:', err);
+}
 
 const ALLOWED_DOC_MIMES = new Set([
   'application/pdf',

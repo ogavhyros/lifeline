@@ -1,4 +1,5 @@
-const pdfParse = require('pdf-parse');
+const pdfParseLib = require('pdf-parse');
+const pdfParse = typeof pdfParseLib === 'function' ? pdfParseLib : pdfParseLib.default;
 const mammoth  = require('mammoth');
 const fs       = require('fs');
 const path     = require('path');
