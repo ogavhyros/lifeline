@@ -7,13 +7,13 @@ const {
   transcribeAudio, structureDump,
   generateMorningBriefing, generateEODReview,
   analyzeVoiceReport, suggestMonthlyCommitments, reviewGoalProgress,
-  parseStrategicDocument, conversationalResponse,
+  parseStrategicDocument, conversationalResponse, findTaskToDelete,
 } = require('./ai');
 const { parseDocument, cleanDocumentText } = require('./document-parser');
 const gcal = require('./google-calendar');
 const {
   db, watToday, watTomorrow,
-  getTasksByDate, getTaskById, insertTask, toggleTask, markTaskDone, updatePriority,
+  getTasksByDate, getTaskById, insertTask, toggleTask, markTaskDone, updatePriority, deleteTask,
   carryTask, addIdea, getIdeas, addNote, getNotes, syncDayLog,
   upsertNudge, snoozeTask,
   getAllGoals, addGoal, updateGoalStatus,
@@ -573,6 +573,16 @@ async function handleUpdate(update) {
         return;
       }
 
+      // Deletion intent
+      const DELETION_KEYWORDS = [
+        'remove', 'delete', 'cancel', 'drop', 'scratch', 'forget',
+        'get rid of', "don't need", 'remove the', 'delete the', 'cancel the',
+      ];
+      if (DELETION_KEYWORDS.some(kw => lowerText.includes(kw))) {
+        await handleDeletion(text, chatId);
+        return;
+      }
+
       // Everything else: conversational
       const ctx = buildContext();
       const reply = await conversationalResponse(text, ctx);
@@ -580,6 +590,33 @@ async function handleUpdate(update) {
     }
   } catch (err) {
     await handleBotError(chatId, err, 'message handling');
+  }
+}
+
+// ── natural language task deletion ───────────────────────────────────────────
+
+async function handleDeletion(text, chatId) {
+  const today = watToday();
+  const pending = getTasksByDate.all(today).filter(t => !t.done);
+
+  if (!pending.length) {
+    await sendMessage('No pending tasks to remove today.');
+    return;
+  }
+
+  try {
+    const result = await findTaskToDelete(text, pending);
+    if (result.task_id) {
+      const task = pending.find(t => t.id === result.task_id);
+      const name = task ? task.name : result.task_name;
+      deleteTask.run(result.task_id);
+      syncDayLog(today);
+      await sendMessage(`Done — ${name} is off your list.`);
+    } else {
+      await sendMessage('Which task do you want to remove? Send /today to see your numbered list, then reply with the name or number.');
+    }
+  } catch (err) {
+    await handleBotError(chatId, err, 'task deletion');
   }
 }
 
@@ -1303,9 +1340,21 @@ async function handleCommand(text) {
 async function handleDump(text) {
   const structured = await structureDump(text);
   saveTasks(structured.tasks);
-  const ctx = buildContext();
-  const convMsg = `Brain dump processed. ${structured.tasks.length} tasks added — ${structured.tasks.map(t => t.name).join(', ')}. Focus: ${structured.focus}`;
-  const reply = await conversationalResponse(convMsg, ctx);
+
+  if (!structured.tasks.length) {
+    await sendMessage('No tasks found in that. Try being more specific.');
+    return;
+  }
+
+  const parts = structured.tasks.map(t => {
+    const timeStr = t.time ? ` by ${t.time}` : '';
+    return `${t.name}${timeStr}`;
+  });
+
+  const reply = parts.length === 1
+    ? `Added — ${parts[0]}.`
+    : `Added ${parts.length} tasks — ${parts.join(', ')}.`;
+
   await sendMessage(reply);
 }
 

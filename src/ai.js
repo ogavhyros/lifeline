@@ -67,10 +67,13 @@ Return ONLY valid JSON with this exact shape:
 Do not include any explanation or markdown — only the raw JSON object.`;
 
   const reply = await claudeMessage(system, text);
-
-  const match = reply.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('Claude did not return valid JSON');
-  return JSON.parse(match[0]);
+  try {
+    const match = reply.match(/\{[\s\S]*\}/);
+    if (!match) return { focus: 'Could not parse the brain dump. Try again.', tasks: [] };
+    return JSON.parse(match[0]);
+  } catch {
+    return { focus: 'Could not parse the brain dump. Try again.', tasks: [] };
+  }
 }
 
 async function generateMorningBriefing(tasks, date) {
@@ -229,9 +232,13 @@ Return ONLY the JSON. No markdown.`;
     `Current tasks:\n${taskList}\n\nVoice report transcript:\n${transcript}`;
 
   const reply = await claudeMessage(system, userContent, 'claude-sonnet-4-6');
-  const match  = reply.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('Claude did not return valid JSON for voice report');
-  return JSON.parse(match[0]);
+  try {
+    const match = reply.match(/\{[\s\S]*\}/);
+    if (!match) return { completed: [], new_tasks: [], summary: transcript, type: 'dump' };
+    return JSON.parse(match[0]);
+  } catch {
+    return { completed: [], new_tasks: [], summary: transcript, type: 'dump' };
+  }
 }
 
 async function suggestMonthlyCommitments(goal, existingCycles) {
@@ -253,9 +260,13 @@ Return JSON only:
     `Suggest commitments for this month.`;
 
   const reply = await claudeMessage(system, userContent, 'claude-sonnet-4-6');
-  const match = reply.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('Claude did not return valid JSON for commitments');
-  return JSON.parse(match[0]);
+  try {
+    const match = reply.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error('No JSON found in response');
+    return JSON.parse(match[0]);
+  } catch (e) {
+    throw new Error(`Could not parse monthly commitments: ${e.message}`);
+  }
 }
 
 async function parseStrategicDocument(documentText, business, existingGoals, currentTasks) {
@@ -307,9 +318,13 @@ Return ONLY the JSON. No markdown. No explanation.`;
     `Strategic document:\n${documentText}`;
 
   const reply = await claudeMessage(system, userContent, 'claude-sonnet-4-6');
-  const match = reply.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('Claude did not return valid JSON for document analysis');
-  return JSON.parse(match[0]);
+  try {
+    const match = reply.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error('No JSON found in response');
+    return JSON.parse(match[0]);
+  } catch (e) {
+    throw new Error(`Could not parse document analysis: ${e.message}`);
+  }
 }
 
 async function reviewGoalProgress(goal, cycles, progressNotes) {
@@ -371,28 +386,53 @@ NEVER do these:
 
 Respond conversationally. One to four sentences max unless the question genuinely needs more.`;
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 600,
-      system,
-      messages: [{ role: 'user', content: message }],
-    }),
-  });
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 600,
+        system,
+        messages: [{ role: 'user', content: message }],
+      }),
+    });
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Anthropic API error ${res.status}: ${err}`);
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Anthropic API error ${res.status}: ${err}`);
+    }
+
+    const data = await res.json();
+    return data.content[0].text;
+  } catch {
+    return 'I ran into an issue processing that. Try again or use /today to see your tasks.';
   }
+}
 
-  const data = await res.json();
-  return data.content[0].text;
+async function findTaskToDelete(message, tasks) {
+  const system = `You match a user's natural language deletion request to a task in their list.
+Return JSON only: {"task_id": 123, "task_name": "matched name"} or {"task_id": null} if no clear match.
+Return ONLY the JSON. No markdown.`;
+
+  const taskList = tasks
+    .map(t => `ID ${t.id}: [${t.business}] ${t.name}${t.time ? ` — ${t.time}` : ''}`)
+    .join('\n');
+
+  const userContent = `Deletion request: "${message}"\n\nTask list:\n${taskList}`;
+
+  try {
+    const reply = await claudeMessage(system, userContent, 'claude-sonnet-4-6');
+    const match = reply.match(/\{[\s\S]*\}/);
+    if (!match) return { task_id: null };
+    return JSON.parse(match[0]);
+  } catch {
+    return { task_id: null };
+  }
 }
 
 module.exports = {
@@ -405,4 +445,5 @@ module.exports = {
   reviewGoalProgress,
   parseStrategicDocument,
   conversationalResponse,
+  findTaskToDelete,
 };
