@@ -158,22 +158,24 @@ function getActiveBlockName() {
   } catch { return null; }
 }
 
-function handleBotError(chatId, err, context) {
-  console.error(`[telegram error] ${context}:`, err);
+async function handleBotError(chatId, err, context) {
+  console.error(`[telegram error] ${context}:`, err.message);
   const msg = err.message || '';
   let text;
   if (/401|authentication|invalid x-api-key/i.test(msg)) {
-    text = 'My AI is not responding right now. There may be a configuration issue on the server. Try again in a moment or use /today to see your tasks.';
+    text = 'My AI connection is down right now. Use /today to see your task list.';
+  } else if (/JSON|parse/i.test(msg)) {
+    text = 'I had trouble processing that. Try rephrasing or use /today for your task list.';
   } else if (/429|rate.?limit/i.test(msg)) {
-    text = 'I am getting too many requests right now. Give me 30 seconds and try again.';
+    text = 'Too many requests right now. Wait 30 seconds and try again.';
   } else if (/500|overloaded/i.test(msg)) {
     text = 'The AI service is temporarily overloaded. Try again in a minute.';
   } else if (/ECONNREFUSED|network|fetch/i.test(msg)) {
     text = 'I could not reach the server right now. Check your connection and try again.';
   } else {
-    text = 'Something went wrong on my end. Try again or use /today to see your tasks.';
+    text = 'Something went wrong. Try again or use /today.';
   }
-  return sendMessage(text);
+  await sendMessage(text);
 }
 
 function buildContext() {
@@ -585,8 +587,16 @@ async function handleUpdate(update) {
 
       // Everything else: conversational
       const ctx = buildContext();
-      const reply = await conversationalResponse(text, ctx);
-      await sendMessage(reply);
+      try {
+        const reply = await conversationalResponse(text, ctx);
+        if (reply) {
+          await sendMessage(reply);
+        } else {
+          await sendMessage(`Here is your list for today:\n\n${formatTaskList(getTodayTasks())}`);
+        }
+      } catch {
+        await sendMessage(`Here is your list for today:\n\n${formatTaskList(getTodayTasks())}`);
+      }
     }
   } catch (err) {
     await handleBotError(chatId, err, 'message handling');
