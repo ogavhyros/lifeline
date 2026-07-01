@@ -240,6 +240,55 @@ const markTaskDone    = db.prepare('UPDATE tasks SET done = 1 WHERE id = ?');
 const updatePriority  = db.prepare('UPDATE tasks SET priority = ? WHERE id = ?');
 const deleteTask      = db.prepare('DELETE FROM tasks WHERE id = ?');
 
+// ── deduplication ─────────────────────────────────────────────────────────────
+// Guards against the Google Calendar sync loop: a task pushed to Calendar
+// that gets pulled back in reads as "[BUSINESS] task name" (or "✓ [BUSINESS]
+// task name" if done), which is the same task under a different name.
+
+function _stripCalendarPrefix(name) {
+  return String(name || '').replace(/^✓\s*/, '').replace(/^\[[^\]]+\]\s*/, '').trim();
+}
+
+function deduplicateTasks(date) {
+  const tasks    = getTasksByDate.all(date);
+  const toDelete = new Set();
+
+  // Exact-name duplicates: keep a done one over a not-done one, else lowest id.
+  const byName = new Map();
+  for (const t of tasks) {
+    if (!byName.has(t.name)) byName.set(t.name, []);
+    byName.get(t.name).push(t);
+  }
+  for (const group of byName.values()) {
+    if (group.length < 2) continue;
+    const done   = group.filter(t => t.done);
+    const keeper = (done.length ? done : group).slice().sort((a, b) => a.id - b.id)[0];
+    for (const t of group) {
+      if (t.id !== keeper.id) toDelete.add(t.id);
+    }
+  }
+
+  // Calendar-derived tasks whose title is a business-prefixed rewrite of a
+  // non-calendar task's name — same task re-imported from its own synced event.
+  const remaining     = tasks.filter(t => !toDelete.has(t.id));
+  const originalNames = new Set(
+    remaining.filter(t => t.calendar_source !== 'google').map(t => t.name)
+  );
+  for (const t of remaining) {
+    if (t.calendar_source !== 'google') continue;
+    const stripped = _stripCalendarPrefix(t.name);
+    if (stripped !== t.name && originalNames.has(stripped)) {
+      toDelete.add(t.id);
+    }
+  }
+
+  if (!toDelete.size) return 0;
+  db.transaction((ids) => {
+    for (const id of ids) deleteTask.run(id);
+  })([...toDelete]);
+  return toDelete.size;
+}
+
 // ── prepared statements — history ─────────────────────────────────────────────
 
 const getHistory = (days) =>
@@ -514,7 +563,11 @@ const getGoalProgress = db.prepare(
 
 // ── prepared statements — event sync ─────────────────────────────────────────
 
-const updateTaskEventId = db.prepare('UPDATE tasks SET event_id = ? WHERE id = ?');
+// NOTE: writes calendar_event_id (not the unused event_id column) — this is
+// the column getTaskByEventId/updateTaskFromCalendar/deleteTaskByEventId all
+// read, so a task DAYWAN pushes to Google Calendar is recognized as already-
+// linked on the next poll instead of being re-imported as a duplicate.
+const updateTaskEventId = db.prepare('UPDATE tasks SET calendar_event_id = ? WHERE id = ?');
 
 // ── prepared statements — Google Calendar import ──────────────────────────────
 
@@ -893,6 +946,7 @@ module.exports = {
   markTaskDone,
   updatePriority,
   deleteTask,
+  deduplicateTasks,
 
   // history
   getHistory,

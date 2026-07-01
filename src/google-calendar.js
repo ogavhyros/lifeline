@@ -1,3 +1,10 @@
+// SYNC RULES:
+// DAYWAN → Google Calendar: ALL tasks sync outward
+// Google Calendar → DAYWAN: ONLY externally created events
+// Events created by DAYWAN are tagged with extendedProperties.private.daywan_source = 'daywan'
+// These are never re-imported back into DAYWAN — that's what caused the
+// duplicate-task loop (DAYWAN pushes a task out, then reads it back in as new).
+
 require('dotenv').config();
 const { google } = require('googleapis');
 const {
@@ -97,6 +104,24 @@ async function listCalendars() {
   }));
 }
 
+// ── DAYWAN-created event detection ────────────────────────────────────────────
+// Two ways to recognize an event DAYWAN created: the extendedProperties tag
+// (added going forward by syncTaskToCalendar) and, for events created before
+// that tag existed, the "[BUSINESS] name" / "✓ [BUSINESS] name" title shape
+// syncTaskToCalendar has always used.
+
+function isDaywanTaggedEvent(event) {
+  return event?.extendedProperties?.private?.daywan_source === 'daywan';
+}
+
+function looksDaywanCreatedTitle(title) {
+  return /^(✓\s*)?\[[^\]]+\]\s*/.test(title || '');
+}
+
+function isDaywanCreatedEvent(event) {
+  return isDaywanTaggedEvent(event) || looksDaywanCreatedTitle(event?.summary);
+}
+
 // ── event fetching ────────────────────────────────────────────────────────────
 
 async function getEventsForDate(dateStr) {
@@ -111,7 +136,7 @@ async function getEventsForDate(dateStr) {
     singleEvents: true,
     orderBy:      'startTime',
   });
-  return (res.data.items || []).map(mapEvent);
+  return (res.data.items || []).filter(e => !isDaywanCreatedEvent(e)).map(mapEvent);
 }
 
 async function getTodayEvents() {
@@ -135,10 +160,12 @@ async function getEventsForMonth(year, month) {
     orderBy:      'startTime',
     maxResults:   500,
   });
-  return (res.data.items || []).map(e => ({
-    ...mapEvent(e),
-    date: (e.start?.dateTime || e.start?.date || '').slice(0, 10),
-  }));
+  return (res.data.items || [])
+    .filter(e => !isDaywanCreatedEvent(e))
+    .map(e => ({
+      ...mapEvent(e),
+      date: (e.start?.dateTime || e.start?.date || '').slice(0, 10),
+    }));
 }
 
 // ── event creation / update / delete ─────────────────────────────────────────
@@ -244,6 +271,12 @@ async function syncTaskToCalendar(task) {
     start:     startObj,
     end:       endObj,
     reminders: { useDefault: false, overrides: reminderOverrides },
+    extendedProperties: {
+      private: {
+        daywan_task_id: task.id.toString(),
+        daywan_source:  'daywan',
+      },
+    },
   };
 
   let event;
@@ -439,6 +472,14 @@ async function processCalendarEvent(event) {
     return;
   }
 
+  // Event was created by DAYWAN itself — never re-import it as a new/updated
+  // task. Without this check, every task DAYWAN pushes to Calendar gets read
+  // back in as a "new" event and duplicated indefinitely.
+  if (isDaywanCreatedEvent(event)) {
+    console.log(`[calendar] skipping DAYWAN-created event: ${event.summary}`);
+    return null;
+  }
+
   const title     = event.summary || '(no title)';
   const dateRaw   = event.start?.dateTime || event.start?.date || '';
   const date      = dateRaw.slice(0, 10);
@@ -489,4 +530,5 @@ module.exports = {
   renewCalendarWatch,
   getChangedEvents,
   processCalendarEvent,
+  isDaywanCreatedEvent,
 };

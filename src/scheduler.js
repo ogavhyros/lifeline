@@ -7,7 +7,7 @@ const {
   getPendingNudges, getSetting,
   getTaskByEventId, updateTaskFromCalendar,
   getTodayTasksIncludingPending, getPendingRecurring,
-  insertCarriedTask,
+  insertCarriedTask, deduplicateTasks,
   db,
 } = require('./db');
 
@@ -107,6 +107,13 @@ async function midnightCarry() {
   const today     = watToday();
   const yesterday = new Date(Date.now() + 60 * 60 * 1000 - 86400000).toISOString().slice(0, 10);
 
+  // Clean up any duplicate tasks from yesterday (Google Calendar sync loop)
+  // before carrying incomplete ones forward — otherwise duplicates get carried too.
+  const removedYesterday = deduplicateTasks(yesterday);
+  if (removedYesterday > 0) {
+    console.log(`[scheduler] midnight — cleaned ${removedYesterday} duplicate task(s) for ${yesterday}`);
+  }
+
   // Carry incomplete non-recurring tasks from yesterday
   const yesterdayTasks = getTasksByDate.all(yesterday);
   const todayTasks     = getTasksByDate.all(today);
@@ -172,7 +179,10 @@ async function morningCalendarSync() {
   }
   if (synced > 0) console.log(`[calendar] morning sync — ${synced} tasks pushed`);
 
-  // Pull any new Google Calendar events not yet tracked in LIFELINE
+  // Pull any new Google Calendar events not yet tracked in LIFELINE.
+  // gcal.getEventsForDate() already filters out DAYWAN-created events (tagged
+  // or legacy "[BUSINESS] name" titles) — see google-calendar.js sync rules —
+  // so this can't re-import a task DAYWAN just pushed above.
   let calEvents;
   try { calEvents = await gcal.getEventsForDate(today); }
   catch { return; }
@@ -348,6 +358,9 @@ async function nudgeTick() {
 }
 
 // ── Google Calendar polling fallback (every 15 min) ──────────────────────────
+// gcal.getEventsForDate() filters out DAYWAN-created events before returning
+// them, so this loop only ever sees externally created events — it can't
+// re-import a task DAYWAN itself pushed to Calendar as a duplicate.
 
 async function calendarPoll() {
   const tokenRow = getSetting.get('google_tokens');

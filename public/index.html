@@ -5984,9 +5984,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Initial load
+  // Initial load — clean up any Google Calendar sync-loop duplicates first,
+  // then fetch so the task list reflects the cleaned state.
   loadBusinesses().then(() => renderFocusBlocks());
-  fetchTasks();
+  api('/api/tasks/deduplicate', { method: 'POST' })
+    .catch(() => {})
+    .finally(() => fetchTasks());
   updateWeeklyStat();
 });
 </script>

@@ -6,6 +6,7 @@ const fs      = require('fs');
 const {
   db, watToday, watTomorrow, watCutoff, weekStart,
   getTasksByDate, getTaskById, insertTask, toggleTask, markTaskDone, updatePriority, deleteTask,
+  deduplicateTasks,
   getHistory, getKpis, upsertKpi,
   getRecurring, getFutureRecurring, getRecurringGrouped, addRecurring, deactivateRecurring, activateRecurring, populateRecurring,
   toggleRecurringActive, updateRecurringTime,
@@ -90,14 +91,44 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
   const today = watToday();
   const count = getTasksByDate.all(today).length;
   console.log(`[db] ${count} task${count !== 1 ? 's' : ''} found for today (${today})`);
+
+  // One-time cleanup of duplicates left over from the Google Calendar sync
+  // loop bug (a synced task getting pulled back in as a "new" task).
+  const removed = deduplicateTasks(today);
+  if (removed > 0) console.log(`[startup] cleaned ${removed} duplicate task${removed !== 1 ? 's' : ''} for today`);
 }
 
 // ── tasks ─────────────────────────────────────────────────────────────────────
 
 app.get('/api/tasks', (req, res) => {
-  const date = req.query.date || watToday();
+  const date  = req.query.date || watToday();
   syncDayLog(date);
-  res.json(getTasksByDate.all(date));
+  const tasks = getTasksByDate.all(date);
+
+  // Safety net against the Google Calendar sync loop: a calendar-derived task
+  // whose title is just a business-prefixed rewrite of a non-calendar task's
+  // name is the same task read back in — filter it out without deleting it
+  // (deduplicateTasks handles the destructive cleanup).
+  const cleanTasks = tasks.filter(task => {
+    if (task.calendar_source === 'google') {
+      const stripped = task.name.replace(/^✓\s*/, '').replace(/^\[[^\]]+\]\s*/, '');
+      const isDuplicate = tasks.some(t =>
+        t.id !== task.id &&
+        t.calendar_source !== 'google' &&
+        t.name === stripped
+      );
+      if (isDuplicate) return false;
+    }
+    return true;
+  });
+
+  res.json(cleanTasks);
+});
+
+app.post('/api/tasks/deduplicate', (req, res) => {
+  const date    = req.query.date || watToday();
+  const removed = deduplicateTasks(date);
+  res.json({ ok: true, removed });
 });
 
 app.post('/api/tasks', (req, res) => {
