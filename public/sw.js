@@ -1,4 +1,4 @@
-const CACHE = 'daywan-v1';
+const CACHE = 'lifeline-v1';
 const PRECACHE = [
   '/',
   '/manifest.json',

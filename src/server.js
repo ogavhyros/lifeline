@@ -21,30 +21,10 @@ const {
   getTeamMembers, getMembersByBusiness,
   updateTaskTime,
   getBusinesses, addBusiness, deactivateBusiness,
+  getFounderProfile, saveFounderProfile,
 } = require('./db');
 const { parseDocument, cleanDocumentText } = require('./document-parser');
 const gcal = require('./google-calendar');
-
-const DEFAULT_BLOCKS = [
-  { time: '05:30', end: '05:45', name: 'Prayer',                                   biz: 'anchor'   },
-  { time: '05:45', end: '06:00', name: 'Journaling',                               biz: 'anchor'   },
-  { time: '06:00', end: '06:30', name: 'Orient and daily priority',                biz: 'blok'     },
-  { time: '06:30', end: '07:00', name: 'Pre-day setup: depot price, brief Candy',  biz: 'aphl'     },
-  { time: '07:00', end: '07:30', name: 'Morning command: floor price, driver call',biz: 'aphl'     },
-  { time: '07:30', end: '09:00', name: 'Raise: investor relations',                 biz: 'blok'     },
-  { time: '08:00', end: '10:00', name: 'Sales push: Candy runs outbound',          biz: 'aphl'     },
-  { time: '09:00', end: '10:30', name: 'Product: PM review, product user flow',     biz: 'blok'     },
-  { time: '10:00', end: '13:00', name: 'Operations: payments, loading, tracking',  biz: 'aphl'     },
-  { time: '10:30', end: '11:30', name: 'Comms: Slack, async check-ins',            biz: 'blok'     },
-  { time: '11:30', end: '12:30', name: 'Brand: creative review, social metrics',   biz: 'blok'     },
-  { time: '13:00', end: '14:00', name: 'MD strategic hour: depot, pricing',        biz: 'aphl'     },
-  { time: '14:00', end: '15:30', name: 'Strategy: priorities, decision log',       biz: 'blok'     },
-  { time: '16:00', end: '17:30', name: 'Unified day close: ops sync, revenue log', biz: 'blok'     },
-  { time: '17:30', end: '18:00', name: 'Calls to loved ones and family',           biz: 'anchor'   },
-  { time: '18:00', end: '19:00', name: 'Pottery or reading',                       biz: 'personal' },
-  { time: '19:00', end: '20:00', name: 'Physical activity',                        biz: 'personal' },
-  { time: '20:30', end: '21:00', name: 'Evening wind-down and next day planning',  biz: 'anchor'   },
-];
 const { structureDump, transcribeAudio, parseStrategicDocument } = require('./ai');
 const { initBot, handleUpdate, registerWebhook, POLLING, sendMessage } = require('./telegram');
 const { initScheduler } = require('./scheduler');
@@ -419,10 +399,8 @@ app.post('/api/documents/upload', docUpload.single('document'), async (req, res)
       cleaned
     );
     const docId = info.lastInsertRowid;
-    if (tags || assigned_to) {
-      db.prepare('UPDATE uploaded_documents SET tags = ?, assigned_to = ? WHERE id = ?')
-        .run(tags || null, assigned_to || 'OGV', docId);
-    }
+    db.prepare('UPDATE uploaded_documents SET tags = ?, assigned_to = ? WHERE id = ?')
+      .run(tags || null, assigned_to || getFounderProfile().name, docId);
     updateUploadedDocumentStatus.run('parsed', docId);
     fs.unlink(req.file.path, () => {});
     res.json({
@@ -452,10 +430,8 @@ app.post('/api/documents/upload/analyze', docUpload.single('document'), async (r
       req.file.size, biz, cleaned
     );
     const docId = docInfo.lastInsertRowid;
-    if (tags || assigned_to) {
-      db.prepare('UPDATE uploaded_documents SET tags = ?, assigned_to = ? WHERE id = ?')
-        .run(tags || null, assigned_to || 'OGV', docId);
-    }
+    db.prepare('UPDATE uploaded_documents SET tags = ?, assigned_to = ? WHERE id = ?')
+      .run(tags || null, assigned_to || getFounderProfile().name, docId);
     updateUploadedDocumentStatus.run('parsed', docId);
     fs.unlink(req.file.path, () => {});
 
@@ -833,7 +809,17 @@ app.get('/api/schedule', (_req, res) => {
   if (row) {
     try { return res.json(JSON.parse(row.value)); } catch { }
   }
-  res.json(DEFAULT_BLOCKS);
+  res.json(getFounderProfile().scheduleBlocks);
+});
+
+// ── founder profile ───────────────────────────────────────────────────────────
+
+app.get('/api/profile', (_req, res) => {
+  res.json(getFounderProfile());
+});
+
+app.patch('/api/profile', (req, res) => {
+  res.json(saveFounderProfile(req.body || {}));
 });
 
 app.post('/api/schedule/order', (req, res) => {
@@ -992,7 +978,7 @@ app.patch('/api/settings/notifications', (req, res) => {
 
 app.post('/api/calendar/webhook', (req, res) => {
   const token = req.headers['x-goog-channel-token'];
-  if (token !== (process.env.GOOGLE_WEBHOOK_TOKEN || 'daywan-secret')) {
+  if (token !== (process.env.GOOGLE_WEBHOOK_TOKEN || 'lifeline-secret')) {
     return res.sendStatus(403);
   }
 
@@ -1066,7 +1052,7 @@ app.post('/api/calendar/sync-test', async (req, res) => {
     const startTime = `${startH}:00`;
     const endTime   = `${startH}:30`;
     const event = await gcal.createEvent(
-      'DAYWAN Sync Test', today, startTime, endTime, 'Webhook sync test event'
+      `${getFounderProfile().brandName} Sync Test`, today, startTime, endTime, 'Webhook sync test event'
     );
     res.json({
       ok: true,

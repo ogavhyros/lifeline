@@ -22,6 +22,7 @@ const {
   getSetting, saveDocumentAnalysis,
   saveUploadedDocument, getAllUploadedDocuments, linkDocumentToAnalysis, updateUploadedDocumentStatus,
   getPendingRecurring, confirmRecurring, confirmAllRecurring, rejectRecurring, rejectAllPendingRecurring,
+  getBusinesses, getFounderProfile,
 } = require('./db');
 
 // WAT datetime helpers (kept local — not needed in other modules)
@@ -32,14 +33,20 @@ function watAfterMinutes(n) {
   return new Date(Date.now() + 60 * 60 * 1000 + n * 60 * 1000).toISOString().replace('T', ' ').slice(0, 19);
 }
 
-const VALID_BUSINESSES = ['blok', 'aphl', 'trade', 'personal'];
+// Businesses/ventures are read live from the businesses table so adding or
+// removing a venture in Settings updates bot behavior with no code change.
+function getValidBusinesses() {
+  return getBusinesses.all().map(b => b.slug);
+}
 
-const BIZ_LABEL = {
-  blok:     'Blok AI',
-  aphl:     'APHL Africa',
-  trade:    'TradeSol',
-  personal: 'Personal',
-};
+function getBizLabel(slug) {
+  const biz = getBusinesses.all().find(b => b.slug === slug);
+  return biz ? biz.name : slug;
+}
+
+function getBrand() {
+  return getFounderProfile().brandName || 'LIFELINE';
+}
 
 // chatId → array of tasks awaiting confirmation (YES/ADD to save, NO to discard)
 const pendingTasks = new Map();
@@ -225,7 +232,7 @@ async function sendNudgeDigest(date, overdue, allTasks) {
   if (!overdue.length && !upcoming.length) return;
 
   const activeBlock = getActiveBlockName();
-  const lines       = [`DAYWAN — ${nowHHMM} WAT`];
+  const lines       = [`${getBrand()} — ${nowHHMM} WAT`];
   if (activeBlock) lines.push(`Active block: ${activeBlock}`);
 
   if (overdue.length) {
@@ -306,11 +313,13 @@ async function registerWebhook(serverUrl) {
 // ── document helpers ──────────────────────────────────────────────────────────
 
 function hasDocPrefix(text) {
-  return /^(blok|aphl|trade|personal):\s*/i.test(text.trim());
+  const slugs = getValidBusinesses().join('|');
+  return new RegExp(`^(${slugs}):\\s*`, 'i').test(text.trim());
 }
 
 function extractDocPrefix(text) {
-  const match = text.trim().match(/^(blok|aphl|trade|personal):\s*/i);
+  const slugs = getValidBusinesses().join('|');
+  const match = text.trim().match(new RegExp(`^(${slugs}):\\s*`, 'i'));
   return { biz: match[1].toLowerCase(), docText: text.slice(match[0].length).trim() };
 }
 
@@ -371,7 +380,7 @@ async function handleUpdate(update) {
       if (state.step === 'awaiting_format') {
         if (upper === 'TASKS') {
           pendingVoiceDoc.set(chatId, { ...state, step: 'awaiting_business' });
-          await sendMessage('Which business? Reply blok, aphl, trade, or personal');
+          await sendMessage(`Which business? Reply ${getValidBusinesses().join(', ')}`);
         } else if (upper === 'DUMP') {
           pendingVoiceDoc.delete(chatId);
           await handleDump(state.transcript);
@@ -383,12 +392,12 @@ async function handleUpdate(update) {
 
       if (state.step === 'awaiting_business') {
         const biz = text.trim().toLowerCase();
-        if (!VALID_BUSINESSES.includes(biz)) {
-          await sendMessage('Reply blok, aphl, trade, or personal');
+        if (!getValidBusinesses().includes(biz)) {
+          await sendMessage(`Reply ${getValidBusinesses().join(', ')}`);
           return;
         }
         pendingVoiceDoc.delete(chatId);
-        await sendMessage(`Analyzing your ${BIZ_LABEL[biz] || biz} document…`);
+        await sendMessage(`Analyzing your ${getBizLabel(biz)} document…`);
         try {
           const analysis = await runDocAnalysis(biz, state.transcript);
           pendingDocTasks.set(chatId, analysis.tasks);
@@ -430,8 +439,8 @@ async function handleUpdate(update) {
     // ── pending document business selection ──────────────────────────────────
     if (pendingDocument.has(chatId) && !voice && !text.startsWith('/')) {
       const biz = text.trim().toLowerCase();
-      if (!VALID_BUSINESSES.includes(biz)) {
-        await sendMessage('Reply blok, aphl, trade, or personal');
+      if (!getValidBusinesses().includes(biz)) {
+        await sendMessage(`Reply ${getValidBusinesses().join(', ')}`);
         return;
       }
       const { parsedText, wordCount, filename } = pendingDocument.get(chatId);
@@ -439,9 +448,11 @@ async function handleUpdate(update) {
 
       const docInfo = saveUploadedDocument.run(filename, filename, 'text', null, biz, parsedText);
       const docId   = docInfo.lastInsertRowid;
+      db.prepare('UPDATE uploaded_documents SET assigned_to = ? WHERE id = ?')
+        .run(getFounderProfile().name, docId);
       updateUploadedDocumentStatus.run('parsed', docId);
 
-      await sendMessage(`Document saved. Analyzing for ${BIZ_LABEL[biz] || biz}…`);
+      await sendMessage(`Document saved. Analyzing for ${getBizLabel(biz)}…`);
       try {
         const goals    = getAllGoals.all();
         const tasks    = getTodayTasks();
@@ -548,7 +559,7 @@ async function handleUpdate(update) {
       // Document: >200 words with business prefix
       if (wordCount > 200 && hasDocPrefix(text)) {
         const { biz, docText } = extractDocPrefix(text);
-        await sendMessage(`Analyzing your ${BIZ_LABEL[biz] || biz} document…`);
+        await sendMessage(`Analyzing your ${getBizLabel(biz)} document…`);
         try {
           const analysis = await runDocAnalysis(biz, docText);
           pendingDocTasks.set(chatId, analysis.tasks);
@@ -667,7 +678,7 @@ async function handleCommand(text) {
   switch (cmd) {
     case '/start': {
       await sendMessage(
-        'DAYWAN commands:\n\n' +
+        `${getBrand()} commands:\n\n` +
         '/today — task list for today\n' +
         '/done <n> — toggle task done/undone\n' +
         '/add <business> <task> — add a task\n' +
@@ -705,7 +716,7 @@ async function handleCommand(text) {
         '/logprogress <goal_id> <note> — log progress note\n\n' +
         'PERSONAL:\n' +
         '/family — family time reminder\n\n' +
-        'Businesses: blok, aphl, trade, personal\n' +
+        `Businesses: ${getValidBusinesses().join(', ')}\n` +
         'Send voice to report completions or dump new tasks.'
       );
       break;
@@ -737,8 +748,8 @@ async function handleCommand(text) {
     case '/add': {
       const business = (args[0] || '').toLowerCase();
       const name     = args.slice(1).join(' ').trim();
-      if (!VALID_BUSINESSES.includes(business)) {
-        await sendMessage(`Business must be one of: ${VALID_BUSINESSES.join(', ')}`);
+      if (!getValidBusinesses().includes(business)) {
+        await sendMessage(`Business must be one of: ${getValidBusinesses().join(', ')}`);
         return;
       }
       if (!name) {
@@ -863,7 +874,7 @@ async function handleCommand(text) {
       }
       const lines = rows.map((r) => {
         const pct = r.total ? Math.round((r.completed / r.total) * 100) : 0;
-        return `${BIZ_LABEL[r.business] || r.business}: ${r.completed}/${r.total} tasks (${pct}%)`;
+        return `${getBizLabel(r.business)}: ${r.completed}/${r.total} tasks (${pct}%)`;
       });
       await sendMessage(lines.join('\n'));
       break;
@@ -883,19 +894,20 @@ async function handleCommand(text) {
         return;
       }
       const list = rows.map((r, i) =>
-        `${i + 1}. ${r.name} (${BIZ_LABEL[r.business] || r.business}) — missed ${r.frequency}×`
+        `${i + 1}. ${r.name} (${getBizLabel(r.business)}) — missed ${r.frequency}×`
       ).join('\n');
       await sendMessage(list);
       break;
     }
 
     case '/idea': {
+      const valid = getValidBusinesses();
       let biz = (args[0] || '').toLowerCase();
       let content;
-      if (VALID_BUSINESSES.includes(biz)) {
+      if (valid.includes(biz)) {
         content = args.slice(1).join(' ').trim();
       } else {
-        biz     = 'blok';
+        biz     = valid[0] || 'personal';
         content = args.join(' ').trim();
       }
       if (!content) {
@@ -903,7 +915,7 @@ async function handleCommand(text) {
         return;
       }
       addIdea.run(biz, content);
-      await sendMessage(`Idea saved to ${BIZ_LABEL[biz]}`);
+      await sendMessage(`Idea saved to ${getBizLabel(biz)}`);
       break;
     }
 
@@ -923,8 +935,8 @@ async function handleCommand(text) {
     case '/note': {
       const biz     = (args[0] || '').toLowerCase();
       const content = args.slice(1).join(' ').trim();
-      if (!VALID_BUSINESSES.includes(biz)) {
-        await sendMessage(`Business must be one of: ${VALID_BUSINESSES.join(', ')}`);
+      if (!getValidBusinesses().includes(biz)) {
+        await sendMessage(`Business must be one of: ${getValidBusinesses().join(', ')}`);
         return;
       }
       if (!content) {
@@ -932,7 +944,7 @@ async function handleCommand(text) {
         return;
       }
       addNote.run(biz, content);
-      await sendMessage(`Note saved to ${BIZ_LABEL[biz]}`);
+      await sendMessage(`Note saved to ${getBizLabel(biz)}`);
       break;
     }
 
@@ -958,7 +970,7 @@ async function handleCommand(text) {
         return;
       }
 
-      const BIZ_ORDER = ['blok', 'aphl', 'trade', 'personal'];
+      const BIZ_ORDER = getValidBusinesses();
       const grouped   = {};
       for (const g of goals) {
         if (!grouped[g.business]) grouped[g.business] = [];
@@ -968,7 +980,7 @@ async function handleCommand(text) {
       const sections = BIZ_ORDER
         .filter(b => grouped[b])
         .map(b => {
-          const header = `${BIZ_LABEL[b] || b.toUpperCase()}`;
+          const header = getBizLabel(b);
           const rows   = grouped[b]
             .map(g => `${g.dimension.charAt(0).toUpperCase() + g.dimension.slice(1)}: ${g.title} (${g.status})`)
             .join('\n');
@@ -985,8 +997,8 @@ async function handleCommand(text) {
       const title = args.slice(2).join(' ').trim();
 
       const VALID_DIMS = ['growth', 'finance', 'operations'];
-      if (!VALID_BUSINESSES.includes(biz)) {
-        await sendMessage(`Business must be one of: ${VALID_BUSINESSES.join(', ')}`);
+      if (!getValidBusinesses().includes(biz)) {
+        await sendMessage(`Business must be one of: ${getValidBusinesses().join(', ')}`);
         return;
       }
       if (!VALID_DIMS.includes(dim)) {
@@ -998,7 +1010,7 @@ async function handleCommand(text) {
         return;
       }
       addGoal.run(biz, dim, title, null, null, 2026);
-      await sendMessage(`Goal set for ${BIZ_LABEL[biz]} [${dim.charAt(0).toUpperCase() + dim.slice(1)}]: ${title}`);
+      await sendMessage(`Goal set for ${getBizLabel(biz)} [${dim.charAt(0).toUpperCase() + dim.slice(1)}]: ${title}`);
       break;
     }
 
@@ -1017,7 +1029,7 @@ async function handleCommand(text) {
       }
 
       const sections = cycles.map(c => {
-        const biz  = BIZ_LABEL[c.business] || c.business;
+        const biz  = getBizLabel(c.business);
         const fmt  = (s, text) =>
           s === 'done' ? `[DONE] ${text}` : `[    ] ${text}`;
 
@@ -1315,20 +1327,21 @@ async function handleCommand(text) {
       let calEvents = [];
       try { calEvents = await gcal.getTodayEvents(); } catch { }
 
-      const daywanTasks = getTodayTasks();
-      const syncedEventIds = new Set(daywanTasks.map(t => t.calendar_event_id).filter(Boolean));
+      const brand = getBrand();
+      const lifelineTasks = getTodayTasks();
+      const syncedEventIds = new Set(lifelineTasks.map(t => t.calendar_event_id).filter(Boolean));
 
       // Build merged list
       const items = [];
 
-      // DAYWAN tasks
-      for (const t of daywanTasks) {
+      // LIFELINE tasks
+      for (const t of lifelineTasks) {
         if (t.business === 'anchor') continue;
-        const tag = t.calendar_event_id ? '[SYNCED]' : '[DAYWAN]';
+        const tag = t.calendar_event_id ? '[SYNCED]' : `[${brand}]`;
         items.push({ time: t.time || '99:99', line: `${t.time || '--:--'}  ${t.name} ${tag}` });
       }
 
-      // Calendar events not already represented as DAYWAN tasks
+      // Calendar events not already represented as LIFELINE tasks
       for (const e of calEvents) {
         if (syncedEventIds.has(e.id)) continue;
         items.push({ time: e.start || '99:99', line: `${e.start || '--:--'}  ${e.title} [CALENDAR]` });
@@ -1336,8 +1349,8 @@ async function handleCommand(text) {
 
       items.sort((a, b) => a.time < b.time ? -1 : a.time > b.time ? 1 : 0);
 
-      const calCount     = calEvents.filter(e => !syncedEventIds.has(e.id)).length;
-      const daywanCount  = daywanTasks.filter(t => t.business !== 'anchor').length;
+      const calCount      = calEvents.filter(e => !syncedEventIds.has(e.id)).length;
+      const lifelineCount = lifelineTasks.filter(t => t.business !== 'anchor').length;
 
       const lines = [`TODAY — ${dayLabel}`, ''];
       if (!items.length) {
@@ -1345,7 +1358,7 @@ async function handleCommand(text) {
       } else {
         lines.push(...items.map(i => i.line));
       }
-      lines.push('', `${calCount} calendar event${calCount !== 1 ? 's' : ''} · ${daywanCount} DAYWAN task${daywanCount !== 1 ? 's' : ''}`);
+      lines.push('', `${calCount} calendar event${calCount !== 1 ? 's' : ''} · ${lifelineCount} ${brand} task${lifelineCount !== 1 ? 's' : ''}`);
 
       await sendMessage(lines.join('\n'));
       break;

@@ -155,7 +155,7 @@ db.exec(`
     analysis_id   INTEGER REFERENCES document_analyses(id),
     status        TEXT    DEFAULT 'uploaded'
       CHECK(status IN ('uploaded','parsed','analyzed','archived')),
-    assigned_to   TEXT    DEFAULT 'OGV',
+    assigned_to   TEXT,
     tags          TEXT
   );
 
@@ -568,6 +568,113 @@ const upsertSetting = db.prepare(`
 `);
 const deleteSetting = db.prepare('DELETE FROM settings WHERE key = ?');
 
+// ── founder profile ───────────────────────────────────────────────────────────
+// Everything that used to be hardcoded into AI prompts and schedule defaults
+// (name, ventures, routines, investor cadence, brand) lives here instead, so
+// this codebase can serve any founder, not just the one it was written for.
+// Stored as a JSON blob under settings.founder_profile; DEFAULT_FOUNDER_PROFILE
+// is the seed for this instance and also the fallback shape for new ones.
+
+const DEFAULT_FOUNDER_PROFILE = {
+  name:       'OGV',
+  brandName:  'LIFELINE',
+  identity:   'An Igbo entrepreneur running multiple ventures while building his personal foundation.',
+
+  // Order matters — this is the order sections appear in AI-generated briefings/reviews.
+  ventures: [
+    {
+      slug:           'aphl',
+      name:           'APHL Africa',
+      description:    'Petroleum haulage company based in Port Harcourt. Candy Opusunju runs day-to-day ops and sales.',
+      lead:           'Candy Opusunju',
+      leadRole:       'Operations and Sales',
+      investorFocus:  false,
+      activeDays:     'daily',
+      status:         'active',
+    },
+    {
+      slug:           'blok',
+      name:           'Blok AI',
+      description:    'Pre-seed AI wealthtech platform targeting African consumers and diaspora. Currently fundraising. Has a product manager building the product.',
+      lead:           'Product Manager',
+      leadRole:       'Product Manager',
+      investorFocus:  true,
+      activeDays:     'weekdays',
+      status:         'active',
+    },
+    {
+      slug:           'trade',
+      name:           'TradeSol',
+      description:    'Youth commerce training. Not an active focus right now.',
+      lead:           null,
+      leadRole:       null,
+      investorFocus:  false,
+      activeDays:     'daily',
+      status:         'dormant',
+    },
+  ],
+
+  personalPillars: ['Spiritual', 'Mental', 'Physical', 'Grooming', 'Family'],
+  personalLabel:   'TAKE CARE OF YOURSELF FIRST',
+  closingLabel:    'CLOSE THE DAY WELL',
+
+  currentGoals: [
+    'Get APHL Africa structured and stable',
+    'Move Blok AI fundraise forward through real investor relationships',
+    'Take care of himself: prayer, journaling, training, family',
+  ],
+
+  nonNegotiables: 'Family call is non-negotiable — name it directly if skipped. No flattery. Direct, unsparing accountability.',
+
+  investorCadence: [
+    "Monday: Research a new target investor today — know their thesis before you reach out.",
+    'Tuesday: Find one warm intro path — who in your network can connect you to a target?',
+    'Wednesday: Research an investor deeply — portfolio, thesis, recent posts, mutual connections.',
+    'Thursday: Identify another warm intro path and send the ask today.',
+    "Friday: Follow up on this week's conversations — update your pipeline while it's fresh.",
+    'Saturday: Rest from investor work. Relationships need breathing room.',
+    'Sunday: Rest from investor work. Relationships need breathing room.',
+  ],
+
+  scheduleBlocks: [
+    { time: '05:30', end: '05:45', name: 'Prayer',                                   biz: 'anchor'   },
+    { time: '05:45', end: '06:00', name: 'Journaling',                               biz: 'anchor'   },
+    { time: '06:00', end: '06:30', name: 'Orient and daily priority',                biz: 'blok'     },
+    { time: '06:30', end: '07:00', name: 'Pre-day setup: depot price, brief Candy',  biz: 'aphl'     },
+    { time: '07:00', end: '07:30', name: 'Morning command: floor price, driver call',biz: 'aphl'     },
+    { time: '07:30', end: '09:00', name: 'Raise: investor relations',                 biz: 'blok'     },
+    { time: '08:00', end: '10:00', name: 'Sales push: Candy runs outbound',          biz: 'aphl'     },
+    { time: '09:00', end: '10:30', name: 'Product: PM review, product user flow',     biz: 'blok'     },
+    { time: '10:00', end: '13:00', name: 'Operations: payments, loading, tracking',  biz: 'aphl'     },
+    { time: '10:30', end: '11:30', name: 'Comms: Slack, async check-ins',            biz: 'blok'     },
+    { time: '11:30', end: '12:30', name: 'Brand: creative review, social metrics',   biz: 'blok'     },
+    { time: '13:00', end: '14:00', name: 'MD strategic hour: depot, pricing',        biz: 'aphl'     },
+    { time: '14:00', end: '15:30', name: 'Strategy: priorities, decision log',       biz: 'blok'     },
+    { time: '16:00', end: '17:30', name: 'Unified day close: ops sync, revenue log', biz: 'blok'     },
+    { time: '17:30', end: '18:00', name: 'Calls to loved ones and family',           biz: 'anchor'   },
+    { time: '18:00', end: '19:00', name: 'Pottery or reading',                       biz: 'personal' },
+    { time: '19:00', end: '20:00', name: 'Physical activity',                        biz: 'personal' },
+    { time: '20:30', end: '21:00', name: 'Evening wind-down and next day planning',  biz: 'anchor'   },
+  ],
+};
+
+function getFounderProfile() {
+  const row = getSetting.get('founder_profile');
+  if (!row) return DEFAULT_FOUNDER_PROFILE;
+  try {
+    const stored = JSON.parse(row.value);
+    return { ...DEFAULT_FOUNDER_PROFILE, ...stored };
+  } catch {
+    return DEFAULT_FOUNDER_PROFILE;
+  }
+}
+
+function saveFounderProfile(partial) {
+  const updated = { ...getFounderProfile(), ...partial };
+  upsertSetting.run('founder_profile', JSON.stringify(updated));
+  return updated;
+}
+
 // ── prepared statements — document analyses ───────────────────────────────────
 
 const saveDocumentAnalysis = db.prepare(
@@ -643,9 +750,10 @@ const getMembersByBusiness = db.prepare(
       'INSERT INTO team_members (name, role, business, contact) VALUES (?, ?, ?, ?)'
     );
     db.transaction(() => {
-      stmt.run('Candy Opusunju', 'Operations and Sales', 'aphl', '');
-      stmt.run('Product Manager', 'Product Manager', 'blok', '');
-      stmt.run('OGV', 'CEO', 'all', '');
+      for (const v of DEFAULT_FOUNDER_PROFILE.ventures) {
+        if (v.lead) stmt.run(v.lead, v.leadRole || 'Lead', v.slug, '');
+      }
+      stmt.run(DEFAULT_FOUNDER_PROFILE.name, 'CEO', 'all', '');
     })();
     console.log('[db] Team members seeded');
   }
@@ -873,6 +981,11 @@ module.exports = {
   getSetting,
   upsertSetting,
   deleteSetting,
+
+  // founder profile
+  getFounderProfile,
+  saveFounderProfile,
+  DEFAULT_FOUNDER_PROFILE,
 
   // document analyses
   saveDocumentAnalysis,

@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-  <meta name="apple-mobile-web-app-title" content="DAYWAN" />
+  <meta name="apple-mobile-web-app-title" content="LIFELINE" />
   <link rel="manifest" href="/manifest.json" />
-  <title>DAYWAN — Day One</title>
+  <title>LIFELINE — Day One</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -1593,6 +1593,24 @@
       padding: 5px 8px; background: #fff; color: #1a1a1a; max-width: 220px;
     }
     .settings-hint { font-size: 12px; color: #aaa; margin: 6px 0 0; }
+    .settings-input, .settings-textarea {
+      font-size: 13px; border: 1px solid #e8e8e6; border-radius: 6px;
+      padding: 5px 8px; background: #fff; color: #1a1a1a; width: 100%;
+      max-width: 320px; font-family: inherit;
+    }
+    .settings-textarea { resize: vertical; }
+    .fp-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; gap: 10px; }
+    .fp-list-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+    .fp-list-row .settings-input, .fp-list-row .settings-textarea { max-width: none; flex: 1; }
+    .fp-remove-btn {
+      background: none; border: none; color: #c0392b; cursor: pointer;
+      font-size: 16px; line-height: 1; padding: 0 4px; flex-shrink: 0;
+    }
+    .fp-venture-card {
+      border: 1px solid #e8e8e6; border-radius: 6px; padding: 12px; margin-bottom: 10px;
+    }
+    .fp-venture-card .fp-row { padding: 4px 0; }
+    .fp-cadence-day { width: 84px; flex-shrink: 0; font-size: 12px; color: #888; }
     .primary-btn {
       background: #1a1a1a; color: #fff; border: none; border-radius: 6px;
       padding: 8px 16px; font-size: 13px; cursor: pointer;
@@ -2107,7 +2125,7 @@
 
 <!-- ── mobile top bar ──────────────────────────────────────────────────────── -->
 <div id="mobile-topbar">
-  <div class="mtb-logo">DAYWAN</div>
+  <div class="mtb-logo">LIFELINE</div>
   <div class="mtb-date" id="mtb-date"></div>
 </div>
 
@@ -2122,7 +2140,7 @@
   <nav class="sidebar">
 
     <div class="sidebar-logo">
-      <div class="logo-name">DAYWAN</div>
+      <div class="logo-name">LIFELINE</div>
       <div class="logo-tag">Day One</div>
     </div>
 
@@ -2509,6 +2527,70 @@
     <div class="view" id="v-settings">
       <div class="view-header"><h1>Settings</h1></div>
 
+      <!-- Founder profile -->
+      <div class="settings-section">
+        <div class="settings-section-head">Founder profile</div>
+
+        <div class="fp-row">
+          <span class="settings-label">Name</span>
+          <input id="fp-name" type="text" class="settings-input" />
+        </div>
+        <div class="fp-row">
+          <span class="settings-label">Brand</span>
+          <input id="fp-brand" type="text" class="settings-input" />
+        </div>
+        <div class="fp-row" style="align-items:flex-start">
+          <span class="settings-label">Identity</span>
+          <textarea id="fp-identity" class="settings-textarea" rows="2"></textarea>
+        </div>
+        <div class="fp-row">
+          <span class="settings-label">Personal section label</span>
+          <input id="fp-personal-label" type="text" class="settings-input" />
+        </div>
+        <div class="fp-row">
+          <span class="settings-label">Closing section label</span>
+          <input id="fp-closing-label" type="text" class="settings-input" />
+        </div>
+        <div class="fp-row" style="align-items:flex-start">
+          <span class="settings-label">Non-negotiables</span>
+          <textarea id="fp-nonneg" class="settings-textarea" rows="2"></textarea>
+        </div>
+
+        <div style="margin-top:16px">
+          <div style="font-size:12px;color:#888;margin-bottom:8px">Personal pillars</div>
+          <div id="fp-pillars-list"></div>
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <input id="fp-pillar-add" type="text" placeholder="e.g. Spiritual" class="settings-input" style="max-width:160px" />
+            <button class="secondary-btn" onclick="addFpPillar()">Add</button>
+          </div>
+        </div>
+
+        <div style="margin-top:16px">
+          <div style="font-size:12px;color:#888;margin-bottom:8px">Current goals</div>
+          <div id="fp-goals-list"></div>
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <input id="fp-goal-add" type="text" placeholder="Add a goal" class="settings-input" style="max-width:280px" />
+            <button class="secondary-btn" onclick="addFpGoal()">Add</button>
+          </div>
+        </div>
+
+        <div style="margin-top:16px">
+          <div style="font-size:12px;color:#888;margin-bottom:8px">Investor cadence (Mon–Sun)</div>
+          <div id="fp-cadence-list"></div>
+        </div>
+
+        <div style="margin-top:16px">
+          <div style="font-size:12px;color:#888;margin-bottom:8px">Ventures</div>
+          <div id="fp-ventures-list"></div>
+          <button class="secondary-btn" style="margin-top:4px" onclick="addFpVenture()">Add venture</button>
+        </div>
+
+        <div style="margin-top:18px;display:flex;align-items:center;gap:12px">
+          <button class="primary-btn" onclick="saveFounderProfile()">Save profile</button>
+          <span id="fp-save-status" style="font-size:12px;color:#1a6646"></span>
+        </div>
+      </div>
+
       <!-- Google Calendar -->
       <div class="settings-section">
         <div class="settings-section-head">Google Calendar</div>
@@ -2528,7 +2610,7 @@
               <span class="settings-label">Push sync</span>
               <span id="gcal-watch-status" class="settings-value" style="color:#999">Checking…</span>
             </div>
-            <p class="settings-hint">When you add or edit events in Google Calendar, they automatically appear as tasks in DAYWAN.</p>
+            <p class="settings-hint">When you add or edit events in Google Calendar, they automatically appear as tasks in LIFELINE.</p>
             <div id="gcal-sync-stats" style="font-size:12px;color:#888;margin-top:6px"></div>
             <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
               <button class="secondary-btn" onclick="syncTodayTasks()">Sync today's tasks</button>
@@ -3123,7 +3205,7 @@ function renderToday() {
   document.getElementById('s-done').textContent  = done  || '—';
   document.getElementById('s-rate').textContent  = total ? rate : '—';
   document.getElementById('progress-fill').style.width = `${rate}%`;
-  document.title = total ? `DAYWAN · ${rate}%` : 'DAYWAN';
+  document.title = total ? `LIFELINE · ${rate}%` : 'LIFELINE';
 
   renderStreakSquares();
   renderTaskList();
@@ -3260,7 +3342,7 @@ async function deleteTask(id) {
 }
 
 async function deleteGcalTask(id, eventId) {
-  // Delete task from DAYWAN AND remove from Google Calendar
+  // Delete task from LIFELINE AND remove from Google Calendar
   try {
     await Promise.all([
       api(`/api/tasks/${id}`, { method: 'DELETE' }),
@@ -5407,8 +5489,179 @@ async function syncWeekTasks() {
 // ── SETTINGS VIEW ─────────────────────────────────────────────────────────────
 
 async function loadSettings() {
-  await Promise.all([loadGcalStatus(), loadSchedDefaults(), loadNotifPrefs()]);
+  await Promise.all([loadGcalStatus(), loadSchedDefaults(), loadNotifPrefs(), loadFounderProfile()]);
   renderBusinessesList();
+}
+
+// ── founder profile settings ──────────────────────────────────────────────────
+
+let FOUNDER_PROFILE = null;
+const CADENCE_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+async function loadFounderProfile() {
+  try {
+    FOUNDER_PROFILE = await api('/api/profile');
+  } catch (e) {
+    showToast(e.message);
+    return;
+  }
+  document.getElementById('fp-name').value           = FOUNDER_PROFILE.name || '';
+  document.getElementById('fp-brand').value           = FOUNDER_PROFILE.brandName || '';
+  document.getElementById('fp-identity').value        = FOUNDER_PROFILE.identity || '';
+  document.getElementById('fp-personal-label').value  = FOUNDER_PROFILE.personalLabel || '';
+  document.getElementById('fp-closing-label').value   = FOUNDER_PROFILE.closingLabel || '';
+  document.getElementById('fp-nonneg').value          = FOUNDER_PROFILE.nonNegotiables || '';
+
+  if (!Array.isArray(FOUNDER_PROFILE.personalPillars)) FOUNDER_PROFILE.personalPillars = [];
+  if (!Array.isArray(FOUNDER_PROFILE.currentGoals))    FOUNDER_PROFILE.currentGoals    = [];
+  if (!Array.isArray(FOUNDER_PROFILE.ventures))        FOUNDER_PROFILE.ventures        = [];
+  if (!Array.isArray(FOUNDER_PROFILE.investorCadence) || FOUNDER_PROFILE.investorCadence.length !== 7) {
+    FOUNDER_PROFILE.investorCadence = CADENCE_DAYS.map(() => '');
+  }
+
+  renderFpPillars();
+  renderFpGoals();
+  renderFpCadence();
+  renderFpVentures();
+}
+
+function renderFpPillars() {
+  const el = document.getElementById('fp-pillars-list');
+  el.innerHTML = FOUNDER_PROFILE.personalPillars.map((p, i) => `
+    <div class="fp-list-row">
+      <input type="text" class="settings-input" value="${esc(p)}" oninput="FOUNDER_PROFILE.personalPillars[${i}] = this.value" />
+      <button class="fp-remove-btn" onclick="removeFpPillar(${i})">&times;</button>
+    </div>
+  `).join('') || '<div style="font-size:12px;color:#aaa">No pillars yet.</div>';
+}
+
+function addFpPillar() {
+  const input = document.getElementById('fp-pillar-add');
+  const val   = input.value.trim();
+  if (!val) return;
+  FOUNDER_PROFILE.personalPillars.push(val);
+  input.value = '';
+  renderFpPillars();
+}
+
+function removeFpPillar(i) {
+  FOUNDER_PROFILE.personalPillars.splice(i, 1);
+  renderFpPillars();
+}
+
+function renderFpGoals() {
+  const el = document.getElementById('fp-goals-list');
+  el.innerHTML = FOUNDER_PROFILE.currentGoals.map((g, i) => `
+    <div class="fp-list-row">
+      <input type="text" class="settings-input" value="${esc(g)}" oninput="FOUNDER_PROFILE.currentGoals[${i}] = this.value" />
+      <button class="fp-remove-btn" onclick="removeFpGoal(${i})">&times;</button>
+    </div>
+  `).join('') || '<div style="font-size:12px;color:#aaa">No goals yet.</div>';
+}
+
+function addFpGoal() {
+  const input = document.getElementById('fp-goal-add');
+  const val   = input.value.trim();
+  if (!val) return;
+  FOUNDER_PROFILE.currentGoals.push(val);
+  input.value = '';
+  renderFpGoals();
+}
+
+function removeFpGoal(i) {
+  FOUNDER_PROFILE.currentGoals.splice(i, 1);
+  renderFpGoals();
+}
+
+function renderFpCadence() {
+  const el = document.getElementById('fp-cadence-list');
+  el.innerHTML = CADENCE_DAYS.map((day, i) => `
+    <div class="fp-list-row">
+      <span class="fp-cadence-day">${day}</span>
+      <input type="text" class="settings-input" value="${esc(FOUNDER_PROFILE.investorCadence[i] || '')}"
+             oninput="FOUNDER_PROFILE.investorCadence[${i}] = this.value" />
+    </div>
+  `).join('');
+}
+
+function renderFpVentures() {
+  const el = document.getElementById('fp-ventures-list');
+  el.innerHTML = FOUNDER_PROFILE.ventures.map((v, i) => `
+    <div class="fp-venture-card">
+      <div class="fp-row">
+        <span class="settings-label">Name</span>
+        <input type="text" class="settings-input" value="${esc(v.name)}" oninput="FOUNDER_PROFILE.ventures[${i}].name = this.value" />
+      </div>
+      <div class="fp-row" style="align-items:flex-start">
+        <span class="settings-label">Description</span>
+        <textarea class="settings-textarea" rows="2" oninput="FOUNDER_PROFILE.ventures[${i}].description = this.value">${esc(v.description)}</textarea>
+      </div>
+      <div class="fp-row">
+        <span class="settings-label">Lead</span>
+        <input type="text" class="settings-input" value="${esc(v.lead || '')}" oninput="FOUNDER_PROFILE.ventures[${i}].lead = this.value" />
+      </div>
+      <div class="fp-row">
+        <span class="settings-label">Lead role</span>
+        <input type="text" class="settings-input" value="${esc(v.leadRole || '')}" oninput="FOUNDER_PROFILE.ventures[${i}].leadRole = this.value" />
+      </div>
+      <div class="fp-row">
+        <span class="settings-label">Active days</span>
+        <select class="settings-select" onchange="FOUNDER_PROFILE.ventures[${i}].activeDays = this.value">
+          <option value="daily" ${v.activeDays === 'daily' ? 'selected' : ''}>Daily</option>
+          <option value="weekdays" ${v.activeDays === 'weekdays' ? 'selected' : ''}>Weekdays only</option>
+        </select>
+      </div>
+      <div class="fp-row">
+        <span class="settings-label">Status</span>
+        <select class="settings-select" onchange="FOUNDER_PROFILE.ventures[${i}].status = this.value">
+          <option value="active" ${v.status === 'active' ? 'selected' : ''}>Active</option>
+          <option value="dormant" ${v.status === 'dormant' ? 'selected' : ''}>Dormant</option>
+        </select>
+      </div>
+      <div class="fp-row">
+        <span class="settings-label">Investor-focused venture</span>
+        <label class="toggle-switch">
+          <input type="checkbox" ${v.investorFocus ? 'checked' : ''} onchange="FOUNDER_PROFILE.ventures[${i}].investorFocus = this.checked">
+          <span class="toggle-track"></span>
+        </label>
+      </div>
+      <div style="margin-top:8px;text-align:right">
+        <button class="secondary-btn danger-btn" onclick="removeFpVenture(${i})">Remove venture</button>
+      </div>
+    </div>
+  `).join('') || '<div style="font-size:12px;color:#aaa">No ventures yet.</div>';
+}
+
+function addFpVenture() {
+  FOUNDER_PROFILE.ventures.push({
+    slug: `venture-${Date.now()}`, name: 'New venture', description: '',
+    lead: '', leadRole: '', investorFocus: false, activeDays: 'daily', status: 'active',
+  });
+  renderFpVentures();
+}
+
+function removeFpVenture(i) {
+  FOUNDER_PROFILE.ventures.splice(i, 1);
+  renderFpVentures();
+}
+
+async function saveFounderProfile() {
+  FOUNDER_PROFILE.name           = document.getElementById('fp-name').value.trim();
+  FOUNDER_PROFILE.brandName      = document.getElementById('fp-brand').value.trim();
+  FOUNDER_PROFILE.identity       = document.getElementById('fp-identity').value.trim();
+  FOUNDER_PROFILE.personalLabel  = document.getElementById('fp-personal-label').value.trim();
+  FOUNDER_PROFILE.closingLabel   = document.getElementById('fp-closing-label').value.trim();
+  FOUNDER_PROFILE.nonNegotiables = document.getElementById('fp-nonneg').value.trim();
+
+  const statusEl = document.getElementById('fp-save-status');
+  try {
+    FOUNDER_PROFILE = await api('/api/profile', { method: 'PATCH', body: FOUNDER_PROFILE });
+    statusEl.textContent = 'Saved';
+    setTimeout(() => { if (statusEl.textContent === 'Saved') statusEl.textContent = ''; }, 2500);
+    showToast('Founder profile saved');
+  } catch (e) {
+    showToast(e.message);
+  }
 }
 
 // ── businesses settings ───────────────────────────────────────────────────────
@@ -5545,7 +5798,7 @@ async function runSyncTest() {
       btn.textContent = 'Test sync';
       try {
         const tasks = await api('/api/tasks');
-        const found = tasks.some(t => t.name === 'DAYWAN Sync Test' && t.calendar_source === 'google');
+        const found = tasks.some(t => t.name === 'LIFELINE Sync Test' && t.calendar_source === 'google');
         result.textContent = found ? 'Sync working ✓' : 'Sync not responding — webhook may need a public URL';
         result.style.color = found ? '#1a6646' : '#c0392b';
       } catch {}

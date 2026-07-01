@@ -3,7 +3,7 @@ const { google } = require('googleapis');
 const {
   getSetting, upsertSetting, deleteSetting, updateTaskEventId,
   getTaskByEventId, insertCalendarTask, updateTaskFromCalendar, deleteTaskByEventId,
-  getTasksByDate, syncDayLog,
+  getTasksByDate, syncDayLog, getFounderProfile,
 } = require('./db');
 
 // Injected by server.js after both modules load — avoids circular dependency
@@ -201,7 +201,7 @@ async function syncTaskToCalendar(task) {
   const colorId  = isDone ? '8' : (BIZ_COLOR_CAL[biz] || '4');
 
   const description =
-    'DAYWAN task\n' +
+    (getFounderProfile().brandName || 'LIFELINE') + ' task\n' +
     'Business: ' + bizLabel + '\n' +
     'Priority: ' + (task.priority || 'normal') + '\n' +
     'Source: '   + (task.source   || 'manual');
@@ -275,16 +275,18 @@ async function syncBlocksToCalendar(blocks) {
   const cal     = google.calendar({ version: 'v3', auth: getClient() });
   const today   = new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 10);
 
-  // Find or create the DAYWAN Schedule calendar
+  // Find or create the schedule calendar. Setting key is kept stable across
+  // the rename so an already-connected calendar doesn't get duplicated.
+  const brand = getFounderProfile().brandName || 'LIFELINE';
   let calId = getSetting.get('daywan_calendar_id')?.value;
   if (!calId) {
     const listRes = await cal.calendarList.list();
-    const existing = (listRes.data.items || []).find(c => c.summary === 'DAYWAN Schedule');
+    const existing = (listRes.data.items || []).find(c => c.summary === `${brand} Schedule` || c.summary === 'DAYWAN Schedule');
     if (existing) {
       calId = existing.id;
     } else {
       const created = await cal.calendars.insert({
-        requestBody: { summary: 'DAYWAN Schedule', timeZone: 'Africa/Lagos' },
+        requestBody: { summary: `${brand} Schedule`, timeZone: 'Africa/Lagos' },
       });
       calId = created.data.id;
     }
@@ -337,10 +339,10 @@ async function setupCalendarWatch(serverUrl) {
   const res = await cal.events.watch({
     calendarId,
     requestBody: {
-      id:         `daywan-channel-${Date.now()}`,
+      id:         `lifeline-channel-${Date.now()}`,
       type:       'web_hook',
       address:    `${serverUrl}/api/calendar/webhook`,
-      token:      process.env.GOOGLE_WEBHOOK_TOKEN || 'daywan-secret',
+      token:      process.env.GOOGLE_WEBHOOK_TOKEN || 'lifeline-secret',
       expiration: String(Date.now() + 7 * 24 * 60 * 60 * 1000),
     },
   });

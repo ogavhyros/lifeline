@@ -172,7 +172,7 @@ async function morningCalendarSync() {
   }
   if (synced > 0) console.log(`[calendar] morning sync — ${synced} tasks pushed`);
 
-  // Pull any new Google Calendar events not yet in DAYWAN
+  // Pull any new Google Calendar events not yet tracked in LIFELINE
   let calEvents;
   try { calEvents = await gcal.getEventsForDate(today); }
   catch { return; }
