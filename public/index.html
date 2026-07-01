@@ -2529,7 +2529,10 @@
               <span id="gcal-watch-status" class="settings-value" style="color:#999">Checking…</span>
             </div>
             <p class="settings-hint">When you add or edit events in Google Calendar, they automatically appear as tasks in DAYWAN.</p>
+            <div id="gcal-sync-stats" style="font-size:12px;color:#888;margin-top:6px"></div>
             <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+              <button class="secondary-btn" onclick="syncTodayTasks()">Sync today's tasks</button>
+              <button class="secondary-btn" onclick="syncWeekTasks()">Sync this week</button>
               <button class="secondary-btn" onclick="syncScheduleBlocks()">Sync schedule blocks</button>
               <button class="secondary-btn" id="sync-test-btn" onclick="runSyncTest()">Test sync</button>
               <button class="secondary-btn danger-btn" onclick="disconnectGoogle()">Disconnect</button>
@@ -3201,6 +3204,9 @@ function renderTaskList() {
     const calIcon = (isGcal || isCal)
       ? `<i class="ti ti-calendar gcal-icon" title="Google Calendar"></i>`
       : '';
+    const syncedIcon = !isCal && !isGcal && t.calendar_event_id
+      ? `<i class="ti ti-calendar" style="font-size:10px;color:#ccc;flex-shrink:0" title="Synced to Google Calendar"></i>`
+      : '';
 
     let rightCtrl;
     if (isCal) {
@@ -3228,6 +3234,7 @@ function renderTaskList() {
         <span class="task-name${isDone ? ' done' : ''}">${esc(t.name)}</span>
         ${t.source === 'carried' ? '<span style="font-size:10px;color:#bbb;font-style:italic;flex-shrink:0">carried</span>' : ''}
         ${tagHtml(t.business)}
+        ${syncedIcon}
         ${isCal ? `<span class="task-time">${t.time ? esc(t.time) : ''}</span>` : `<span class="task-time task-time-editable" onclick="event.stopPropagation();editTaskTime(${t.id},'${t.time || ''}')" title="Click to change time">${t.time ? esc(t.time) : '+'}</span>`}
         ${rightCtrl}
       </div>
@@ -5378,14 +5385,22 @@ async function syncScheduleBlocks() {
 
 async function syncTodayTasks() {
   try {
-    const tasks = await api(`/api/tasks?date=${new Date(Date.now() + WAT_MS).toISOString().slice(0, 10)}`);
-    const timed = tasks.filter(t => t.time && !t.done && t.business !== 'anchor');
-    let count = 0;
-    for (const t of timed) {
-      await api(`/api/calendar/sync-task/${t.id}`, { method: 'POST' }).catch(() => {});
-      count++;
-    }
-    showToast(`Synced ${count} tasks to calendar`);
+    const statsEl = document.getElementById('gcal-sync-stats');
+    if (statsEl) statsEl.textContent = 'Syncing…';
+    const { synced } = await api('/api/calendar/sync-today', { method: 'POST' });
+    const msg = synced > 0
+      ? `${synced} task${synced !== 1 ? 's' : ''} synced to Google Calendar`
+      : 'All tasks already synced';
+    showToast(msg);
+    if (statsEl) statsEl.textContent = `${synced} tasks synced today — Last sync: ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
+    await fetchTasks();
+  } catch (e) { showToast(e.message); }
+}
+
+async function syncWeekTasks() {
+  try {
+    const { synced } = await api('/api/calendar/sync-week', { method: 'POST' });
+    showToast(`Synced ${synced} task${synced !== 1 ? 's' : ''} from this week`);
   } catch (e) { showToast(e.message); }
 }
 
@@ -5607,7 +5622,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const urlParams = new URLSearchParams(window.location.search);
   if (urlParams.get('connected') === 'google') {
     history.replaceState({}, '', '/');
-    showToast('Google Calendar connected');
+    const syncedCount = urlParams.get('synced');
+    showToast(syncedCount
+      ? `Google Calendar connected — ${syncedCount} task${syncedCount !== '1' ? 's' : ''} synced`
+      : 'Google Calendar connected');
     switchTab('settings');
   } else if (urlParams.get('error') === 'google_auth') {
     history.replaceState({}, '', '/');

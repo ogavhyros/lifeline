@@ -124,14 +124,18 @@ app.post('/api/tasks', (req, res) => {
   const { name, business, scheduled_time, priority } = req.body;
   if (!name || !business) return res.status(400).json({ error: 'name and business are required' });
   const info = insertTask.run(watToday(), name, business, scheduled_time || null, priority || 'normal');
-  res.status(201).json(getTaskById.get(info.lastInsertRowid));
+  const task = getTaskById.get(info.lastInsertRowid);
+  gcal.syncTaskToCalendar(task).catch(err => console.error('[calendar] sync failed:', err.message));
+  res.status(201).json(task);
 });
 
 app.patch('/api/tasks/:id/toggle', (req, res) => {
   const task = getTaskById.get(req.params.id);
   if (!task) return res.status(404).json({ error: 'not found' });
   toggleTask.run(task.done ? 0 : 1, task.id);
-  res.json(getTaskById.get(task.id));
+  const updated = getTaskById.get(task.id);
+  gcal.syncTaskToCalendar(updated).catch(err => console.error('[calendar] sync failed:', err.message));
+  res.json(updated);
 });
 
 app.patch('/api/tasks/:id/priority', (req, res) => {
@@ -154,8 +158,14 @@ app.patch('/api/tasks/:id/time', (req, res) => {
 });
 
 app.delete('/api/tasks/:id', (req, res) => {
-  const info = deleteTask.run(req.params.id);
-  if (!info.changes) return res.status(404).json({ error: 'not found' });
+  const task = getTaskById.get(req.params.id);
+  if (!task) return res.status(404).json({ error: 'not found' });
+  if (task.calendar_event_id) {
+    gcal.deleteEvent(task.calendar_event_id).catch(err =>
+      console.error('[calendar] delete failed:', err.message)
+    );
+  }
+  deleteTask.run(req.params.id);
   res.status(204).end();
 });
 
@@ -267,6 +277,9 @@ app.post('/api/recurring/confirm-all/:date', (req, res) => {
   const date = req.params.date === 'today' ? watToday() : req.params.date;
   try {
     const tasks = confirmAllRecurring(date);
+    tasks.forEach(t => gcal.syncTaskToCalendar(t).catch(err =>
+      console.error('[calendar] sync failed:', err.message)
+    ));
     res.json(tasks);
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -590,11 +603,17 @@ app.post('/api/brain-dump/import', (req, res) => {
   const { tasks } = req.body;
   if (!Array.isArray(tasks) || !tasks.length) return res.status(400).json({ error: 'tasks array required' });
   const today = watToday();
+  const newIds = [];
   db.transaction((list) => {
     for (const t of list) {
-      insertTask.run(today, t.name, t.business || 'personal', t.time || null, t.priority || 'normal');
+      const info = insertTask.run(today, t.name, t.business || 'personal', t.time || null, t.priority || 'normal');
+      newIds.push(info.lastInsertRowid);
     }
   })(tasks);
+  for (const id of newIds) {
+    const task = getTaskById.get(id);
+    if (task) gcal.syncTaskToCalendar(task).catch(err => console.error('[calendar] sync failed:', err.message));
+  }
   res.json(getTasksByDate.all(today));
 });
 
@@ -839,11 +858,26 @@ app.get('/auth/google', (_req, res) => {
 app.get('/auth/google/callback', async (req, res) => {
   try {
     await gcal.exchangeCode(req.query.code);
-    // Start push notifications immediately (no-op on localhost)
     gcal.setupCalendarWatch(process.env.SERVER_URL).catch(err =>
       console.error('[calendar] watch setup after auth failed:', err.message)
     );
-    res.redirect('/?connected=google');
+    // Sync today's existing tasks to Google Calendar
+    const today = watToday();
+    const tasks = getTasksByDate.all(today);
+    let synced  = 0;
+    for (const task of tasks) {
+      if (!task.calendar_event_id) {
+        try {
+          await gcal.syncTaskToCalendar(task);
+          synced++;
+          await new Promise(r => setTimeout(r, 200));
+        } catch (err) {
+          console.error('[calendar] initial sync failed:', err.message);
+        }
+      }
+    }
+    console.log(`[calendar] initial sync: ${synced} tasks`);
+    res.redirect(`/?connected=google&synced=${synced}`);
   } catch (err) {
     console.error('[google] callback error:', err.message);
     res.redirect('/?error=google_auth');
@@ -978,6 +1012,49 @@ app.post('/api/calendar/webhook', (req, res) => {
     gcal.getChangedEvents(syncToken)
       .then(events => Promise.all(events.map(e => gcal.processCalendarEvent(e))))
       .catch(err => console.error('[calendar] webhook processing error:', err.message));
+  }
+});
+
+app.post('/api/calendar/sync-today', async (req, res) => {
+  try {
+    const today = watToday();
+    const tasks = getTasksByDate.all(today).filter(t => !t.calendar_event_id);
+    let synced  = 0;
+    for (const task of tasks) {
+      try {
+        await gcal.syncTaskToCalendar(task);
+        synced++;
+      } catch (err) {
+        console.error('[calendar] sync-today failed:', err.message);
+      }
+    }
+    res.json({ ok: true, synced });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/calendar/sync-week', async (req, res) => {
+  try {
+    const today = watToday();
+    const from  = new Date(Date.now() + 60 * 60 * 1000 - 7 * 24 * 60 * 60 * 1000)
+      .toISOString().slice(0, 10);
+    const tasks = db.prepare(
+      'SELECT * FROM tasks WHERE date >= ? AND date <= ? ORDER BY date, id'
+    ).all(from, today).filter(t => !t.calendar_event_id);
+    let synced = 0;
+    for (const task of tasks) {
+      try {
+        await gcal.syncTaskToCalendar(task);
+        synced++;
+        await new Promise(r => setTimeout(r, 100));
+      } catch (err) {
+        console.error('[calendar] sync-week failed:', err.message);
+      }
+    }
+    res.json({ ok: true, synced });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

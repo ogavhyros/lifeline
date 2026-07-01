@@ -179,22 +179,94 @@ async function deleteEvent(eventId, calendarId) {
 
 // ── task sync ─────────────────────────────────────────────────────────────────
 
+const BIZ_LABEL_CAL = {
+  blok: 'Blok AI', aphl: 'APHL Africa', trade: 'TradeSol',
+  personal: 'Personal', anchor: 'Anchor',
+};
+const BIZ_COLOR_CAL = { blok: '9', aphl: '2', trade: '5', personal: '4', anchor: '8' };
+
 async function syncTaskToCalendar(task) {
-  if (!task.time) throw new Error('Task has no scheduled_time');
+  if (!process.env.GOOGLE_CLIENT_ID) return null;
+  const tokenRow = getSetting.get('google_tokens');
+  if (!tokenRow) return null;
+
+  const cal        = google.calendar({ version: 'v3', auth: getClient() });
   const calRow     = getSetting.get('google_calendar_id');
   const calendarId = calRow ? calRow.value : 'primary';
 
-  // Compute end time: 30-minute default
-  const [h, m]  = task.time.split(':').map(Number);
-  const endMins = h * 60 + m + 30;
-  const endTime = String(Math.floor(endMins / 60)).padStart(2, '0') + ':' + String(endMins % 60).padStart(2, '0');
+  const biz      = task.business || 'personal';
+  const bizLabel = BIZ_LABEL_CAL[biz] || biz;
+  const isDone   = !!task.done;
+  const summary  = `${isDone ? '✓ ' : ''}[${biz.toUpperCase()}] ${task.name}`;
+  const colorId  = isDone ? '8' : (BIZ_COLOR_CAL[biz] || '4');
 
-  const title       = `[${task.business.toUpperCase()}] ${task.name}`;
-  const description = `DAYWAN task — ${task.business}`;
-  const event       = await createEvent(title, task.date, task.time, endTime, description, calendarId);
+  const description =
+    'DAYWAN task\n' +
+    'Business: ' + bizLabel + '\n' +
+    'Priority: ' + (task.priority || 'normal') + '\n' +
+    'Source: '   + (task.source   || 'manual');
 
-  updateTaskEventId.run(event.id, task.id);
-  return event.id;
+  const today   = new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 10);
+  const dateStr = task.date || today;
+
+  let startObj, endObj;
+  if (task.time) {
+    const [h, m]  = task.time.split(':').map(Number);
+    const endMins = h * 60 + m + 30;
+    const endTime = String(Math.floor(endMins / 60)).padStart(2, '0') + ':' +
+                    String(endMins % 60).padStart(2, '0');
+    startObj = { dateTime: `${dateStr}T${task.time}:00+01:00`, timeZone: 'Africa/Lagos' };
+    endObj   = { dateTime: `${dateStr}T${endTime}:00+01:00`,   timeZone: 'Africa/Lagos' };
+  } else {
+    startObj = { date: dateStr };
+    endObj   = { date: dateStr };
+  }
+
+  let reminderOverrides;
+  if (biz === 'anchor') {
+    reminderOverrides = [{ method: 'popup', minutes: 0 }];
+  } else if (task.priority === 'high') {
+    reminderOverrides = [
+      { method: 'popup', minutes: 30 },
+      { method: 'popup', minutes: 10 },
+      { method: 'popup', minutes: 0 },
+    ];
+  } else {
+    reminderOverrides = task.time
+      ? [{ method: 'popup', minutes: 10 }, { method: 'popup', minutes: 0 }]
+      : [{ method: 'popup', minutes: 0 }];
+  }
+
+  const requestBody = {
+    summary,
+    description,
+    colorId,
+    start:     startObj,
+    end:       endObj,
+    reminders: { useDefault: false, overrides: reminderOverrides },
+  };
+
+  let event;
+  if (task.calendar_event_id) {
+    try {
+      const res = await cal.events.patch({ calendarId, eventId: task.calendar_event_id, requestBody });
+      event = res.data;
+    } catch (err) {
+      if (err.code === 404 || err.code === 410) {
+        const res = await cal.events.insert({ calendarId, requestBody });
+        event = res.data;
+        updateTaskEventId.run(event.id, task.id);
+      } else {
+        throw err;
+      }
+    }
+  } else {
+    const res = await cal.events.insert({ calendarId, requestBody });
+    event = res.data;
+    updateTaskEventId.run(event.id, task.id);
+  }
+
+  return event;
 }
 
 // ── schedule blocks sync ──────────────────────────────────────────────────────

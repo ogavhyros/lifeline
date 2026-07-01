@@ -56,6 +56,19 @@ function getTodayTasks() {
   }
 }
 
+// ── block reminder helper ─────────────────────────────────────────────────────
+
+function buildBlockMessage(time, blockName, biz) {
+  const today   = watToday();
+  const tasks   = getTasksByDate.all(today);
+  const pending = tasks.filter(t => !t.done && t.business === biz);
+
+  if (!pending.length) return `${time} — ${blockName}`;
+
+  const taskLines = pending.map(t => t.name).join('\n');
+  return `${time} — ${blockName}\n\n${taskLines}\n\n/done <n> when complete`;
+}
+
 // ── job actions ───────────────────────────────────────────────────────────────
 
 async function renewCalWatch() {
@@ -117,6 +130,7 @@ async function midnightCarry() {
   populateRecurring(today);
   db.prepare('INSERT OR IGNORE INTO day_log (date) VALUES (?)').run(today);
 
+  sentReminders.clear();
   console.log(`[scheduler] midnight — carried ${carried} task(s) from ${yesterday}`);
 
   const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -138,42 +152,128 @@ async function midnightCarry() {
   }
 }
 
+async function morningCalendarSync() {
+  const tokenRow = getSetting.get('google_tokens');
+  if (!tokenRow) return;
+
+  const today   = watToday();
+  const tasks   = getTasksByDate.all(today);
+  const unsynced = tasks.filter(t => !t.calendar_event_id);
+
+  let synced = 0;
+  for (const task of unsynced) {
+    try {
+      await gcal.syncTaskToCalendar(task);
+      synced++;
+      await new Promise(r => setTimeout(r, 200));
+    } catch (err) {
+      console.error('[calendar] morning sync failed:', err.message);
+    }
+  }
+  if (synced > 0) console.log(`[calendar] morning sync — ${synced} tasks pushed`);
+
+  // Pull any new Google Calendar events not yet in DAYWAN
+  let calEvents;
+  try { calEvents = await gcal.getEventsForDate(today); }
+  catch { return; }
+
+  const taskEventIds = new Set(getTasksByDate.all(today).map(t => t.calendar_event_id).filter(Boolean));
+  const newEvents    = calEvents.filter(ev => !taskEventIds.has(ev.id));
+
+  const pulledItems = [];
+  for (const ev of newEvents) {
+    try {
+      const rawEv = {
+        id:          ev.id,
+        summary:     ev.title,
+        description: ev.description || '',
+        status:      'confirmed',
+        start:       ev.allDay ? { date: ev.startRaw } : { dateTime: ev.startRaw },
+        end:         ev.allDay ? { date: ev.endRaw }   : { dateTime: ev.endRaw },
+      };
+      await gcal.processCalendarEvent(rawEv);
+      pulledItems.push(`${ev.title}${ev.start ? ' — ' + ev.start : ''}`);
+    } catch { }
+  }
+
+  if (pulledItems.length) {
+    await sendMessage(
+      `Pulled ${pulledItems.length} event${pulledItems.length !== 1 ? 's' : ''} from Google Calendar into today:\n` +
+      pulledItems.map(item => `• ${item}`).join('\n')
+    );
+  }
+}
+
+// ── task due reminder ─────────────────────────────────────────────────────────
+
+const sentReminders = new Set();
+
+async function taskDueTick() {
+  const now  = watNow();
+  const mins = now.getUTCHours() * 60 + now.getUTCMinutes();
+  // Only between 05:30 and 20:30 WAT
+  if (mins < 330 || mins >= 1230) return;
+
+  const hhmm  = watHHMM(now);
+  const today = now.toISOString().slice(0, 10);
+  const tasks = getTasksByDate.all(today);
+
+  for (const task of tasks) {
+    if (task.done || !task.time || task.time !== hhmm) continue;
+    const key = `${task.id}:${today}`;
+    if (sentReminders.has(key)) continue;
+    sentReminders.add(key);
+
+    const taskNum = tasks.findIndex(t => t.id === task.id) + 1;
+    try {
+      await sendMessage(
+        `Due now: [${task.business.toUpperCase()}] ${task.name}\n` +
+        `/done ${taskNum} to mark complete`
+      );
+    } catch (err) {
+      console.error('[scheduler] taskDue send failed:', err.message);
+    }
+  }
+}
+
 // ── job table ─────────────────────────────────────────────────────────────────
 // noQuiet: true — job runs even during quiet hours (silent jobs only)
 
 const JOBS = [
   // midnight — carry incomplete tasks + seed pending recurring for new day
-  { time: '00:01', label: 'midnight',         action: midnightCarry,                                                         noQuiet: true },
+  { time: '00:01', label: 'midnight',         action: midnightCarry,  noQuiet: true },
   // renew Google Calendar watch channel if it's 6+ days old
-  { time: '03:00', label: 'renew-cal-watch',  action: renewCalWatch,                                                         noQuiet: true },
+  { time: '03:00', label: 'renew-cal-watch',  action: renewCalWatch,  noQuiet: true },
+
+  // morning calendar sync — push today's tasks to Google Calendar
+  { time: '05:25', label: 'morning-cal-sync', action: morningCalendarSync, noQuiet: true },
 
   // anchor blocks
-  { time: '05:25', label: 'prayer-5min',    action: () => notifEnabled('block_reminders') && sendMessage('Prayer block in 5 minutes')                                        },
-  { time: '05:40', label: 'journaling-now', action: () => sendMessage('Journaling block starting now')                                     },
-  { time: '06:25', label: 'orient-now',     action: () => sendMessage('Orient and daily priority starting now [BLOK]')                     },
-  { time: '06:25', label: 'pre-day-5min',   action: () => sendMessage('Pre-day setup block in 5 minutes [APHL]')                          },
+  { time: '05:25', label: 'prayer-5min',    action: () => notifEnabled('block_reminders') && sendMessage('Prayer block in 5 minutes') },
+  { time: '05:40', label: 'journaling-now', action: () => sendMessage(buildBlockMessage('05:45', 'Journaling', 'anchor'))             },
+  { time: '06:25', label: 'orient-now',     action: () => sendMessage(buildBlockMessage('06:00', 'Orient and daily priority', 'blok'))  },
+  { time: '06:25', label: 'pre-day-5min',   action: () => sendMessage(buildBlockMessage('06:30', 'Pre-day setup', 'aphl'))            },
 
   // daily briefing
-  { time: '06:20', label: 'pre-day',        action: () => sendMessage('Pre-day setup: depot price, brief Candy [APHL]')                    },
-  { time: '06:30', label: 'briefing',       action: morningBriefing                                                                        },
-  { time: '06:50', label: 'morning-cmd',    action: () => sendMessage('Morning command: floor price, driver call [APHL]')                  },
+  { time: '06:30', label: 'briefing',       action: morningBriefing },
+  { time: '06:50', label: 'morning-cmd',    action: () => sendMessage(buildBlockMessage('07:00', 'Morning command', 'aphl'))          },
 
   // work blocks
-  { time: '07:20', label: 'raise',          action: () => sendMessage('Raise: investor relations — one genuine touchpoint today [BLOK]')  },
-  { time: '08:50', label: 'product',        action: () => sendMessage('Product: PM review, product user flow [BLOK]')                   },
-  { time: '09:50', label: 'operations',     action: () => sendMessage('Operations: payments, loading, tracking [APHL]')                    },
-  { time: '10:20', label: 'comms',          action: () => sendMessage('Comms: Slack, async check-ins [BLOK]')                              },
-  { time: '11:20', label: 'brand',          action: () => sendMessage('Brand: creative review, social metrics [BLOK]')                     },
-  { time: '12:50', label: 'md-strategic',   action: () => sendMessage('MD strategic hour [APHL]')                                          },
-  { time: '13:50', label: 'strategy',       action: () => sendMessage('Strategy: priorities, decision log [BLOK]')                         },
-  { time: '15:50', label: 'day-close',      action: () => sendMessage('Unified day close [BLOK + APHL]')                                   },
+  { time: '07:20', label: 'raise',        action: () => sendMessage(buildBlockMessage('07:30', 'Raise — investor relations', 'blok'))  },
+  { time: '08:50', label: 'product',      action: () => sendMessage(buildBlockMessage('09:00', 'Product block', 'blok'))              },
+  { time: '09:50', label: 'operations',   action: () => sendMessage(buildBlockMessage('10:00', 'Operations block', 'aphl'))           },
+  { time: '10:20', label: 'comms',        action: () => sendMessage(buildBlockMessage('10:30', 'Comms block', 'blok'))                },
+  { time: '11:20', label: 'brand',        action: () => sendMessage(buildBlockMessage('11:30', 'Brand block', 'blok'))                },
+  { time: '12:50', label: 'md-strategic', action: () => sendMessage(buildBlockMessage('13:00', 'MD strategic hour', 'aphl'))          },
+  { time: '13:50', label: 'strategy',     action: () => sendMessage(buildBlockMessage('14:00', 'Strategy block', 'blok'))             },
+  { time: '15:50', label: 'day-close',    action: () => sendMessage(buildBlockMessage('16:00', 'Day close', 'blok'))                  },
 
   // personal blocks
-  { time: '17:50', label: 'personal',       action: () => sendMessage('Pottery or reading [PERSONAL]')                                     },
-  { time: '19:00', label: 'physical',       action: () => sendMessage('Physical activity [PERSONAL]')                                      },
+  { time: '17:50', label: 'personal',     action: () => sendMessage(buildBlockMessage('18:00', 'Personal block', 'personal'))        },
+  { time: '19:00', label: 'physical',     action: () => sendMessage(buildBlockMessage('19:00', 'Physical activity', 'personal'))     },
 
   // EOD review
-  { time: '21:00', label: 'eod',            action: eodReview                                                                              },
+  { time: '21:00', label: 'eod', action: eodReview },
 ];
 
 // ── scheduler loop ────────────────────────────────────────────────────────────
@@ -305,7 +405,11 @@ function initScheduler() {
     () => calendarPoll().catch(err => console.error('[scheduler] calendarPoll error:', err.message)),
     15 * 60 * 1000
   );
-  console.log('[scheduler] started — tick every 60s, nudge every 30m, cal-poll every 15m (WAT UTC+1)');
+  setInterval(
+    () => taskDueTick().catch(err => console.error('[scheduler] taskDueTick error:', err.message)),
+    5 * 60 * 1000
+  );
+  console.log('[scheduler] started — tick every 60s, nudge every 30m, cal-poll every 15m, due-reminder every 5m (WAT UTC+1)');
 }
 
 module.exports = { initScheduler };

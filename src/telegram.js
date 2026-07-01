@@ -1307,36 +1307,62 @@ async function handleCommand(text) {
         );
         return;
       }
-      const events = await gcal.getTodayEvents();
-      const now    = new Date(Date.now() + 60 * 60 * 1000);
+      const now      = new Date(Date.now() + 60 * 60 * 1000);
       const dayLabel = now.toLocaleDateString('en-GB', {
         weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC',
       });
-      if (!events.length) {
-        await sendMessage(`YOUR CALENDAR — ${dayLabel}\n\nNo events today.`);
-        return;
+
+      let calEvents = [];
+      try { calEvents = await gcal.getTodayEvents(); } catch { }
+
+      const daywanTasks = getTodayTasks();
+      const syncedEventIds = new Set(daywanTasks.map(t => t.calendar_event_id).filter(Boolean));
+
+      // Build merged list
+      const items = [];
+
+      // DAYWAN tasks
+      for (const t of daywanTasks) {
+        if (t.business === 'anchor') continue;
+        const tag = t.calendar_event_id ? '[SYNCED]' : '[DAYWAN]';
+        items.push({ time: t.time || '99:99', line: `${t.time || '--:--'}  ${t.name} ${tag}` });
       }
-      const lines = [`YOUR CALENDAR — ${dayLabel}`, ''];
-      for (const e of events) {
-        lines.push(`${e.start} – ${e.end}  ${e.title}`);
+
+      // Calendar events not already represented as DAYWAN tasks
+      for (const e of calEvents) {
+        if (syncedEventIds.has(e.id)) continue;
+        items.push({ time: e.start || '99:99', line: `${e.start || '--:--'}  ${e.title} [CALENDAR]` });
       }
-      lines.push('', `${events.length} event${events.length !== 1 ? 's' : ''} today.`);
+
+      items.sort((a, b) => a.time < b.time ? -1 : a.time > b.time ? 1 : 0);
+
+      const calCount     = calEvents.filter(e => !syncedEventIds.has(e.id)).length;
+      const daywanCount  = daywanTasks.filter(t => t.business !== 'anchor').length;
+
+      const lines = [`TODAY — ${dayLabel}`, ''];
+      if (!items.length) {
+        lines.push('Nothing scheduled today.');
+      } else {
+        lines.push(...items.map(i => i.line));
+      }
+      lines.push('', `${calCount} calendar event${calCount !== 1 ? 's' : ''} · ${daywanCount} DAYWAN task${daywanCount !== 1 ? 's' : ''}`);
+
       await sendMessage(lines.join('\n'));
       break;
     }
 
     case '/calsync': {
-      const today = watToday();
-      const tasks = getTodayTasks().filter(t => t.time && !t.done && t.business !== 'anchor');
-      if (!tasks.length) {
-        await sendMessage('No pending timed tasks to sync.');
+      const unsynced = getTodayTasks().filter(t => !t.calendar_event_id && t.business !== 'anchor');
+      if (!unsynced.length) {
+        await sendMessage('All tasks are already synced to Google Calendar.');
         return;
       }
+      await sendMessage(`Syncing ${unsynced.length} task${unsynced.length !== 1 ? 's' : ''}...`);
       let synced = 0;
-      for (const t of tasks) {
+      for (const t of unsynced) {
         try { await gcal.syncTaskToCalendar(t); synced++; } catch { }
       }
-      await sendMessage(`Synced ${synced} task${synced !== 1 ? 's' : ''} to Google Calendar.`);
+      await sendMessage(`Synced ${synced} task${synced !== 1 ? 's' : ''} to Google Calendar.\nCheck your calendar.`);
       break;
     }
 
