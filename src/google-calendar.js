@@ -1,9 +1,11 @@
 // SYNC RULES:
-// DAYWAN → Google Calendar: ALL tasks sync outward
-// Google Calendar → DAYWAN: ONLY externally created events
-// Events created by DAYWAN are tagged with extendedProperties.private.daywan_source = 'daywan'
-// These are never re-imported back into DAYWAN — that's what caused the
-// duplicate-task loop (DAYWAN pushes a task out, then reads it back in as new).
+// LIFELINE → Google Calendar: ALL tasks sync outward
+// Google Calendar → LIFELINE: ONLY externally created events
+// Events created by LIFELINE are tagged with extendedProperties.private.daywan_source = 'daywan'
+// (key name kept stable from the pre-rename DAYWAN era — see note near
+// isLifelineTaggedEvent below for why it isn't renamed).
+// These are never re-imported back into LIFELINE — that's what caused the
+// duplicate-task loop (LIFELINE pushes a task out, then reads it back in as new).
 
 require('dotenv').config();
 const { google } = require('googleapis');
@@ -104,22 +106,26 @@ async function listCalendars() {
   }));
 }
 
-// ── DAYWAN-created event detection ────────────────────────────────────────────
-// Two ways to recognize an event DAYWAN created: the extendedProperties tag
+// ── LIFELINE-created event detection ──────────────────────────────────────────
+// Two ways to recognize an event LIFELINE created: the extendedProperties tag
 // (added going forward by syncTaskToCalendar) and, for events created before
 // that tag existed, the "[BUSINESS] name" / "✓ [BUSINESS] name" title shape
 // syncTaskToCalendar has always used.
+//
+// The extendedProperties key itself ('daywan_source') is left unrenamed on
+// purpose — it's already stored on real Google Calendar events from before
+// this app was renamed, and this check has to keep matching those.
 
-function isDaywanTaggedEvent(event) {
+function isLifelineTaggedEvent(event) {
   return event?.extendedProperties?.private?.daywan_source === 'daywan';
 }
 
-function looksDaywanCreatedTitle(title) {
+function looksLifelineCreatedTitle(title) {
   return /^(✓\s*)?\[[^\]]+\]\s*/.test(title || '');
 }
 
-function isDaywanCreatedEvent(event) {
-  return isDaywanTaggedEvent(event) || looksDaywanCreatedTitle(event?.summary);
+function isLifelineCreatedEvent(event) {
+  return isLifelineTaggedEvent(event) || looksLifelineCreatedTitle(event?.summary);
 }
 
 // ── event fetching ────────────────────────────────────────────────────────────
@@ -136,7 +142,7 @@ async function getEventsForDate(dateStr) {
     singleEvents: true,
     orderBy:      'startTime',
   });
-  return (res.data.items || []).filter(e => !isDaywanCreatedEvent(e)).map(mapEvent);
+  return (res.data.items || []).filter(e => !isLifelineCreatedEvent(e)).map(mapEvent);
 }
 
 async function getTodayEvents() {
@@ -161,7 +167,7 @@ async function getEventsForMonth(year, month) {
     maxResults:   500,
   });
   return (res.data.items || [])
-    .filter(e => !isDaywanCreatedEvent(e))
+    .filter(e => !isLifelineCreatedEvent(e))
     .map(e => ({
       ...mapEvent(e),
       date: (e.start?.dateTime || e.start?.date || '').slice(0, 10),
@@ -472,11 +478,11 @@ async function processCalendarEvent(event) {
     return;
   }
 
-  // Event was created by DAYWAN itself — never re-import it as a new/updated
-  // task. Without this check, every task DAYWAN pushes to Calendar gets read
+  // Event was created by LIFELINE itself — never re-import it as a new/updated
+  // task. Without this check, every task LIFELINE pushes to Calendar gets read
   // back in as a "new" event and duplicated indefinitely.
-  if (isDaywanCreatedEvent(event)) {
-    console.log(`[calendar] skipping DAYWAN-created event: ${event.summary}`);
+  if (isLifelineCreatedEvent(event)) {
+    console.log(`[calendar] skipping LIFELINE-created event: ${event.summary}`);
     return null;
   }
 
@@ -530,5 +536,5 @@ module.exports = {
   renewCalendarWatch,
   getChangedEvents,
   processCalendarEvent,
-  isDaywanCreatedEvent,
+  isLifelineCreatedEvent,
 };

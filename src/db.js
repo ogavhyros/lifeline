@@ -565,7 +565,7 @@ const getGoalProgress = db.prepare(
 
 // NOTE: writes calendar_event_id (not the unused event_id column) — this is
 // the column getTaskByEventId/updateTaskFromCalendar/deleteTaskByEventId all
-// read, so a task DAYWAN pushes to Google Calendar is recognized as already-
+// read, so a task LIFELINE pushes to Google Calendar is recognized as already-
 // linked on the next poll instead of being re-imported as a duplicate.
 const updateTaskEventId = db.prepare('UPDATE tasks SET calendar_event_id = ? WHERE id = ?');
 

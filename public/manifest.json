@@ -1,7 +1,7 @@
 {
   "name": "LIFELINE",
   "short_name": "LIFELINE",
-  "description": "Day One — Personal Operating System",
+  "description": "Your Personal Operating System",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
