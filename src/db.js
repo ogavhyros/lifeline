@@ -190,6 +190,14 @@ db.exec(`
     created_at        TEXT    DEFAULT (datetime('now')),
     UNIQUE(date, recurring_task_id)
   );
+
+  CREATE TABLE IF NOT EXISTS anchor_log (
+    id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    date TEXT    NOT NULL,
+    key  TEXT    NOT NULL,
+    done INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(date, key)
+  );
 `);
 
 // Add columns that may not exist yet (safe to run every startup)
@@ -222,6 +230,87 @@ function weekStart() {
   const dayOfWeek = now.getUTCDay();
   const toMonday  = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
   return new Date(now.getTime() + toMonday * 86400000).toISOString().slice(0, 10);
+}
+
+// ── anchors — daily habit toggles (Prayer, Journaling, family time, etc.) ─────
+// The set of anchors is NOT hardcoded here — it's derived from whichever
+// schedule blocks are tagged biz: 'anchor' in the founder's schedule (editable
+// via the Schedule tab, or the founder_profile default), so renaming/adding/
+// removing an anchor block there is automatically reflected without a second
+// list to keep in sync. done/not-done state itself is tracked per day in
+// anchor_log, since these blocks are display-only schedule entries, not real
+// rows in the `tasks` table.
+
+function slugifyAnchorKey(name) {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+}
+
+function getAnchorDefs() {
+  const override = getSetting.get('schedule_blocks');
+  let blocks;
+  try { blocks = override ? JSON.parse(override.value) : getFounderProfile().scheduleBlocks; }
+  catch { blocks = getFounderProfile().scheduleBlocks; }
+  return (blocks || [])
+    .filter(b => b.biz === 'anchor')
+    .map(b => ({ key: slugifyAnchorKey(b.name), label: b.name, time: b.time }));
+}
+
+const getAnchorLogForDate = db.prepare('SELECT key, done FROM anchor_log WHERE date = ?');
+const toggleAnchorLogStmt = db.prepare(`
+  INSERT INTO anchor_log (date, key, done) VALUES (?, ?, 1)
+  ON CONFLICT(date, key) DO UPDATE SET done = 1 - done
+`);
+const getAnchorDoneStmt = db.prepare('SELECT done FROM anchor_log WHERE date = ? AND key = ?');
+
+function getAnchorsForDate(date) {
+  const defs    = getAnchorDefs();
+  const doneMap = {};
+  for (const r of getAnchorLogForDate.all(date)) doneMap[r.key] = !!r.done;
+  return defs.map(a => ({ id: a.key, key: a.key, label: a.label, time: a.time, done: doneMap[a.key] ?? false }));
+}
+
+function toggleAnchor(date, key) {
+  if (!getAnchorDefs().some(a => a.key === key)) return null;
+  toggleAnchorLogStmt.run(date, key);
+  return !!getAnchorDoneStmt.get(date, key).done;
+}
+
+// ── scorecard metrics ─────────────────────────────────────────────────────────
+
+// Counts distinct days this week (Mon–today) with at least one completed task
+// whose name mentions "investor" — matches the recurring "Investor relationship
+// touchpoint" task and similar. One touchpoint per day is the target, so
+// distinct days (not raw task count) is what "investor touches" means here.
+const getInvestorTouchesStmt = db.prepare(`
+  SELECT COUNT(DISTINCT date) AS cnt FROM tasks
+  WHERE done = 1 AND date >= ? AND date <= ? AND LOWER(name) LIKE '%investor%'
+`);
+
+function getInvestorTouchesThisWeek() {
+  return getInvestorTouchesStmt.get(weekStart(), watToday()).cnt;
+}
+
+// % of goals with a target_date inside the current calendar quarter that are
+// marked 'achieved'. Returns null (not 0) when no goals fall in this quarter,
+// so the frontend can show "—" instead of a misleading 0%.
+const getGoalsInRangeStmt = db.prepare(
+  'SELECT status FROM goals WHERE target_date IS NOT NULL AND target_date BETWEEN ? AND ?'
+);
+
+function quarterRange() {
+  const today       = new Date(watToday() + 'T00:00:00Z');
+  const startMonth  = Math.floor(today.getUTCMonth() / 3) * 3;
+  const start       = new Date(Date.UTC(today.getUTCFullYear(), startMonth, 1));
+  const end         = new Date(Date.UTC(today.getUTCFullYear(), startMonth + 3, 0));
+  return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) };
+}
+
+function getQuarterlyGoalPct() {
+  const { start, end } = quarterRange();
+  const rows = getGoalsInRangeStmt.all(start, end);
+  if (rows.length === 0) return null;
+  const achieved = rows.filter(r => r.status === 'achieved').length;
+  return Math.round((achieved / rows.length) * 100);
 }
 
 // ── prepared statements — tasks ───────────────────────────────────────────────
@@ -1040,6 +1129,14 @@ module.exports = {
   getFounderProfile,
   saveFounderProfile,
   DEFAULT_FOUNDER_PROFILE,
+
+  // scorecard
+  getInvestorTouchesThisWeek,
+  getQuarterlyGoalPct,
+
+  // anchors
+  getAnchorsForDate,
+  toggleAnchor,
 
   // document analyses
   saveDocumentAnalysis,

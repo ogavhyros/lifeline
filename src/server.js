@@ -23,6 +23,8 @@ const {
   updateTaskTime,
   getBusinesses, addBusiness, deactivateBusiness,
   getFounderProfile, saveFounderProfile,
+  getInvestorTouchesThisWeek, getQuarterlyGoalPct,
+  getAnchorsForDate, toggleAnchor,
 } = require('./db');
 const { parseDocument, cleanDocumentText } = require('./document-parser');
 const gcal = require('./google-calendar');
@@ -706,6 +708,27 @@ app.get('/api/analytics/missed', (_req, res) => {
      LIMIT 10`
   ).all(today);
   res.json(rows);
+});
+
+// ── scorecard ─────────────────────────────────────────────────────────────────
+
+app.get('/api/scorecard/week', (_req, res) => {
+  res.json({
+    investorTouches: getInvestorTouchesThisWeek(),
+    quarterlyPct:    getQuarterlyGoalPct(),
+  });
+});
+
+// ── anchors ───────────────────────────────────────────────────────────────────
+
+app.get('/api/anchors/today', (_req, res) => {
+  res.json(getAnchorsForDate(watToday()));
+});
+
+app.patch('/api/anchors/:key/toggle', (req, res) => {
+  const done = toggleAnchor(watToday(), req.params.key);
+  if (done === null) return res.status(404).json({ error: 'Unknown anchor key' });
+  res.json({ key: req.params.key, done });
 });
 
 // ── goals ─────────────────────────────────────────────────────────────────────

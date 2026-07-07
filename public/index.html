@@ -192,6 +192,43 @@
       transition: width 0.35s ease;
     }
 
+    /* ── anchor chain ─────────────────────────────────────────────────────────── */
+    .anchor-row {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .anchor-link {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid #e8e8e6;
+      color: #999;
+      font-size: 16px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+    }
+
+    .anchor-link:hover {
+      border-color: #c9c9c5;
+      color: #6b6b6b;
+    }
+
+    .anchor-link.done {
+      background: #1a1a1a;
+      border-color: #1a1a1a;
+      color: #ffffff;
+    }
+
+    .anchor-link:focus-visible {
+      outline: 2px solid #1a1a1a;
+      outline-offset: 2px;
+    }
+
     /* ── task rows ────────────────────────────────────────────────────────────── */
     .task-row {
       display: flex;
@@ -2211,12 +2248,18 @@
       <h1 class="page-title" id="today-date">Loading…</h1>
       <p class="page-sub" id="today-sub">—</p>
 
+      <div class="anchor-row" id="anchor-chain"></div>
+
       <div class="inline-stats">
         <span id="s-total">—</span>&thinsp;tasks
         <span class="stat-div">·</span>
         <span id="s-done">—</span>&thinsp;done
         <span class="stat-div">·</span>
         <span id="s-rate">—</span>%&thinsp;today
+        <span class="stat-div">·</span>
+        <span id="s-investor">—</span>&thinsp;investor touches
+        <span class="stat-div">·</span>
+        <span id="s-quarterly">—</span>%&thinsp;quarterly
       </div>
 
       <div class="streak-row" id="streak-squares"></div>
@@ -3212,6 +3255,63 @@ function renderToday() {
   renderFocusBlocks();
 }
 
+// ── anchor chain — compact icon row for daily habit toggles ──────────────────
+// (Prayer, Journaling, family time, evening wind-down). These come from
+// schedule blocks tagged biz: 'anchor' — display-only entries, not real rows
+// in the `tasks` table — so they're tracked separately via /api/anchors/today
+// rather than reusing the task toggle/state.tasks machinery.
+
+const ANCHOR_ICON_RULES = [
+  { test: /prayer/i,           icon: 'ti-flame'  },
+  { test: /journal/i,          icon: 'ti-pencil'  },
+  { test: /famil|loved ones/i, icon: 'ti-users'   },
+  { test: /wind.?down/i,       icon: 'ti-moon'    },
+];
+
+function anchorIconFor(label) {
+  const rule = ANCHOR_ICON_RULES.find(r => r.test.test(label));
+  return rule ? rule.icon : 'ti-anchor';
+}
+
+function renderAnchorChain(anchors) {
+  const container = document.getElementById('anchor-chain');
+  container.innerHTML = anchors.map(a => `
+    <div class="anchor-link${a.done ? ' done' : ''}" data-key="${a.key}" title="${esc(a.label)}"
+         role="button" tabindex="0" aria-pressed="${a.done ? 'true' : 'false'}">
+      <i class="ti ${anchorIconFor(a.label)}"></i>
+    </div>
+  `).join('');
+
+  container.querySelectorAll('.anchor-link').forEach(el => {
+    el.addEventListener('click', () => toggleAnchor(el));
+    el.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleAnchor(el); }
+    });
+  });
+}
+
+async function loadAnchors() {
+  try {
+    const anchors = await api('/api/anchors/today');
+    renderAnchorChain(anchors);
+  } catch (e) { console.error('loadAnchors:', e); }
+}
+
+async function toggleAnchor(el) {
+  const key = el.dataset.key;
+  const willBeDone = !el.classList.contains('done');
+  el.classList.toggle('done', willBeDone);
+  el.setAttribute('aria-pressed', String(willBeDone));
+  try {
+    await api(`/api/anchors/${key}/toggle`, { method: 'PATCH' });
+  } catch (e) {
+    // Roll back — the server never recorded this toggle.
+    el.classList.toggle('done', !willBeDone);
+    el.setAttribute('aria-pressed', String(!willBeDone));
+    console.error('toggleAnchor:', e);
+  }
+}
+
 function renderStreakSquares() {
   const todayMs = new Date(watDateStr() + 'T00:00:00Z').getTime();
   const rateMap = {};
@@ -4105,6 +4205,14 @@ async function updateWeeklyStat() {
     document.getElementById('weekly-stat').textContent = `${avg}%`;
     const mws = document.getElementById('mobile-weekly-stat');
     if (mws) mws.textContent = `${avg}%`;
+  } catch { }
+}
+
+async function updateScorecard() {
+  try {
+    const sc = await api('/api/scorecard/week');
+    document.getElementById('s-investor').textContent  = sc.investorTouches ?? 0;
+    document.getElementById('s-quarterly').textContent = sc.quarterlyPct != null ? sc.quarterlyPct : '—';
   } catch { }
 }
 
@@ -5991,6 +6099,8 @@ document.addEventListener('DOMContentLoaded', () => {
     .catch(() => {})
     .finally(() => fetchTasks());
   updateWeeklyStat();
+  updateScorecard();
+  loadAnchors();
 });
 </script>
 </body>
