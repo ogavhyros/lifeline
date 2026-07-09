@@ -348,12 +348,36 @@ function weekStart() {
         UNIQUE(user_id, key)
       );
       INSERT INTO settings_new (user_id, key, value, updated_at)
-        SELECT COALESCE(user_id, 1), key, value, updated_at FROM settings;
+        SELECT
+          CASE WHEN key IN ('recurring_seeded_v4', 'anchors_seeded_v2', 'kanban_status_seeded_v1')
+               THEN 0 ELSE COALESCE(user_id, 1) END,
+          key, value, updated_at
+        FROM settings;
       DROP TABLE settings;
       ALTER TABLE settings_new RENAME TO settings;
       CREATE INDEX IF NOT EXISTS idx_settings_user_key ON settings(user_id, key);
     `);
     console.log('[db] settings table rebuilt with UNIQUE(user_id, key)');
+  }
+}
+
+// ── fixup (v1): the settings rebuild above originally routed ALL pre-existing
+// rows to user 1, including system migration-guard flags that need to live
+// under SYSTEM_USER_ID (0) — this crashed production (recurring_seeded_v4
+// looked "never run" against 6 months of real data, and re-running that
+// reset hit a FOREIGN KEY violation deleting recurring_tasks still
+// referenced by pending_recurring). This one-time fixup relocates any of
+// those flags that already landed under user 1 back to user 0, for
+// databases where the (now-corrected) rebuild above already ran once with
+// the bug. Safe/no-op on a database that never had the bug.
+{
+  const misplacedFlagStmt = db.prepare(
+    `UPDATE settings SET user_id = 0
+     WHERE user_id = 1 AND key IN ('recurring_seeded_v4', 'anchors_seeded_v2', 'kanban_status_seeded_v1')`
+  );
+  const info = misplacedFlagStmt.run();
+  if (info.changes > 0) {
+    console.log(`[db] relocated ${info.changes} misplaced system migration flag(s) from user 1 to the system user`);
   }
 }
 
@@ -1485,6 +1509,11 @@ seedDefaultsForUser(1);
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
 
+    // pending_recurring.recurring_task_id references recurring_tasks(id) with
+    // no ON DELETE clause — clear those first so the reset below can't hit a
+    // foreign-key violation against months of accumulated confirmation-prompt
+    // rows pointing at the definitions being replaced.
+    db.prepare('DELETE FROM pending_recurring WHERE user_id = 1').run();
     db.prepare('DELETE FROM recurring_tasks WHERE user_id = 1').run();
     db.transaction(() => {
       for (const s of SEEDS_V4) {
