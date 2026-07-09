@@ -109,9 +109,9 @@ const renewCalWatch = forEachUser(async (userId) => {
   const channel = JSON.parse(row.value);
   const age     = Date.now() - (channel.created_at || 0);
   if (age < 6 * 24 * 60 * 60 * 1000) return; // not old enough yet
-  const serverUrl = process.env.SERVER_URL;
-  if (!serverUrl || serverUrl.includes('localhost')) return;
-  await gcal.renewCalendarWatch(userId, serverUrl);
+  const baseUrl = gcal.getBaseUrl();
+  if (!baseUrl || baseUrl.includes('localhost')) return;
+  await gcal.renewCalendarWatch(userId, baseUrl);
   console.log(`[scheduler] Calendar watch channel renewed for user ${userId}`);
 });
 

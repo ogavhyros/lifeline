@@ -32,11 +32,26 @@ const SCOPES = [
 
 // ── OAuth2 helpers ────────────────────────────────────────────────────────────
 
+// Redirect URI is derived from BASE_URL whenever it's set, taking priority
+// over the legacy GOOGLE_REDIRECT_URI/SERVER_URL vars — those are fixed full
+// URLs that silently go stale the moment the deployed domain changes (which
+// is exactly what happened: GOOGLE_REDIRECT_URI was still pointing at the
+// pre-rename ogv-day-os-production.up.railway.app domain). BASE_URL is the
+// one thing that needs updating when the domain changes; the callback path
+// gets appended here instead of being duplicated into a second variable.
+function getBaseUrl() {
+  return process.env.BASE_URL || process.env.SERVER_URL || null;
+}
+
 function makeOAuth2Client() {
+  const baseUrl = getBaseUrl();
+  const redirectUri = baseUrl
+    ? `${baseUrl}/auth/google/callback`
+    : (process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3000/auth/google/callback');
   return new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
-    process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3000/auth/google/callback'
+    redirectUri
   );
 }
 
@@ -554,6 +569,7 @@ async function processCalendarEvent(userId, event, caller = 'unknown') {
 
 module.exports = {
   setMessageSender,
+  getBaseUrl,
   getAuthUrl,
   exchangeCode,
   getClient,

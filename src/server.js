@@ -993,7 +993,7 @@ app.get('/auth/google', requireAuth, (req, res) => {
 app.get('/auth/google/callback', requireAuth, async (req, res) => {
   try {
     await gcal.exchangeCode(req.user.id, req.query.code);
-    gcal.setupCalendarWatch(req.user.id, process.env.SERVER_URL).catch(err =>
+    gcal.setupCalendarWatch(req.user.id, gcal.getBaseUrl()).catch(err =>
       console.error('[calendar] watch setup after auth failed:', err.message)
     );
     // Sync today's existing tasks to Google Calendar
@@ -1268,8 +1268,9 @@ console.log(`[BOOT] pid=${process.pid} time=${new Date().toISOString()} NODE_ENV
 initBot();
 initScheduler();
 
-if (!POLLING && process.env.SERVER_URL) {
-  registerWebhook(process.env.SERVER_URL).catch((err) =>
+const _baseUrlForWebhook = gcal.getBaseUrl();
+if (!POLLING && _baseUrlForWebhook) {
+  registerWebhook(_baseUrlForWebhook).catch((err) =>
     console.error('[telegram] webhook registration failed:', err.message)
   );
 }
