@@ -6,7 +6,7 @@ const fs      = require('fs');
 const {
   db, watToday, watTomorrow, watCutoff, weekStart,
   getTasksByDate, getTaskById, insertTask, toggleTask, markTaskDone, updatePriority, deleteTask,
-  deduplicateTasks, updateTaskStatus, updateTaskDate, getBoardTasks,
+  deduplicateTasks, updateTaskStatus, updateTaskDate, getBoardTasks, logTaskInsert,
   getHistory, getKpis, upsertKpi,
   getRecurring, getFutureRecurring, getRecurringGrouped, addRecurring, deactivateRecurring, activateRecurring, populateRecurring,
   toggleRecurringActive, updateRecurringTime,
@@ -94,6 +94,31 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
   const count = getTasksByDate.all(today).length;
   console.log(`[db] ${count} task${count !== 1 ? 's' : ''} found for today (${today})`);
 
+  // DEBUG (duplication investigation): raw duplicate-group query across the
+  // WHOLE table, run BEFORE any cleanup below so it reflects the true
+  // pre-cleanup state. Adapted from the requested
+  // "SELECT title, date, time, source, google_event_id, COUNT(*) ..." query
+  // to this schema's actual column names (name / calendar_event_id).
+  try {
+    const dupGroups = db.prepare(`
+      SELECT name, date, COUNT(*) as cnt,
+             GROUP_CONCAT(id) as ids,
+             GROUP_CONCAT(time) as times,
+             GROUP_CONCAT(source) as sources,
+             GROUP_CONCAT(calendar_event_id) as calendar_event_ids
+      FROM tasks
+      GROUP BY name, date
+      HAVING COUNT(*) > 1
+      ORDER BY cnt DESC
+    `).all();
+    console.log(`[DUP-CHECK] found ${dupGroups.length} duplicate group(s) in tasks table (pre-cleanup, all dates)`);
+    for (const g of dupGroups) {
+      console.log(`[DUP-CHECK] name=${JSON.stringify(g.name)} date=${g.date} count=${g.cnt} ids=[${g.ids}] times=[${g.times}] sources=[${g.sources}] calendar_event_ids=[${g.calendar_event_ids}]`);
+    }
+  } catch (err) {
+    console.error('[DUP-CHECK] query failed:', err.message);
+  }
+
   // One-time cleanup of duplicates left over from the Google Calendar sync
   // loop bug (a synced task getting pulled back in as a "new" task).
   const removed = deduplicateTasks(today);
@@ -138,6 +163,7 @@ app.post('/api/tasks', (req, res) => {
   if (!name || !business) return res.status(400).json({ error: 'name and business are required' });
   const info = insertTask.run(watToday(), name, business, scheduled_time || null, priority || 'normal');
   const task = getTaskById.get(info.lastInsertRowid);
+  logTaskInsert('manual-web', name, { date: task.date, business, taskId: task.id });
   gcal.syncTaskToCalendar(task).catch(err => console.error('[calendar] sync failed:', err.message));
   res.status(201).json(task);
 });
@@ -651,6 +677,7 @@ app.post('/api/brain-dump/import', (req, res) => {
     for (const t of list) {
       const info = insertTask.run(today, t.name, t.business || 'personal', t.time || null, t.priority || 'normal');
       newIds.push(info.lastInsertRowid);
+      logTaskInsert('brain-dump-web', t.name, { date: today, business: t.business || 'personal', taskId: info.lastInsertRowid });
     }
   })(tasks);
   for (const id of newIds) {
@@ -1073,9 +1100,12 @@ app.post('/api/calendar/webhook', (req, res) => {
   const state = req.headers['x-goog-resource-state'];
   res.sendStatus(200); // respond fast — Google requires < 2 s
 
+  console.log(`[calendar-sync] RUN START caller=webhook state=${state} pid=${process.pid} time=${new Date().toISOString()}`);
+
   if (state === 'sync') {
     // Initial handshake — fetch events to get a sync token baseline
     gcal.getChangedEvents(null)
+      .then(events => console.log(`[calendar-sync] RUN END caller=webhook state=sync fetched=${events.length} pid=${process.pid}`))
       .catch(err => console.error('[calendar] initial sync error:', err.message));
     return;
   }
@@ -1084,7 +1114,11 @@ app.post('/api/calendar/webhook', (req, res) => {
     const tokenRow  = getSetting.get('google_sync_token');
     const syncToken = tokenRow ? tokenRow.value : null;
     gcal.getChangedEvents(syncToken)
-      .then(events => Promise.all(events.map(e => gcal.processCalendarEvent(e))))
+      .then(events => {
+        console.log(`[calendar-sync] caller=webhook fetched=${events.length} event(s): ${events.map(e => e.id).join(',')} pid=${process.pid}`);
+        return Promise.all(events.map(e => gcal.processCalendarEvent(e, 'webhook')));
+      })
+      .then(() => console.log(`[calendar-sync] RUN END caller=webhook pid=${process.pid} time=${new Date().toISOString()}`))
       .catch(err => console.error('[calendar] webhook processing error:', err.message));
   }
 });
@@ -1166,6 +1200,8 @@ app.get('/health', (_req, res) => res.json({ ok: true }));
 // ── startup ───────────────────────────────────────────────────────────────────
 
 const PORT = process.env.PORT || 3000;
+
+console.log(`[BOOT] pid=${process.pid} time=${new Date().toISOString()} NODE_ENV=${process.env.NODE_ENV} starting LIFELINE server — if two BOOT lines with different pids appear close together, two process instances are alive concurrently`);
 
 initBot();
 initScheduler();

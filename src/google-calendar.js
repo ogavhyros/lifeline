@@ -12,7 +12,7 @@ const { google } = require('googleapis');
 const {
   getSetting, upsertSetting, deleteSetting, updateTaskEventId,
   getTaskByEventId, insertCalendarTask, updateTaskFromCalendar, deleteTaskByEventId,
-  getTasksByDate, syncDayLog, getFounderProfile,
+  getTasksByDate, syncDayLog, getFounderProfile, logTaskInsert,
 } = require('./db');
 
 // Injected by server.js after both modules load — avoids circular dependency
@@ -465,7 +465,9 @@ function _detectBusiness(title, description) {
   return 'personal';
 }
 
-async function processCalendarEvent(event) {
+async function processCalendarEvent(event, caller = 'unknown') {
+  console.log(`[calendar] processCalendarEvent ENTER caller=${caller} eventId=${event.id} summary=${JSON.stringify(event.summary)} status=${event.status} pid=${process.pid} time=${new Date().toISOString()}`);
+
   if (event.status === 'cancelled') {
     const task = getTaskByEventId.get(event.id);
     if (task && task.calendar_source === 'google') {
@@ -495,6 +497,8 @@ async function processCalendarEvent(event) {
   const business  = _detectBusiness(title, event.description || '');
   const existing  = getTaskByEventId.get(event.id);
 
+  console.log(`[calendar] processCalendarEvent caller=${caller} eventId=${event.id} existingMatch=${existing ? `YES(taskId=${existing.id})` : 'NO'} pid=${process.pid}`);
+
   if (existing) {
     updateTaskFromCalendar.run(title, startTime, date, event.id);
     syncDayLog(date);
@@ -505,6 +509,7 @@ async function processCalendarEvent(event) {
     ).catch(() => {});
   } else {
     insertCalendarTask.run(date, title, business, startTime, event.id);
+    logTaskInsert('calendar', title, { date, business, eventId: event.id, caller });
     syncDayLog(date);
     const allTasks = getTasksByDate.all(date);
     const taskNum  = allTasks.findIndex(t => t.calendar_event_id === event.id) + 1;

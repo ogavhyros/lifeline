@@ -183,9 +183,14 @@ async function morningCalendarSync() {
   // gcal.getEventsForDate() already filters out LIFELINE-created events (tagged
   // or legacy "[BUSINESS] name" titles) — see google-calendar.js sync rules —
   // so this can't re-import a task LIFELINE just pushed above.
+  console.log(`[calendar-sync] RUN START caller=morningCalendarSync pid=${process.pid} time=${new Date().toISOString()}`);
   let calEvents;
   try { calEvents = await gcal.getEventsForDate(today); }
-  catch { return; }
+  catch (err) {
+    console.log(`[calendar-sync] RUN END caller=morningCalendarSync ABORTED err=${err.message} pid=${process.pid}`);
+    return;
+  }
+  console.log(`[calendar-sync] caller=morningCalendarSync fetched=${calEvents.length} event(s): ${calEvents.map(e => e.id).join(',')} pid=${process.pid}`);
 
   const taskEventIds = new Set(getTasksByDate.all(today).map(t => t.calendar_event_id).filter(Boolean));
   const newEvents    = calEvents.filter(ev => !taskEventIds.has(ev.id));
@@ -201,10 +206,12 @@ async function morningCalendarSync() {
         start:       ev.allDay ? { date: ev.startRaw } : { dateTime: ev.startRaw },
         end:         ev.allDay ? { date: ev.endRaw }   : { dateTime: ev.endRaw },
       };
-      await gcal.processCalendarEvent(rawEv);
+      await gcal.processCalendarEvent(rawEv, 'morningCalendarSync');
       pulledItems.push(`${ev.title}${ev.start ? ' — ' + ev.start : ''}`);
     } catch { }
   }
+
+  console.log(`[calendar-sync] RUN END caller=morningCalendarSync pushed=${synced} pulled=${pulledItems.length} pid=${process.pid} time=${new Date().toISOString()}`);
 
   if (pulledItems.length) {
     await sendMessage(
@@ -292,6 +299,7 @@ const fired = new Set(); // "YYYY-MM-DD HH:MM label" — prevents double-fire wi
 
 async function runJob(job, date, hhmm) {
   const key = `${date} ${hhmm} ${job.label}`;
+  console.log(`[scheduler] JOB FIRING label=${job.label} key="${key}" alreadyFiredInThisProcess=${fired.has(key)} pid=${process.pid} time=${new Date().toISOString()}`);
   if (fired.has(key)) return;
   fired.add(key);
 
@@ -302,6 +310,7 @@ async function runJob(job, date, hhmm) {
 
   try {
     await job.action();
+    console.log(`[scheduler] JOB DONE label=${job.label} pid=${process.pid}`);
   } catch (err) {
     console.error(`[scheduler] ${job.label} failed:`, err.message);
   }
@@ -368,6 +377,8 @@ async function calendarPoll() {
 
   if (isQuietHours()) return; // includes stop-after-20:30
 
+  console.log(`[calendar-sync] RUN START caller=calendarPoll pid=${process.pid} time=${new Date().toISOString()}`);
+
   const today = watToday();
   let events;
   try {
@@ -376,12 +387,15 @@ async function calendarPoll() {
     if (err.message !== 'Not authenticated') {
       console.error('[calendar] poll error:', err.message);
     }
+    console.log(`[calendar-sync] RUN END caller=calendarPoll ABORTED err=${err.message} pid=${process.pid}`);
     return;
   }
+  console.log(`[calendar-sync] caller=calendarPoll fetched=${events.length} event(s): ${events.map(e => e.id).join(',')} pid=${process.pid}`);
 
   let checked = 0;
   for (const ev of events) {
     const existing = getTaskByEventId.get(ev.id);
+    console.log(`[calendar-sync] caller=calendarPoll eventId=${ev.id} title=${JSON.stringify(ev.title)} existingMatch=${existing ? `YES(taskId=${existing.id})` : 'NO'} pid=${process.pid}`);
     if (!existing) {
       // Reconstruct raw-format event that processCalendarEvent expects
       const rawEv = {
@@ -392,7 +406,7 @@ async function calendarPoll() {
         start:       ev.allDay ? { date: ev.startRaw } : { dateTime: ev.startRaw },
         end:         ev.allDay ? { date: ev.endRaw }   : { dateTime: ev.endRaw },
       };
-      await gcal.processCalendarEvent(rawEv).catch(err =>
+      await gcal.processCalendarEvent(rawEv, 'calendarPoll').catch(err =>
         console.error('[calendar] processCalendarEvent failed:', err.message)
       );
     } else if (existing.name !== ev.title) {
@@ -402,26 +416,49 @@ async function calendarPoll() {
     checked++;
   }
 
+  console.log(`[calendar-sync] RUN END caller=calendarPoll checked=${checked} pid=${process.pid} time=${new Date().toISOString()}`);
   console.log(`[calendar] polled — ${checked} event${checked !== 1 ? 's' : ''} checked`);
 }
 
 // ── init ──────────────────────────────────────────────────────────────────────
 
+// DEBUG: guards against initScheduler() being invoked more than once inside
+// the same process — if this ever logs a re-registration, that alone would
+// double every job's setInterval within a single process (distinct from the
+// separate, more likely cause: two whole process instances alive at once).
+let _schedulerInitialized = false;
+
 function initScheduler() {
+  if (_schedulerInitialized) {
+    console.error(`[scheduler] WARNING — initScheduler() called AGAIN in the same process (pid=${process.pid}). Jobs are being re-registered without cleanup — this would double-fire every scheduled job.`);
+  }
+  _schedulerInitialized = true;
+
+  console.log(`[scheduler] initScheduler() starting — pid=${process.pid} time=${new Date().toISOString()}`);
+
   tick();
-  setInterval(tick, 60 * 1000);
-  setInterval(
+  const tickId = setInterval(tick, 60 * 1000);
+  console.log(`[scheduler] job registered: name=tick intervalMs=60000 pid=${process.pid}`);
+
+  const nudgeId = setInterval(
     () => nudgeTick().catch(err => console.error('[scheduler] nudgeTick error:', err.message)),
     30 * 60 * 1000
   );
-  setInterval(
+  console.log(`[scheduler] job registered: name=nudgeTick intervalMs=1800000 pid=${process.pid}`);
+
+  const calPollId = setInterval(
     () => calendarPoll().catch(err => console.error('[scheduler] calendarPoll error:', err.message)),
     15 * 60 * 1000
   );
-  setInterval(
+  console.log(`[scheduler] job registered: name=calendarPoll intervalMs=900000 pid=${process.pid}`);
+
+  const taskDueId = setInterval(
     () => taskDueTick().catch(err => console.error('[scheduler] taskDueTick error:', err.message)),
     5 * 60 * 1000
   );
+  console.log(`[scheduler] job registered: name=taskDueTick intervalMs=300000 pid=${process.pid}`);
+
+  console.log(`[scheduler] JOBS table has ${JOBS.length} time-based entries (checked every tick): ${JOBS.map(j => `${j.label}@${j.time}`).join(', ')}`);
   console.log('[scheduler] started — tick every 60s, nudge every 30m, cal-poll every 15m, due-reminder every 5m (WAT UTC+1)');
 }
 

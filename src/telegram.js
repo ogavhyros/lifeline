@@ -22,7 +22,7 @@ const {
   getSetting, saveDocumentAnalysis,
   saveUploadedDocument, getAllUploadedDocuments, linkDocumentToAnalysis, updateUploadedDocumentStatus,
   getPendingRecurring, confirmRecurring, confirmAllRecurring, rejectRecurring, rejectAllPendingRecurring,
-  getBusinesses, getFounderProfile,
+  getBusinesses, getFounderProfile, logTaskInsert,
 } = require('./db');
 
 // WAT datetime helpers (kept local — not needed in other modules)
@@ -80,6 +80,7 @@ function saveTasks(structuredTasks) {
   db.transaction((tasks) => {
     for (const t of tasks) {
       insertTask.run(today, t.name, t.business || 'personal', t.time || null, 'normal');
+      logTaskInsert('telegram-braindump', t.name, { date: today, business: t.business || 'personal' });
     }
   })(structuredTasks);
 }
@@ -269,28 +270,31 @@ async function sendNudgeDigest(date, overdue, allTasks) {
 const POLLING = true; // set false for webhook/production
 
 function initBot() {
-  console.log('[telegram] initializing bot (polling=%s)', POLLING);
+  console.log(`[telegram] initializing bot (polling=${POLLING}) pid=${process.pid} time=${new Date().toISOString()}`);
 
   bot = new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: POLLING });
 
-  console.log('[telegram] bot instance created');
+  console.log(`[telegram] bot instance created pid=${process.pid}`);
 
   if (POLLING) {
     bot.on('polling_error', (err) => {
-      console.error('[telegram] polling error:', err.code, err.message);
+      console.error(`[telegram] polling error: code=${err.code} message=${err.message} pid=${process.pid}`);
+      if (String(err.code).includes('409') || String(err.message).includes('409') || /conflict/i.test(err.message || '')) {
+        console.error(`[telegram] *** 409 CONFLICT — another process is ALSO polling this bot token right now (pid=${process.pid} is one of at least two) ***`);
+      }
     });
 
     bot.on('message', (msg) => {
       const from = msg.from?.username || msg.from?.first_name || msg.chat.id;
       const type = msg.voice ? 'voice' : msg.audio ? 'audio' : 'text';
-      console.log('[telegram] message from %s | type=%s | text=%s',
-        from, type, msg.text ? JSON.stringify(msg.text) : '—');
+      console.log('[telegram] message from %s | type=%s | text=%s | update_id=%s | pid=%s',
+        from, type, msg.text ? JSON.stringify(msg.text) : '—', msg.message_id, process.pid);
       handleUpdate({ message: msg }).catch((err) =>
         console.error('[telegram] handleUpdate error:', err.message)
       );
     });
 
-    console.log('[telegram] polling started — listening for messages');
+    console.log(`[telegram] polling started — listening for messages pid=${process.pid}`);
   }
 
   bot.on('error', (err) => {
@@ -757,6 +761,7 @@ async function handleCommand(text) {
         return;
       }
       insertTask.run(watToday(), name, business, null, 'normal');
+      logTaskInsert('telegram-add-command', name, { date: watToday(), business });
       await sendMessage(formatTaskList(getTodayTasks()));
       break;
     }

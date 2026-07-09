@@ -17,6 +17,17 @@ if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 const dbPath = process.env.DB_PATH || path.join(DATA_DIR, 'ogv.db');
 console.log(`[db] database at ${dbPath}`);
 
+// ── DEBUG: task-insert tracing (duplication investigation) ──────────────────
+// Temporary instrumentation — logs every task insert with its source, the
+// process PID (so overlapping process instances show up as distinct pids in
+// the same log window), and a timestamp. Remove once the duplication bug is
+// root-caused and fixed.
+function logTaskInsert(source, title, meta = {}) {
+  const parts = [`source=${source}`, `title=${JSON.stringify(title)}`, `pid=${process.pid}`, `time=${new Date().toISOString()}`];
+  for (const [k, v] of Object.entries(meta)) parts.push(`${k}=${v ?? 'n/a'}`);
+  console.log(`[TASK-INSERT] ${parts.join(' ')}`);
+}
+
 // ── open ──────────────────────────────────────────────────────────────────────
 
 const db = new Database(dbPath);
@@ -523,6 +534,9 @@ function confirmRecurring(id) {
   const existing = checkTaskExists.get(row.date, row.name);
   if (!existing) {
     insertRecurringTask.run(row.date, row.name, row.business, row.scheduled_time || null);
+    logTaskInsert('recurring-confirm', row.name, { date: row.date, business: row.business });
+  } else {
+    console.log(`[TASK-INSERT] source=recurring-confirm title=${JSON.stringify(row.name)} SKIPPED (already exists, task id=${existing.id}) pid=${process.pid} time=${new Date().toISOString()}`);
   }
   confirmPendingById.run(id);
   return getTasksByDate.all(row.date).find(t => t.name === row.name) || null;
@@ -535,6 +549,9 @@ function confirmAllRecurring(date) {
       const existing = checkTaskExists.get(t.date, t.name);
       if (!existing) {
         insertRecurringTask.run(t.date, t.name, t.business, t.scheduled_time || null);
+        logTaskInsert('recurring-confirm-all', t.name, { date: t.date, business: t.business });
+      } else {
+        console.log(`[TASK-INSERT] source=recurring-confirm-all title=${JSON.stringify(t.name)} SKIPPED (already exists, task id=${existing.id}) pid=${process.pid} time=${new Date().toISOString()}`);
       }
       confirmPendingById.run(t.id);
     }
@@ -603,6 +620,7 @@ function carryTask(taskId, fromDate, toDate) {
     original.time || null,
     original.priority || 'normal'
   );
+  logTaskInsert('carry-forward', original.name, { date: toDate, business: original.business, fromTaskId: taskId });
   insertCarry.run(taskId, fromDate, toDate);
   return getTaskById.get(info.lastInsertRowid);
 }
@@ -1093,6 +1111,9 @@ function syncDayLog(date) {
 
 module.exports = {
   db,
+
+  // debug
+  logTaskInsert,
 
   // helpers
   watToday,
