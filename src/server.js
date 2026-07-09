@@ -41,7 +41,17 @@ gcal.setMessageSender(sendMessage);
 
 // ── app setup ─────────────────────────────────────────────────────────────────
 
-const app         = express();
+const app = express();
+
+// Railway (like Heroku/Render) terminates HTTPS at its edge and forwards
+// plain HTTP to this container — without this, Express has no way to know
+// the original request was secure, so express-session's `cookie.secure: true`
+// (set below, in auth.js) silently refuses to set the session cookie at all.
+// That's exactly what broke login/signup after the Phase A deploy: every
+// request "succeeded" (200/201 with the right JSON) but no cookie ever
+// reached the browser, so the very next request looked unauthenticated again.
+app.set('trust proxy', 1);
+
 const audioUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
 const UPLOAD_DIR = process.env.NODE_ENV === 'production'
