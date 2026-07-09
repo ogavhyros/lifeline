@@ -2070,6 +2070,122 @@
     }
     .goal-link-table tr:last-child td { border-bottom: none; }
 
+    /* ── board (kanban) ───────────────────────────────────────────────────────── */
+    #v-board { max-width: none; }
+
+    .board-filter-row {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-bottom: 20px;
+    }
+    .board-filter-chip {
+      font-size: 12px;
+      font-family: 'Geist', system-ui, sans-serif;
+      background: none;
+      border: 1px solid #e8e8e6;
+      border-radius: 20px;
+      padding: 4px 12px;
+      color: #6b6b6b;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+    }
+    .board-filter-chip:hover  { border-color: #c9c9c5; color: #1a1a1a; }
+    .board-filter-chip.active { background: #1a1a1a; border-color: #1a1a1a; color: #fff; }
+
+    .board-cols {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(200px, 1fr));
+      gap: 14px;
+      align-items: start;
+    }
+
+    .board-col {
+      background: #fafafa;
+      border: 1px solid #f0f0ee;
+      border-radius: 8px;
+      padding: 12px;
+      min-height: 120px;
+    }
+
+    .board-col-head {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #999;
+      font-weight: 400;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .board-col-count {
+      font-size: 11px;
+      color: #bbb;
+      background: #f0f0ee;
+      border-radius: 10px;
+      padding: 1px 7px;
+    }
+
+    .board-col-body {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-height: 60px;
+      border-radius: 6px;
+      transition: background 0.12s;
+    }
+
+    .board-col-body.board-drop-target {
+      background: #f0f0ee;
+      outline: 1px dashed #c9c9c5;
+      outline-offset: -1px;
+    }
+
+    .board-empty {
+      font-size: 12px;
+      color: #ccc;
+      padding: 10px 2px;
+    }
+
+    .board-card {
+      background: #ffffff;
+      border: 1px solid #e8e8e6;
+      border-radius: 6px;
+      padding: 10px 12px;
+      cursor: grab;
+      transition: box-shadow 0.15s, border-color 0.15s;
+    }
+    .board-card:hover      { border-color: #c9c9c5; }
+    .board-card.board-dragging { opacity: 0.35; }
+    .board-card.board-card-high { border-left: 2px solid #cc3300; }
+
+    .board-card-title {
+      font-size: 13px;
+      color: #1a1a1a;
+      margin-bottom: 6px;
+      line-height: 1.4;
+    }
+
+    .board-card-meta {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .board-card-biz {
+      font-size: 13px;
+      color: #999;
+    }
+
+    .board-card-time {
+      font-family: 'Geist Mono', monospace;
+      font-size: 11px;
+      color: #bbb;
+      margin-left: auto;
+    }
+
     /* ── Mobile: ≤600px ──────────────────────────────────────────────────────── */
     @media (max-width: 600px) {
       /* show mobile chrome */
@@ -2119,6 +2235,16 @@
       .sched-time-cell { width: 52px; font-size: 11px; }
       .sched-actions { gap: 4px; }
       .sched-actions button { padding: 3px 6px; font-size: 10px; }
+
+      /* board */
+      .board-cols {
+        grid-template-columns: none;
+        grid-auto-flow: column;
+        grid-auto-columns: 78vw;
+        overflow-x: auto;
+        padding-bottom: 8px;
+        -webkit-overflow-scrolling: touch;
+      }
 
       /* brain dump */
       #dump-input { font-size: 14px; min-height: 120px; }
@@ -2185,6 +2311,7 @@
       <div class="nav-label">WORKSPACE</div>
       <a class="nav-item active" data-view="today" data-tooltip="Today"><i class="ti ti-home"></i><span class="nav-text">Today</span></a>
       <a class="nav-item" data-view="schedule" data-tooltip="Schedule"><i class="ti ti-calendar"></i><span class="nav-text">Schedule</span></a>
+      <a class="nav-item" data-view="board" data-tooltip="Board"><i class="ti ti-layout-kanban"></i><span class="nav-text">Board</span></a>
     </div>
 
     <div class="nav-section">
@@ -2352,6 +2479,39 @@
       </table>
 
       <div id="sched-saved">Order saved</div>
+
+    </div>
+
+    <!-- BOARD ─────────────────────────────────────────────────────────────────── -->
+    <div class="view" id="v-board">
+
+      <h1 class="page-title">Board</h1>
+      <p class="page-sub">Drag cards between columns to update status</p>
+
+      <div class="board-filter-row" id="board-filter-row"></div>
+
+      <div class="board-cols">
+        <div class="board-col">
+          <div class="board-col-head">Backlog <span class="board-col-count" id="board-count-backlog">0</span></div>
+          <div class="board-col-body" id="board-body-backlog" data-status="backlog"
+               ondragover="boardDragOver(event,'backlog')" ondrop="boardDrop(event,'backlog')" ondragleave="boardDragLeave(event)"></div>
+        </div>
+        <div class="board-col">
+          <div class="board-col-head">Today <span class="board-col-count" id="board-count-today">0</span></div>
+          <div class="board-col-body" id="board-body-today" data-status="today"
+               ondragover="boardDragOver(event,'today')" ondrop="boardDrop(event,'today')" ondragleave="boardDragLeave(event)"></div>
+        </div>
+        <div class="board-col">
+          <div class="board-col-head">In Progress <span class="board-col-count" id="board-count-in_progress">0</span></div>
+          <div class="board-col-body" id="board-body-in_progress" data-status="in_progress"
+               ondragover="boardDragOver(event,'in_progress')" ondrop="boardDrop(event,'in_progress')" ondragleave="boardDragLeave(event)"></div>
+        </div>
+        <div class="board-col">
+          <div class="board-col-head">Done <span class="board-col-count" id="board-count-done">0</span></div>
+          <div class="board-col-body" id="board-body-done" data-status="done"
+               ondragover="boardDragOver(event,'done')" ondrop="boardDrop(event,'done')" ondragleave="boardDragLeave(event)"></div>
+        </div>
+      </div>
 
     </div>
 
@@ -3178,6 +3338,7 @@ function switchTab(name) {
   if (viewEl) viewEl.classList.add('active');
   if (name === 'dashboard') renderDashboard();
   if (name === 'schedule')  renderSchedule();
+  if (name === 'board')     loadBoard();
   if (name === 'ideas')     loadIdeas();
   if (name === 'notes')     loadNotes();
   if (name === 'goals')     loadGoals();
@@ -3887,6 +4048,185 @@ async function saveScheduleOrder(msg = 'Order saved') {
     const subEl = document.getElementById('today-sub');
     if (subEl) subEl.textContent = getActiveBlock() || '—';
   } catch (e) { console.error('saveScheduleOrder:', e); }
+}
+
+// ── BOARD VIEW ────────────────────────────────────────────────────────────────
+
+const BOARD_STATUSES = ['backlog', 'today', 'in_progress', 'done'];
+const BOARD_BIZ_ICON = { blok: 'ti-rocket', aphl: 'ti-truck', trade: 'ti-building-store', personal: 'ti-user' };
+
+let boardTasks  = [];
+let boardFilter = 'all';
+
+async function loadBoard() {
+  document.querySelectorAll('.board-col-body').forEach(el => {
+    el.innerHTML = '<div class="board-empty">Loading…</div>';
+  });
+  try {
+    boardTasks = await api('/api/tasks/board');
+    renderBoardFilterRow();
+    renderBoard();
+  } catch (e) {
+    console.error('loadBoard:', e);
+  }
+}
+
+function renderBoardFilterRow() {
+  const el    = document.getElementById('board-filter-row');
+  const slugs = ['all', ...BUSINESSES.map(b => b.slug)];
+  el.innerHTML = slugs.map(slug => {
+    const label = slug === 'all' ? 'All' : (BUSINESSES.find(b => b.slug === slug)?.name || slug);
+    return `<button class="board-filter-chip${slug === boardFilter ? ' active' : ''}" data-biz="${esc(slug)}" onclick="setBoardFilter('${esc(slug)}')">${esc(label)}</button>`;
+  }).join('');
+}
+
+function setBoardFilter(slug) {
+  boardFilter = slug;
+  renderBoardFilterRow();
+  renderBoard();
+}
+
+function boardCardIcon(biz) {
+  return BOARD_BIZ_ICON[String(biz || '').toLowerCase()] || 'ti-briefcase';
+}
+
+function renderBoard() {
+  const filtered = boardFilter === 'all' ? boardTasks : boardTasks.filter(t => t.business === boardFilter);
+  for (const status of BOARD_STATUSES) {
+    const col = filtered.filter(t => t.status === status);
+    document.getElementById(`board-count-${status}`).textContent = col.length;
+
+    const bodyEl = document.getElementById(`board-body-${status}`);
+    if (!col.length) {
+      bodyEl.innerHTML = '<div class="board-empty">No tasks</div>';
+      continue;
+    }
+    bodyEl.innerHTML = col.map(t => `
+      <div class="board-card${t.priority === 'high' ? ' board-card-high' : ''}"
+           draggable="true" data-id="${t.id}"
+           ondragstart="boardDragStart(event,${t.id})" ondragend="boardDragEnd(event)"
+           ontouchstart="boardTouchStart(event,${t.id})">
+        <div class="board-card-title">${esc(t.name)}</div>
+        <div class="board-card-meta">
+          <i class="ti ${boardCardIcon(t.business)} board-card-biz" title="${esc(BIZ_LABEL[t.business] || t.business)}"></i>
+          ${t.priority === 'high' ? '<span class="priority-dot priority-high" title="High priority"></span>' : ''}
+          ${t.priority === 'low'  ? '<span class="priority-dot priority-low" title="Low priority"></span>'   : ''}
+          ${t.time ? `<span class="board-card-time">${esc(t.time)}</span>` : ''}
+        </div>
+      </div>
+    `).join('');
+  }
+}
+
+async function boardApplyStatus(id, status) {
+  const task = boardTasks.find(t => t.id === id);
+  if (!task || task.status === status) return;
+
+  const prevStatus = task.status;
+  task.status = status; // optimistic
+  renderBoard();
+
+  try {
+    const updated = await api(`/api/tasks/${id}/status`, { method: 'PATCH', body: { status } });
+    const i = boardTasks.findIndex(t => t.id === id);
+    if (i !== -1) boardTasks[i] = updated;
+    renderBoard();
+  } catch (e) {
+    task.status = prevStatus;
+    renderBoard();
+    console.error('boardApplyStatus:', e);
+  }
+}
+
+// ── BOARD DRAG & DROP ─────────────────────────────────────────────────────────
+
+let _boardDragId = null;
+
+function boardDragStart(e, id) {
+  _boardDragId = id;
+  e.dataTransfer.effectAllowed = 'move';
+  setTimeout(() => e.currentTarget.classList.add('board-dragging'), 0);
+}
+
+function boardDragOver(e, status) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  document.getElementById(`board-body-${status}`).classList.add('board-drop-target');
+}
+
+function boardDragLeave(e) {
+  e.currentTarget.classList.remove('board-drop-target');
+}
+
+function boardDrop(e, status) {
+  e.preventDefault();
+  document.querySelectorAll('.board-col-body').forEach(el => el.classList.remove('board-drop-target'));
+  const id = _boardDragId;
+  _boardDragId = null;
+  if (id === null) return;
+  boardApplyStatus(id, status);
+}
+
+function boardDragEnd(e) {
+  e.currentTarget.classList.remove('board-dragging');
+  document.querySelectorAll('.board-col-body').forEach(el => el.classList.remove('board-drop-target'));
+}
+
+// ── BOARD TOUCH DRAG (mobile) ─────────────────────────────────────────────────
+
+let _boardTouchId       = null;
+let _boardTouchClone    = null;
+let _boardTouchOffsetX  = 0;
+let _boardTouchOffsetY  = 0;
+let _boardTouchStatus   = null;
+
+function boardTouchStart(e, id) {
+  _boardTouchId = id;
+  const card    = e.currentTarget;
+  const rect    = card.getBoundingClientRect();
+  _boardTouchOffsetX = e.touches[0].clientX - rect.left;
+  _boardTouchOffsetY = e.touches[0].clientY - rect.top;
+
+  _boardTouchClone = card.cloneNode(true);
+  _boardTouchClone.style.cssText = `
+    position:fixed; left:${rect.left}px; top:${rect.top}px;
+    width:${rect.width}px; opacity:0.9; background:#fff;
+    box-shadow:0 4px 16px rgba(0,0,0,.15); pointer-events:none;
+    z-index:500; border-radius:6px; transition:none;
+  `;
+  document.body.appendChild(_boardTouchClone);
+  card.classList.add('board-dragging');
+}
+
+function _boardTouchMove(e) {
+  if (_boardTouchId === null || !_boardTouchClone) return;
+  e.preventDefault();
+  const t = e.touches[0];
+  _boardTouchClone.style.left = `${t.clientX - _boardTouchOffsetX}px`;
+  _boardTouchClone.style.top  = `${t.clientY - _boardTouchOffsetY}px`;
+
+  _boardTouchClone.style.display = 'none';
+  const el = document.elementFromPoint(t.clientX, t.clientY);
+  _boardTouchClone.style.display = '';
+  const colBody = el && el.closest('.board-col-body');
+  document.querySelectorAll('.board-col-body').forEach(c => c.classList.remove('board-drop-target'));
+  if (!colBody) { _boardTouchStatus = null; return; }
+  colBody.classList.add('board-drop-target');
+  _boardTouchStatus = colBody.dataset.status;
+}
+
+function _boardTouchEnd(e) {
+  if (_boardTouchId === null) return;
+  if (_boardTouchClone) { _boardTouchClone.remove(); _boardTouchClone = null; }
+  document.querySelectorAll('.board-col-body').forEach(c => c.classList.remove('board-drop-target'));
+  document.querySelectorAll('.board-card').forEach(c => c.classList.remove('board-dragging'));
+
+  const id     = _boardTouchId;
+  const status = _boardTouchStatus;
+  _boardTouchId     = null;
+  _boardTouchStatus = null;
+  if (!status) return;
+  boardApplyStatus(id, status);
 }
 
 // ── BRAIN DUMP VIEW ───────────────────────────────────────────────────────────
@@ -6075,6 +6415,11 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('touchmove', _schedTouchMove, { passive: false });
   document.addEventListener('touchend', _schedTouchEnd);
   document.addEventListener('touchcancel', _schedTouchEnd);
+
+  // Global touch drag listeners for board
+  document.addEventListener('touchmove', _boardTouchMove, { passive: false });
+  document.addEventListener('touchend', _boardTouchEnd);
+  document.addEventListener('touchcancel', _boardTouchEnd);
 
   // Service worker registration
   if ('serviceWorker' in navigator) {

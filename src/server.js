@@ -6,7 +6,7 @@ const fs      = require('fs');
 const {
   db, watToday, watTomorrow, watCutoff, weekStart,
   getTasksByDate, getTaskById, insertTask, toggleTask, markTaskDone, updatePriority, deleteTask,
-  deduplicateTasks,
+  deduplicateTasks, updateTaskStatus, updateTaskDate, getBoardTasks,
   getHistory, getKpis, upsertKpi,
   getRecurring, getFutureRecurring, getRecurringGrouped, addRecurring, deactivateRecurring, activateRecurring, populateRecurring,
   toggleRecurringActive, updateRecurringTime,
@@ -168,6 +168,40 @@ app.patch('/api/tasks/:id/time', (req, res) => {
   const { scheduled_time } = req.body;
   updateTaskTime.run(scheduled_time || null, task.id);
   res.json(getTasksByDate.all(task.date || watToday()));
+});
+
+// ── kanban board ──────────────────────────────────────────────────────────────
+
+const TASK_STATUSES = ['backlog', 'today', 'in_progress', 'done'];
+
+app.get('/api/tasks/board', (_req, res) => {
+  res.json(getBoardTasks());
+});
+
+app.patch('/api/tasks/:id/status', (req, res) => {
+  const { status } = req.body;
+  if (!TASK_STATUSES.includes(status)) {
+    return res.status(400).json({ error: `status must be one of ${TASK_STATUSES.join(', ')}` });
+  }
+  const task = getTaskById.get(req.params.id);
+  if (!task) return res.status(404).json({ error: 'not found' });
+
+  // Moving to Done marks the task complete; moving out of Done un-completes
+  // it. Moving to Today reschedules it for today. The done-change trigger in
+  // db.js will re-derive status from done/date as a side effect of these two
+  // writes, so the explicit status write below always runs last and wins.
+  const wantDone = status === 'done';
+  if (!!task.done !== wantDone) {
+    toggleTask.run(wantDone ? 1 : 0, task.id);
+  }
+  if (status === 'today' && task.date !== watToday()) {
+    updateTaskDate.run(watToday(), task.id);
+  }
+  updateTaskStatus.run(status, task.id);
+
+  const updated = getTaskById.get(task.id);
+  gcal.syncTaskToCalendar(updated).catch(err => console.error('[calendar] sync failed:', err.message));
+  res.json(updated);
 });
 
 app.delete('/api/tasks/:id', (req, res) => {

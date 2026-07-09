@@ -210,6 +210,44 @@ try { db.exec(`ALTER TABLE tasks ADD COLUMN calendar_event_id TEXT`); } catch {}
 try { db.exec(`ALTER TABLE tasks ADD COLUMN calendar_source TEXT`); } catch {}
 try { db.exec(`ALTER TABLE recurring_tasks ADD COLUMN category TEXT DEFAULT 'work'`); } catch {}
 try { db.exec(`ALTER TABLE recurring_tasks ADD COLUMN notes TEXT`); } catch {}
+try { db.exec(`ALTER TABLE tasks ADD COLUMN status TEXT`); } catch {}
+
+// ── kanban board status — keeps tasks.status in sync with done/date ──────────
+// Column values: 'backlog' | 'today' | 'in_progress' | 'done'. Rather than
+// touching every INSERT call site (insertTask, insertRecurringTask,
+// insertCarriedTask, insertCalendarTask …) to pass a status explicitly, these
+// triggers derive it from the row's own done/date whenever a caller leaves
+// status NULL (on insert) or flips done (via toggleTask/markTaskDone/Telegram/
+// calendar sync) — so the Board stays correct no matter which existing code
+// path touched the task. date('now','+1 hours') mirrors watToday()'s WAT
+// (UTC+1) offset so "today" lines up with what the rest of the app considers
+// today. PATCH /api/tasks/:id/status (server.js) always writes status last,
+// after any done/date side effects, so an explicit board move always wins.
+db.exec(`
+  CREATE TRIGGER IF NOT EXISTS trg_tasks_status_on_insert
+  AFTER INSERT ON tasks
+  WHEN NEW.status IS NULL
+  BEGIN
+    UPDATE tasks SET status = CASE
+      WHEN NEW.done = 1 THEN 'done'
+      WHEN NEW.date = date('now','+1 hours') THEN 'today'
+      ELSE 'backlog'
+    END
+    WHERE id = NEW.id;
+  END;
+
+  CREATE TRIGGER IF NOT EXISTS trg_tasks_status_on_done_change
+  AFTER UPDATE OF done ON tasks
+  WHEN NEW.done != OLD.done
+  BEGIN
+    UPDATE tasks SET status = CASE
+      WHEN NEW.done = 1 THEN 'done'
+      WHEN NEW.date = date('now','+1 hours') THEN 'today'
+      ELSE 'backlog'
+    END
+    WHERE id = NEW.id;
+  END;
+`);
 
 // ── WAT helpers ───────────────────────────────────────────────────────────────
 
@@ -328,6 +366,24 @@ const toggleTask      = db.prepare('UPDATE tasks SET done = ? WHERE id = ?');
 const markTaskDone    = db.prepare('UPDATE tasks SET done = 1 WHERE id = ?');
 const updatePriority  = db.prepare('UPDATE tasks SET priority = ? WHERE id = ?');
 const deleteTask      = db.prepare('DELETE FROM tasks WHERE id = ?');
+const updateTaskStatus = db.prepare('UPDATE tasks SET status = ? WHERE id = ?');
+const updateTaskDate   = db.prepare('UPDATE tasks SET date = ? WHERE id = ?');
+
+// ── prepared statements — kanban board ────────────────────────────────────────
+// Bounded to the last 60 days (like getHistory's watCutoff pattern) so the
+// Board doesn't turn into an unbounded dump of every daily recurring-task row
+// this app has ever generated — only recently-relevant tasks are board items.
+const getBoardTasksStmt = db.prepare(`
+  SELECT * FROM tasks
+  WHERE date >= ?
+  ORDER BY
+    CASE status WHEN 'today' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'backlog' THEN 2 ELSE 3 END,
+    CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
+    date, id
+`);
+function getBoardTasks() {
+  return getBoardTasksStmt.all(watCutoff(60));
+}
 
 // ── deduplication ─────────────────────────────────────────────────────────────
 // Guards against the Google Calendar sync loop: a task pushed to Calendar
@@ -1006,6 +1062,26 @@ const getMembersByBusiness = db.prepare(
   }
 }
 
+// ── kanban status backfill (v1) — one-time, for tasks that predate the status
+// column (which defaulted to NULL on ALTER TABLE and are never touched again
+// unless done flips) ───────────────────────────────────────────────────────
+
+{
+  const alreadySeeded = getSetting.get('kanban_status_seeded_v1');
+  if (!alreadySeeded) {
+    db.exec(`
+      UPDATE tasks SET status = CASE
+        WHEN done = 1 THEN 'done'
+        WHEN date = date('now','+1 hours') THEN 'today'
+        ELSE 'backlog'
+      END
+      WHERE status IS NULL;
+    `);
+    upsertSetting.run('kanban_status_seeded_v1', '1');
+    console.log('[db] Task status backfilled for kanban board');
+  }
+}
+
 // ── day log + recurring population ───────────────────────────────────────────
 
 function syncDayLog(date) {
@@ -1036,6 +1112,9 @@ module.exports = {
   updatePriority,
   deleteTask,
   deduplicateTasks,
+  updateTaskStatus,
+  updateTaskDate,
+  getBoardTasks,
 
   // history
   getHistory,
