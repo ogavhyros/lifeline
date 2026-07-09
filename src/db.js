@@ -47,7 +47,7 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS day_log (
     id   INTEGER PRIMARY KEY AUTOINCREMENT,
-    date TEXT    NOT NULL UNIQUE,
+    date TEXT    NOT NULL,
     note TEXT
   );
 
@@ -57,8 +57,7 @@ db.exec(`
     business TEXT    NOT NULL,
     metric   TEXT    NOT NULL,
     value    REAL    NOT NULL,
-    target   REAL,
-    UNIQUE(date, business, metric)
+    target   REAL
   );
 
   CREATE TABLE IF NOT EXISTS recurring_tasks (
@@ -126,8 +125,7 @@ db.exec(`
     status_2     TEXT    DEFAULT 'pending' CHECK(status_2 IN ('pending','done')),
     status_3     TEXT    DEFAULT 'pending' CHECK(status_3 IN ('pending','done')),
     reflection   TEXT,
-    created_at   TEXT    DEFAULT (datetime('now')),
-    UNIQUE(business, goal_id, month)
+    created_at   TEXT    DEFAULT (datetime('now'))
   );
 
   CREATE TABLE IF NOT EXISTS goal_progress (
@@ -138,7 +136,7 @@ db.exec(`
   );
 
   CREATE TABLE IF NOT EXISTS settings (
-    key        TEXT PRIMARY KEY,
+    key        TEXT NOT NULL,
     value      TEXT,
     updated_at TEXT DEFAULT (datetime('now'))
   );
@@ -182,7 +180,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS businesses (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     name       TEXT    NOT NULL,
-    slug       TEXT    NOT NULL UNIQUE,
+    slug       TEXT    NOT NULL,
     color_bg   TEXT    DEFAULT '#f0f0ee',
     color_text TEXT    DEFAULT '#333333',
     active     INTEGER DEFAULT 1,
@@ -198,16 +196,37 @@ db.exec(`
     scheduled_time    TEXT,
     status            TEXT    DEFAULT 'pending'
       CHECK(status IN ('pending','confirmed','rejected')),
-    created_at        TEXT    DEFAULT (datetime('now')),
-    UNIQUE(date, recurring_task_id)
+    created_at        TEXT    DEFAULT (datetime('now'))
   );
 
   CREATE TABLE IF NOT EXISTS anchor_log (
     id   INTEGER PRIMARY KEY AUTOINCREMENT,
     date TEXT    NOT NULL,
     key  TEXT    NOT NULL,
-    done INTEGER NOT NULL DEFAULT 0,
-    UNIQUE(date, key)
+    done INTEGER NOT NULL DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS users (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    email                TEXT UNIQUE NOT NULL,
+    password_hash        TEXT,
+    name                 TEXT,
+    onboarding_completed INTEGER NOT NULL DEFAULT 0,
+    telegram_chat_id     TEXT UNIQUE,
+    created_at           TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS telegram_connect_tokens (
+    token      TEXT PRIMARY KEY,
+    user_id    INTEGER NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    expires_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS sessions (
+    sid     TEXT PRIMARY KEY,
+    sess    TEXT NOT NULL,
+    expires INTEGER NOT NULL
   );
 `);
 
@@ -222,6 +241,36 @@ try { db.exec(`ALTER TABLE tasks ADD COLUMN calendar_source TEXT`); } catch {}
 try { db.exec(`ALTER TABLE recurring_tasks ADD COLUMN category TEXT DEFAULT 'work'`); } catch {}
 try { db.exec(`ALTER TABLE recurring_tasks ADD COLUMN notes TEXT`); } catch {}
 try { db.exec(`ALTER TABLE tasks ADD COLUMN status TEXT`); } catch {}
+
+// ── multi-tenancy: user_id column on every previously-global table ───────────
+// Nullable on add (existing rows get backfilled to user 1 in the one-time
+// migration further down); NOT NULL is enforced at the application layer
+// (every query below always supplies it), not via a SQL constraint, so this
+// ALTER stays a cheap no-op re-run on every boot like the others above.
+// (goal_progress is deliberately excluded — it's always reached through an
+// already-owned goal_id, checked explicitly at the route layer via
+// getGoalById, rather than carrying its own redundant user_id column.)
+for (const t of [
+  'tasks', 'recurring_tasks', 'task_carry', 'ideas', 'notes', 'task_nudges',
+  'goals', 'monthly_cycles', 'document_analyses',
+  'uploaded_documents', 'team_members', 'businesses', 'pending_recurring',
+  'anchor_log', 'day_log', 'kpis', 'settings',
+]) {
+  try { db.exec(`ALTER TABLE ${t} ADD COLUMN user_id INTEGER`); } catch {}
+}
+
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_tasks_user_id             ON tasks(user_id);
+  CREATE INDEX IF NOT EXISTS idx_recurring_tasks_user_id    ON recurring_tasks(user_id);
+  CREATE INDEX IF NOT EXISTS idx_goals_user_id              ON goals(user_id);
+  CREATE INDEX IF NOT EXISTS idx_monthly_cycles_user_id     ON monthly_cycles(user_id);
+  CREATE INDEX IF NOT EXISTS idx_businesses_user_id         ON businesses(user_id);
+  CREATE INDEX IF NOT EXISTS idx_anchor_log_user_id         ON anchor_log(user_id);
+  CREATE INDEX IF NOT EXISTS idx_settings_user_key          ON settings(user_id, key);
+  CREATE INDEX IF NOT EXISTS idx_uploaded_documents_user_id ON uploaded_documents(user_id);
+  CREATE INDEX IF NOT EXISTS idx_pending_recurring_user_id  ON pending_recurring(user_id);
+  CREATE INDEX IF NOT EXISTS idx_sessions_expires           ON sessions(expires);
+`);
 
 // ── kanban board status — keeps tasks.status in sync with done/date ──────────
 // Column values: 'backlog' | 'today' | 'in_progress' | 'done'. Rather than
@@ -281,6 +330,236 @@ function weekStart() {
   return new Date(now.getTime() + toMonday * 86400000).toISOString().slice(0, 10);
 }
 
+// ── settings table UNIQUE(user_id, key) rebuild (v1) ─────────────────────────
+// SQLite can't alter a UNIQUE constraint in place; the original table had a
+// plain UNIQUE(key). Must run before any statement below prepares an
+// `ON CONFLICT(user_id, key)` clause against this table.
+
+{
+  const hasUserIdUnique = db.prepare(`PRAGMA index_list(settings)`).all()
+    .some(ix => ix.unique && db.prepare(`PRAGMA index_info(${ix.name})`).all().some(c => c.name === 'user_id'));
+  if (!hasUserIdUnique) {
+    db.exec(`
+      CREATE TABLE settings_new (
+        user_id    INTEGER NOT NULL DEFAULT 0,
+        key        TEXT NOT NULL,
+        value      TEXT,
+        updated_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(user_id, key)
+      );
+      INSERT INTO settings_new (user_id, key, value, updated_at)
+        SELECT COALESCE(user_id, 1), key, value, updated_at FROM settings;
+      DROP TABLE settings;
+      ALTER TABLE settings_new RENAME TO settings;
+      CREATE INDEX IF NOT EXISTS idx_settings_user_key ON settings(user_id, key);
+    `);
+    console.log('[db] settings table rebuilt with UNIQUE(user_id, key)');
+  }
+}
+
+// ── anchor_log UNIQUE(user_id, date, key) rebuild (v1) ────────────────────────
+// Same rebuild-in-place technique as settings above, for the same reason
+// (SQLite can't ALTER a UNIQUE constraint). Also must run before any
+// statement below prepares an `ON CONFLICT(user_id, date, key)` clause.
+
+{
+  const hasUserIdUnique = db.prepare(`PRAGMA index_list(anchor_log)`).all()
+    .some(ix => ix.unique && db.prepare(`PRAGMA index_info(${ix.name})`).all().some(c => c.name === 'user_id'));
+  if (!hasUserIdUnique) {
+    db.exec(`
+      CREATE TABLE anchor_log_new (
+        id      INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL DEFAULT 1,
+        date    TEXT    NOT NULL,
+        key     TEXT    NOT NULL,
+        done    INTEGER NOT NULL DEFAULT 0,
+        UNIQUE(user_id, date, key)
+      );
+      INSERT INTO anchor_log_new (id, user_id, date, key, done)
+        SELECT id, COALESCE(user_id, 1), date, key, done FROM anchor_log;
+      DROP TABLE anchor_log;
+      ALTER TABLE anchor_log_new RENAME TO anchor_log;
+      CREATE INDEX IF NOT EXISTS idx_anchor_log_user_id ON anchor_log(user_id);
+    `);
+    console.log('[db] anchor_log table rebuilt with UNIQUE(user_id, date, key)');
+  }
+}
+
+// ── kpis / monthly_cycles / pending_recurring / businesses rebuilds (v1) ─────
+// Same rebuild-in-place technique as settings/anchor_log above: each of these
+// had a UNIQUE constraint that needs user_id folded into it (kpis and
+// monthly_cycles are read via ON CONFLICT upserts; pending_recurring relies
+// on its UNIQUE constraint for INSERT OR IGNORE to actually dedupe; businesses
+// went from a globally-unique slug to one unique per user, since two
+// different users must each be able to have e.g. a "personal" business).
+
+function _hasUserIdInUniqueIndex(table) {
+  return db.prepare(`PRAGMA index_list(${table})`).all()
+    .some(ix => ix.unique && db.prepare(`PRAGMA index_info(${ix.name})`).all().some(c => c.name === 'user_id'));
+}
+
+if (!_hasUserIdInUniqueIndex('day_log')) {
+  db.exec(`
+    CREATE TABLE day_log_new (
+      id      INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL DEFAULT 1,
+      date    TEXT    NOT NULL,
+      note    TEXT,
+      UNIQUE(user_id, date)
+    );
+    INSERT INTO day_log_new (id, user_id, date, note)
+      SELECT id, COALESCE(user_id, 1), date, note FROM day_log;
+    DROP TABLE day_log;
+    ALTER TABLE day_log_new RENAME TO day_log;
+    CREATE INDEX IF NOT EXISTS idx_day_log_user_id ON day_log(user_id);
+  `);
+  console.log('[db] day_log table rebuilt with UNIQUE(user_id, date)');
+}
+
+if (!_hasUserIdInUniqueIndex('kpis')) {
+  db.exec(`
+    CREATE TABLE kpis_new (
+      id       INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id  INTEGER NOT NULL DEFAULT 1,
+      date     TEXT    NOT NULL,
+      business TEXT    NOT NULL,
+      metric   TEXT    NOT NULL,
+      value    REAL    NOT NULL,
+      target   REAL,
+      UNIQUE(user_id, date, business, metric)
+    );
+    INSERT INTO kpis_new (id, user_id, date, business, metric, value, target)
+      SELECT id, COALESCE(user_id, 1), date, business, metric, value, target FROM kpis;
+    DROP TABLE kpis;
+    ALTER TABLE kpis_new RENAME TO kpis;
+    CREATE INDEX IF NOT EXISTS idx_kpis_user_id ON kpis(user_id);
+  `);
+  console.log('[db] kpis table rebuilt with UNIQUE(user_id, date, business, metric)');
+}
+
+if (!_hasUserIdInUniqueIndex('monthly_cycles')) {
+  db.exec(`
+    CREATE TABLE monthly_cycles_new (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id      INTEGER NOT NULL DEFAULT 1,
+      business     TEXT    NOT NULL,
+      goal_id      INTEGER REFERENCES goals(id),
+      month        TEXT    NOT NULL,
+      title        TEXT    NOT NULL,
+      commitment_1 TEXT    NOT NULL,
+      commitment_2 TEXT    NOT NULL,
+      commitment_3 TEXT,
+      status_1     TEXT    DEFAULT 'pending' CHECK(status_1 IN ('pending','done')),
+      status_2     TEXT    DEFAULT 'pending' CHECK(status_2 IN ('pending','done')),
+      status_3     TEXT    DEFAULT 'pending' CHECK(status_3 IN ('pending','done')),
+      reflection   TEXT,
+      created_at   TEXT    DEFAULT (datetime('now')),
+      UNIQUE(user_id, business, goal_id, month)
+    );
+    INSERT INTO monthly_cycles_new (id, user_id, business, goal_id, month, title, commitment_1, commitment_2, commitment_3, status_1, status_2, status_3, reflection, created_at)
+      SELECT id, COALESCE(user_id, 1), business, goal_id, month, title, commitment_1, commitment_2, commitment_3, status_1, status_2, status_3, reflection, created_at FROM monthly_cycles;
+    DROP TABLE monthly_cycles;
+    ALTER TABLE monthly_cycles_new RENAME TO monthly_cycles;
+    CREATE INDEX IF NOT EXISTS idx_monthly_cycles_user_id ON monthly_cycles(user_id);
+  `);
+  console.log('[db] monthly_cycles table rebuilt with UNIQUE(user_id, business, goal_id, month)');
+}
+
+if (!_hasUserIdInUniqueIndex('pending_recurring')) {
+  db.exec(`
+    CREATE TABLE pending_recurring_new (
+      id                INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id           INTEGER NOT NULL DEFAULT 1,
+      date              TEXT    NOT NULL,
+      recurring_task_id INTEGER REFERENCES recurring_tasks(id),
+      name              TEXT    NOT NULL,
+      business          TEXT    NOT NULL,
+      scheduled_time    TEXT,
+      status            TEXT    DEFAULT 'pending' CHECK(status IN ('pending','confirmed','rejected')),
+      created_at        TEXT    DEFAULT (datetime('now')),
+      UNIQUE(user_id, date, recurring_task_id)
+    );
+    INSERT INTO pending_recurring_new (id, user_id, date, recurring_task_id, name, business, scheduled_time, status, created_at)
+      SELECT id, COALESCE(user_id, 1), date, recurring_task_id, name, business, scheduled_time, status, created_at FROM pending_recurring;
+    DROP TABLE pending_recurring;
+    ALTER TABLE pending_recurring_new RENAME TO pending_recurring;
+    CREATE INDEX IF NOT EXISTS idx_pending_recurring_user_id ON pending_recurring(user_id);
+  `);
+  console.log('[db] pending_recurring table rebuilt with UNIQUE(user_id, date, recurring_task_id)');
+}
+
+if (!_hasUserIdInUniqueIndex('businesses')) {
+  db.exec(`
+    CREATE TABLE businesses_new (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id    INTEGER NOT NULL DEFAULT 1,
+      name       TEXT    NOT NULL,
+      slug       TEXT    NOT NULL,
+      color_bg   TEXT    DEFAULT '#f0f0ee',
+      color_text TEXT    DEFAULT '#333333',
+      active     INTEGER DEFAULT 1,
+      created_at TEXT    DEFAULT (datetime('now')),
+      UNIQUE(user_id, slug)
+    );
+    INSERT INTO businesses_new (id, user_id, name, slug, color_bg, color_text, active, created_at)
+      SELECT id, COALESCE(user_id, 1), name, slug, color_bg, color_text, active, created_at FROM businesses;
+    DROP TABLE businesses;
+    ALTER TABLE businesses_new RENAME TO businesses;
+    CREATE INDEX IF NOT EXISTS idx_businesses_user_id ON businesses(user_id);
+  `);
+  console.log('[db] businesses table rebuilt with UNIQUE(user_id, slug)');
+}
+
+// ── prepared statements — settings ───────────────────────────────────────────
+// Keyed by (user_id, key). Migration/system guard flags (recurring_seeded_v4,
+// anchors_seeded_v2, etc.) are not owned by any real user — they use the
+// reserved SYSTEM_USER_ID (0), which AUTOINCREMENT can never assign to a real
+// user, rather than a second table just for one-time migration flags.
+
+const SYSTEM_USER_ID = 0;
+
+const getSettingStmt    = db.prepare('SELECT value FROM settings WHERE user_id = ? AND key = ?');
+const upsertSettingStmt = db.prepare(`
+  INSERT INTO settings (user_id, key, value, updated_at) VALUES (?, ?, ?, datetime('now'))
+  ON CONFLICT(user_id, key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')
+`);
+const deleteSettingStmt = db.prepare('DELETE FROM settings WHERE user_id = ? AND key = ?');
+
+function getSetting(userId, key) {
+  return getSettingStmt.get(userId, key);
+}
+function upsertSetting(userId, key, value) {
+  return upsertSettingStmt.run(userId, key, value);
+}
+function deleteSetting(userId, key) {
+  return deleteSettingStmt.run(userId, key);
+}
+function getSystemFlag(key) { return getSettingStmt.get(SYSTEM_USER_ID, key); }
+function setSystemFlag(key, value) { return upsertSettingStmt.run(SYSTEM_USER_ID, key, value); }
+
+// ── users / auth ───────────────────────────────────────────────────────────────
+
+const getUserById       = db.prepare('SELECT * FROM users WHERE id = ?');
+const getUserByEmail    = db.prepare('SELECT * FROM users WHERE email = ?');
+const getUserByChatId   = db.prepare('SELECT * FROM users WHERE telegram_chat_id = ?');
+const insertUser        = db.prepare(`
+  INSERT INTO users (email, password_hash, name, onboarding_completed)
+  VALUES (?, ?, ?, ?)
+`);
+const setUserPassword   = db.prepare('UPDATE users SET password_hash = ? WHERE id = ?');
+const setOnboardingDone = db.prepare('UPDATE users SET onboarding_completed = 1 WHERE id = ?');
+const setUserChatId     = db.prepare('UPDATE users SET telegram_chat_id = ? WHERE id = ?');
+const clearUserChatId   = db.prepare('UPDATE users SET telegram_chat_id = NULL WHERE id = ?');
+const getAllUsersWithChat = db.prepare('SELECT * FROM users WHERE telegram_chat_id IS NOT NULL');
+
+const insertConnectToken = db.prepare(`
+  INSERT INTO telegram_connect_tokens (token, user_id, expires_at) VALUES (?, ?, ?)
+`);
+const getConnectToken    = db.prepare(`
+  SELECT * FROM telegram_connect_tokens WHERE token = ? AND expires_at > datetime('now')
+`);
+const deleteConnectToken = db.prepare('DELETE FROM telegram_connect_tokens WHERE token = ?');
+
 // ── anchors — daily habit toggles (Prayer, Journaling, family time, etc.) ─────
 // The set of anchors is NOT hardcoded here — it's derived from whichever
 // schedule blocks are tagged biz: 'anchor' in the founder's schedule (editable
@@ -294,34 +573,34 @@ function slugifyAnchorKey(name) {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 }
 
-function getAnchorDefs() {
-  const override = getSetting.get('schedule_blocks');
+function getAnchorDefs(userId) {
+  const override = getSetting(userId, 'schedule_blocks');
   let blocks;
-  try { blocks = override ? JSON.parse(override.value) : getFounderProfile().scheduleBlocks; }
-  catch { blocks = getFounderProfile().scheduleBlocks; }
+  try { blocks = override ? JSON.parse(override.value) : getFounderProfile(userId).scheduleBlocks; }
+  catch { blocks = getFounderProfile(userId).scheduleBlocks; }
   return (blocks || [])
     .filter(b => b.biz === 'anchor')
     .map(b => ({ key: slugifyAnchorKey(b.name), label: b.name, time: b.time }));
 }
 
-const getAnchorLogForDate = db.prepare('SELECT key, done FROM anchor_log WHERE date = ?');
+const getAnchorLogForDate = db.prepare('SELECT key, done FROM anchor_log WHERE user_id = ? AND date = ?');
 const toggleAnchorLogStmt = db.prepare(`
-  INSERT INTO anchor_log (date, key, done) VALUES (?, ?, 1)
-  ON CONFLICT(date, key) DO UPDATE SET done = 1 - done
+  INSERT INTO anchor_log (user_id, date, key, done) VALUES (?, ?, ?, 1)
+  ON CONFLICT(user_id, date, key) DO UPDATE SET done = 1 - done
 `);
-const getAnchorDoneStmt = db.prepare('SELECT done FROM anchor_log WHERE date = ? AND key = ?');
+const getAnchorDoneStmt = db.prepare('SELECT done FROM anchor_log WHERE user_id = ? AND date = ? AND key = ?');
 
-function getAnchorsForDate(date) {
-  const defs    = getAnchorDefs();
+function getAnchorsForDate(userId, date) {
+  const defs    = getAnchorDefs(userId);
   const doneMap = {};
-  for (const r of getAnchorLogForDate.all(date)) doneMap[r.key] = !!r.done;
+  for (const r of getAnchorLogForDate.all(userId, date)) doneMap[r.key] = !!r.done;
   return defs.map(a => ({ id: a.key, key: a.key, label: a.label, time: a.time, done: doneMap[a.key] ?? false }));
 }
 
-function toggleAnchor(date, key) {
-  if (!getAnchorDefs().some(a => a.key === key)) return null;
-  toggleAnchorLogStmt.run(date, key);
-  return !!getAnchorDoneStmt.get(date, key).done;
+function toggleAnchor(userId, date, key) {
+  if (!getAnchorDefs(userId).some(a => a.key === key)) return null;
+  toggleAnchorLogStmt.run(userId, date, key);
+  return !!getAnchorDoneStmt.get(userId, date, key).done;
 }
 
 // ── scorecard metrics ─────────────────────────────────────────────────────────
@@ -332,18 +611,18 @@ function toggleAnchor(date, key) {
 // distinct days (not raw task count) is what "investor touches" means here.
 const getInvestorTouchesStmt = db.prepare(`
   SELECT COUNT(DISTINCT date) AS cnt FROM tasks
-  WHERE done = 1 AND date >= ? AND date <= ? AND LOWER(name) LIKE '%investor%'
+  WHERE user_id = ? AND done = 1 AND date >= ? AND date <= ? AND LOWER(name) LIKE '%investor%'
 `);
 
-function getInvestorTouchesThisWeek() {
-  return getInvestorTouchesStmt.get(weekStart(), watToday()).cnt;
+function getInvestorTouchesThisWeek(userId) {
+  return getInvestorTouchesStmt.get(userId, weekStart(), watToday()).cnt;
 }
 
 // % of goals with a target_date inside the current calendar quarter that are
 // marked 'achieved'. Returns null (not 0) when no goals fall in this quarter,
 // so the frontend can show "—" instead of a misleading 0%.
 const getGoalsInRangeStmt = db.prepare(
-  'SELECT status FROM goals WHERE target_date IS NOT NULL AND target_date BETWEEN ? AND ?'
+  'SELECT status FROM goals WHERE user_id = ? AND target_date IS NOT NULL AND target_date BETWEEN ? AND ?'
 );
 
 function quarterRange() {
@@ -354,9 +633,9 @@ function quarterRange() {
   return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) };
 }
 
-function getQuarterlyGoalPct() {
+function getQuarterlyGoalPct(userId) {
   const { start, end } = quarterRange();
-  const rows = getGoalsInRangeStmt.all(start, end);
+  const rows = getGoalsInRangeStmt.all(userId, start, end);
   if (rows.length === 0) return null;
   const achieved = rows.filter(r => r.status === 'achieved').length;
   return Math.round((achieved / rows.length) * 100);
@@ -364,21 +643,33 @@ function getQuarterlyGoalPct() {
 
 // ── prepared statements — tasks ───────────────────────────────────────────────
 
-const getTasksByDate  = db.prepare('SELECT * FROM tasks WHERE date = ? ORDER BY time, id');
-const getTaskById     = db.prepare('SELECT * FROM tasks WHERE id = ?');
-const getMostRecentTaskDate = db.prepare(
-  'SELECT date, COUNT(*) AS count FROM tasks GROUP BY date ORDER BY date DESC LIMIT 1'
+const getTasksByDateStmt  = db.prepare('SELECT * FROM tasks WHERE user_id = ? AND date = ? ORDER BY time, id');
+const getTaskByIdStmt     = db.prepare('SELECT * FROM tasks WHERE user_id = ? AND id = ?');
+const getMostRecentTaskDateStmt = db.prepare(
+  'SELECT date, COUNT(*) AS count FROM tasks WHERE user_id = ? GROUP BY date ORDER BY date DESC LIMIT 1'
 );
-const insertTask      = db.prepare(
-  `INSERT INTO tasks (date, name, business, time, done, priority)
-   VALUES (?, ?, ?, ?, 0, ?)`
+const insertTaskStmt = db.prepare(
+  `INSERT INTO tasks (user_id, date, name, business, time, done, priority)
+   VALUES (?, ?, ?, ?, ?, 0, ?)`
 );
-const toggleTask      = db.prepare('UPDATE tasks SET done = ? WHERE id = ?');
-const markTaskDone    = db.prepare('UPDATE tasks SET done = 1 WHERE id = ?');
-const updatePriority  = db.prepare('UPDATE tasks SET priority = ? WHERE id = ?');
-const deleteTask      = db.prepare('DELETE FROM tasks WHERE id = ?');
-const updateTaskStatus = db.prepare('UPDATE tasks SET status = ? WHERE id = ?');
-const updateTaskDate   = db.prepare('UPDATE tasks SET date = ? WHERE id = ?');
+const toggleTaskStmt      = db.prepare('UPDATE tasks SET done = ? WHERE user_id = ? AND id = ?');
+const markTaskDoneStmt    = db.prepare('UPDATE tasks SET done = 1 WHERE user_id = ? AND id = ?');
+const updatePriorityStmt  = db.prepare('UPDATE tasks SET priority = ? WHERE user_id = ? AND id = ?');
+const deleteTaskStmt      = db.prepare('DELETE FROM tasks WHERE user_id = ? AND id = ?');
+const updateTaskStatusStmt = db.prepare('UPDATE tasks SET status = ? WHERE user_id = ? AND id = ?');
+const updateTaskDateStmt   = db.prepare('UPDATE tasks SET date = ? WHERE user_id = ? AND id = ?');
+
+const getTasksByDate  = (userId, date) => getTasksByDateStmt.all(userId, date);
+const getTaskById     = (userId, id)   => getTaskByIdStmt.get(userId, id);
+const getMostRecentTaskDate = (userId) => getMostRecentTaskDateStmt.get(userId);
+const insertTask      = (userId, date, name, business, time, priority) =>
+  insertTaskStmt.run(userId, date, name, business, time || null, priority || 'normal');
+const toggleTask       = (userId, done, id) => toggleTaskStmt.run(done, userId, id);
+const markTaskDone     = (userId, id)       => markTaskDoneStmt.run(userId, id);
+const updatePriority   = (userId, priority, id) => updatePriorityStmt.run(priority, userId, id);
+const deleteTask        = (userId, id) => deleteTaskStmt.run(userId, id);
+const updateTaskStatus  = (userId, status, id) => updateTaskStatusStmt.run(status, userId, id);
+const updateTaskDate    = (userId, date, id)   => updateTaskDateStmt.run(date, userId, id);
 
 // ── prepared statements — kanban board ────────────────────────────────────────
 // Bounded to the last 60 days (like getHistory's watCutoff pattern) so the
@@ -386,14 +677,14 @@ const updateTaskDate   = db.prepare('UPDATE tasks SET date = ? WHERE id = ?');
 // this app has ever generated — only recently-relevant tasks are board items.
 const getBoardTasksStmt = db.prepare(`
   SELECT * FROM tasks
-  WHERE date >= ?
+  WHERE user_id = ? AND date >= ?
   ORDER BY
     CASE status WHEN 'today' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'backlog' THEN 2 ELSE 3 END,
     CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
     date, id
 `);
-function getBoardTasks() {
-  return getBoardTasksStmt.all(watCutoff(60));
+function getBoardTasks(userId) {
+  return getBoardTasksStmt.all(userId, watCutoff(60));
 }
 
 // ── deduplication ─────────────────────────────────────────────────────────────
@@ -405,8 +696,8 @@ function _stripCalendarPrefix(name) {
   return String(name || '').replace(/^✓\s*/, '').replace(/^\[[^\]]+\]\s*/, '').trim();
 }
 
-function deduplicateTasks(date) {
-  const tasks    = getTasksByDate.all(date);
+function deduplicateTasks(userId, date) {
+  const tasks    = getTasksByDate(userId, date);
   const toDelete = new Set();
 
   // Exact-name duplicates: keep a done one over a not-done one, else lowest id.
@@ -440,128 +731,148 @@ function deduplicateTasks(date) {
 
   if (!toDelete.size) return 0;
   db.transaction((ids) => {
-    for (const id of ids) deleteTask.run(id);
+    for (const id of ids) deleteTask(userId, id);
   })([...toDelete]);
   return toDelete.size;
 }
 
 // ── prepared statements — history ─────────────────────────────────────────────
 
-const getHistory = (days) =>
+const getHistory = (userId, days) =>
   db.prepare(
     `SELECT date,
             COUNT(*)                                AS total,
             SUM(done)                               AS done,
             ROUND(SUM(done) * 100.0 / COUNT(*), 1) AS rate
      FROM tasks
-     WHERE date >= ?
+     WHERE user_id = ? AND date >= ?
      GROUP BY date
      ORDER BY date DESC`
-  ).all(watCutoff(days));
+  ).all(userId, watCutoff(days));
 
 // ── prepared statements — KPIs ────────────────────────────────────────────────
 
-const getKpis  = db.prepare('SELECT * FROM kpis WHERE date >= ? ORDER BY date DESC, business, metric');
-const upsertKpi = db.prepare(
-  `INSERT INTO kpis (date, business, metric, value, target)
-   VALUES (?, ?, ?, ?, ?)
-   ON CONFLICT(date, business, metric)
-   DO UPDATE SET value = excluded.value, target = excluded.target`
-);
+const getKpisStmt  = db.prepare('SELECT * FROM kpis WHERE user_id = ? AND date >= ? ORDER BY date DESC, business, metric');
+const upsertKpiStmt = db.prepare(`
+  INSERT INTO kpis (user_id, date, business, metric, value, target)
+  VALUES (?, ?, ?, ?, ?, ?)
+  ON CONFLICT(user_id, date, business, metric)
+  DO UPDATE SET value = excluded.value, target = excluded.target
+`);
+const getKpis  = (userId, date) => getKpisStmt.all(userId, date);
+const upsertKpi = (userId, date, business, metric, value, target) =>
+  upsertKpiStmt.run(userId, date, business, metric, value, target);
 
 // ── prepared statements — recurring tasks ────────────────────────────────────
 
-const getRecurring        = db.prepare('SELECT * FROM recurring_tasks WHERE active = 1 ORDER BY business, scheduled_time, id');
-const getFutureRecurring  = db.prepare('SELECT * FROM recurring_tasks WHERE active = 0 ORDER BY business, scheduled_time, id');
-const addRecurring        = db.prepare(
-  `INSERT INTO recurring_tasks (name, business, scheduled_time, days, time_block, category, active)
-   VALUES (?, ?, ?, ?, ?, ?, 1)`
+const getRecurringStmt        = db.prepare('SELECT * FROM recurring_tasks WHERE user_id = ? AND active = 1 ORDER BY business, scheduled_time, id');
+const getFutureRecurringStmt  = db.prepare('SELECT * FROM recurring_tasks WHERE user_id = ? AND active = 0 ORDER BY business, scheduled_time, id');
+const addRecurringStmt        = db.prepare(
+  `INSERT INTO recurring_tasks (user_id, name, business, scheduled_time, days, time_block, category, active)
+   VALUES (?, ?, ?, ?, ?, ?, ?, 1)`
 );
-const deleteRecurring     = db.prepare('DELETE FROM recurring_tasks WHERE id = ?');
-const deactivateRecurring = db.prepare('UPDATE recurring_tasks SET active = 0 WHERE id = ?');
-const activateRecurring   = db.prepare('UPDATE recurring_tasks SET active = 1 WHERE id = ?');
-const getCategoryRecurring = db.prepare('SELECT * FROM recurring_tasks WHERE category = ? AND active = 1 ORDER BY scheduled_time, id');
-const checkRecurringExists = db.prepare('SELECT id FROM recurring_tasks WHERE name = ? AND business = ? AND active = 1');
-const checkTaskExists      = db.prepare('SELECT id FROM tasks WHERE date = ? AND name = ?');
-const insertRecurringTask  = db.prepare(
-  `INSERT INTO tasks (date, name, business, time, done, priority, source)
-   VALUES (?, ?, ?, ?, 0, 'normal', 'recurring')`
+const deleteRecurringStmt     = db.prepare('DELETE FROM recurring_tasks WHERE user_id = ? AND id = ?');
+const deactivateRecurringStmt = db.prepare('UPDATE recurring_tasks SET active = 0 WHERE user_id = ? AND id = ?');
+const activateRecurringStmt   = db.prepare('UPDATE recurring_tasks SET active = 1 WHERE user_id = ? AND id = ?');
+const getCategoryRecurringStmt = db.prepare('SELECT * FROM recurring_tasks WHERE user_id = ? AND category = ? AND active = 1 ORDER BY scheduled_time, id');
+const checkRecurringExistsStmt = db.prepare('SELECT id FROM recurring_tasks WHERE user_id = ? AND name = ? AND business = ? AND active = 1');
+const checkTaskExistsStmt      = db.prepare('SELECT id FROM tasks WHERE user_id = ? AND date = ? AND name = ?');
+const insertRecurringTaskStmt  = db.prepare(
+  `INSERT INTO tasks (user_id, date, name, business, time, done, priority, source)
+   VALUES (?, ?, ?, ?, ?, 0, 'normal', 'recurring')`
 );
-const insertCarriedTask = db.prepare(
-  `INSERT INTO tasks (date, name, business, time, done, priority, source)
-   VALUES (?, ?, ?, ?, 0, ?, 'carried')`
+const insertCarriedTaskStmt = db.prepare(
+  `INSERT INTO tasks (user_id, date, name, business, time, done, priority, source)
+   VALUES (?, ?, ?, ?, ?, 0, ?, 'carried')`
 );
 
-function insertTaskSafe(date, name, business, time, priority) {
-  const exists = checkTaskExists.get(date, name);
-  if (exists) return getTaskById.get(exists.id);
-  const info = insertTask.run(date, name, business, time || null, priority || 'normal');
-  return getTaskById.get(info.lastInsertRowid);
+const getRecurring        = (userId) => getRecurringStmt.all(userId);
+const getFutureRecurring  = (userId) => getFutureRecurringStmt.all(userId);
+const addRecurring        = (userId, name, business, scheduled_time, days, time_block, category) =>
+  addRecurringStmt.run(userId, name, business, scheduled_time || null, days || 'daily', time_block || null, category || 'work');
+const deleteRecurring     = (userId, id) => deleteRecurringStmt.run(userId, id);
+const deactivateRecurring = (userId, id) => deactivateRecurringStmt.run(userId, id);
+const activateRecurring   = (userId, id) => activateRecurringStmt.run(userId, id);
+const getCategoryRecurring = (userId, category) => getCategoryRecurringStmt.all(userId, category);
+const checkTaskExists      = (userId, date, name) => checkTaskExistsStmt.get(userId, date, name);
+const insertCarriedTask    = (userId, date, name, business, time, priority) =>
+  insertCarriedTaskStmt.run(userId, date, name, business, time || null, priority || 'normal');
+
+function insertTaskSafe(userId, date, name, business, time, priority) {
+  const exists = checkTaskExists(userId, date, name);
+  if (exists) return getTaskById(userId, exists.id);
+  const info = insertTask(userId, date, name, business, time, priority);
+  return getTaskById(userId, info.lastInsertRowid);
 }
 
 // ── prepared statements — pending recurring ───────────────────────────────────
 
-const insertPendingRecurring = db.prepare(`
-  INSERT OR IGNORE INTO pending_recurring (date, recurring_task_id, name, business, scheduled_time)
-  VALUES (?, ?, ?, ?, ?)
+const insertPendingRecurringStmt = db.prepare(`
+  INSERT OR IGNORE INTO pending_recurring (user_id, date, recurring_task_id, name, business, scheduled_time)
+  VALUES (?, ?, ?, ?, ?, ?)
 `);
-const getPendingRecurring = db.prepare(`
+const getPendingRecurringStmt = db.prepare(`
   SELECT pr.*, rt.days, rt.time_block
   FROM   pending_recurring pr
   LEFT JOIN recurring_tasks rt ON rt.id = pr.recurring_task_id
-  WHERE  pr.date = ? AND pr.status = 'pending'
+  WHERE  pr.user_id = ? AND pr.date = ? AND pr.status = 'pending'
   ORDER  BY pr.scheduled_time, pr.id
 `);
-const getConfirmedRecurring = db.prepare(
-  `SELECT * FROM pending_recurring WHERE date = ? AND status = 'confirmed'`
+const getConfirmedRecurringStmt = db.prepare(
+  `SELECT * FROM pending_recurring WHERE user_id = ? AND date = ? AND status = 'confirmed'`
 );
-const rejectRecurring = db.prepare(
-  `UPDATE pending_recurring SET status = 'rejected' WHERE id = ?`
+const rejectRecurringStmt = db.prepare(
+  `UPDATE pending_recurring SET status = 'rejected' WHERE user_id = ? AND id = ?`
 );
-const rejectAllPendingRecurring = db.prepare(
-  `UPDATE pending_recurring SET status = 'rejected' WHERE date = ? AND status = 'pending'`
+const rejectAllPendingRecurringStmt = db.prepare(
+  `UPDATE pending_recurring SET status = 'rejected' WHERE user_id = ? AND date = ? AND status = 'pending'`
 );
-const confirmPendingById = db.prepare(
-  `UPDATE pending_recurring SET status = 'confirmed' WHERE id = ?`
+const confirmPendingByIdStmt = db.prepare(
+  `UPDATE pending_recurring SET status = 'confirmed' WHERE user_id = ? AND id = ?`
 );
-const getPendingRecurringById = db.prepare(
-  `SELECT * FROM pending_recurring WHERE id = ?`
+const getPendingRecurringByIdStmt = db.prepare(
+  `SELECT * FROM pending_recurring WHERE user_id = ? AND id = ?`
 );
 
-function confirmRecurring(id) {
-  const row = getPendingRecurringById.get(id);
+const getPendingRecurring = (userId, date) => getPendingRecurringStmt.all(userId, date);
+const getConfirmedRecurring = (userId, date) => getConfirmedRecurringStmt.all(userId, date);
+const rejectRecurring = (userId, id) => rejectRecurringStmt.run(userId, id);
+const rejectAllPendingRecurring = (userId, date) => rejectAllPendingRecurringStmt.run(userId, date);
+
+function confirmRecurring(userId, id) {
+  const row = getPendingRecurringByIdStmt.get(userId, id);
   if (!row) return null;
-  const existing = checkTaskExists.get(row.date, row.name);
+  const existing = checkTaskExists(userId, row.date, row.name);
   if (!existing) {
-    insertRecurringTask.run(row.date, row.name, row.business, row.scheduled_time || null);
-    logTaskInsert('recurring-confirm', row.name, { date: row.date, business: row.business });
+    insertRecurringTaskStmt.run(userId, row.date, row.name, row.business, row.scheduled_time || null);
+    logTaskInsert('recurring-confirm', row.name, { date: row.date, business: row.business, userId });
   } else {
-    console.log(`[TASK-INSERT] source=recurring-confirm title=${JSON.stringify(row.name)} SKIPPED (already exists, task id=${existing.id}) pid=${process.pid} time=${new Date().toISOString()}`);
+    console.log(`[TASK-INSERT] source=recurring-confirm title=${JSON.stringify(row.name)} SKIPPED (already exists, task id=${existing.id}) userId=${userId} pid=${process.pid} time=${new Date().toISOString()}`);
   }
-  confirmPendingById.run(id);
-  return getTasksByDate.all(row.date).find(t => t.name === row.name) || null;
+  confirmPendingByIdStmt.run(userId, id);
+  return getTasksByDate(userId, row.date).find(t => t.name === row.name) || null;
 }
 
-function confirmAllRecurring(date) {
-  const pending = getPendingRecurring.all(date);
+function confirmAllRecurring(userId, date) {
+  const pending = getPendingRecurring(userId, date);
   db.transaction((tasks) => {
     for (const t of tasks) {
-      const existing = checkTaskExists.get(t.date, t.name);
+      const existing = checkTaskExists(userId, t.date, t.name);
       if (!existing) {
-        insertRecurringTask.run(t.date, t.name, t.business, t.scheduled_time || null);
-        logTaskInsert('recurring-confirm-all', t.name, { date: t.date, business: t.business });
+        insertRecurringTaskStmt.run(userId, t.date, t.name, t.business, t.scheduled_time || null);
+        logTaskInsert('recurring-confirm-all', t.name, { date: t.date, business: t.business, userId });
       } else {
-        console.log(`[TASK-INSERT] source=recurring-confirm-all title=${JSON.stringify(t.name)} SKIPPED (already exists, task id=${existing.id}) pid=${process.pid} time=${new Date().toISOString()}`);
+        console.log(`[TASK-INSERT] source=recurring-confirm-all title=${JSON.stringify(t.name)} SKIPPED (already exists, task id=${existing.id}) userId=${userId} pid=${process.pid} time=${new Date().toISOString()}`);
       }
-      confirmPendingById.run(t.id);
+      confirmPendingByIdStmt.run(userId, t.id);
     }
   })(pending);
-  return getTasksByDate.all(date);
+  return getTasksByDate(userId, date);
 }
 
-function populateRecurring(date) {
+function populateRecurring(userId, date) {
   const dayOfWeek = new Date(date + 'T12:00:00Z').getUTCDay(); // 0=Sun … 6=Sat
-  const recurring  = getRecurring.all();
+  const recurring  = getRecurring(userId);
   db.transaction((tasks) => {
     for (const t of tasks) {
       const days = t.days || 'daily';
@@ -569,14 +880,14 @@ function populateRecurring(date) {
         const allowed = days.split(',').map(d => parseInt(d.trim(), 10));
         if (!allowed.includes(dayOfWeek)) continue;
       }
-      insertPendingRecurring.run(date, t.id, t.name, t.business, t.scheduled_time || null);
+      insertPendingRecurringStmt.run(userId, date, t.id, t.name, t.business, t.scheduled_time || null);
     }
   })(recurring);
 }
 
-function getTodayTasksIncludingPending(date) {
-  const tasks    = getTasksByDate.all(date);
-  const pending  = getPendingRecurring.all(date);
+function getTodayTasksIncludingPending(userId, date) {
+  const tasks    = getTasksByDate(userId, date);
+  const pending  = getPendingRecurring(userId, date);
   const taskNames = new Set(tasks.map(t => t.name));
   const pendingAsTasks = pending
     .filter(p => !taskNames.has(p.name))
@@ -593,8 +904,8 @@ function getTodayTasksIncludingPending(date) {
   return [...tasks, ...pendingAsTasks];
 }
 
-function getRecurringGrouped() {
-  const all    = getRecurring.all();
+function getRecurringGrouped(userId) {
+  const all    = getRecurring(userId);
   const groups = { blok: [], aphl: [], trade: [], personal: [] };
   for (const t of all) {
     if (groups[t.business]) groups[t.business].push(t);
@@ -604,58 +915,66 @@ function getRecurringGrouped() {
 
 // ── prepared statements — carry forward ──────────────────────────────────────
 
-const insertCarry = db.prepare(
-  `INSERT INTO task_carry (original_task_id, from_date, to_date)
-   VALUES (?, ?, ?)`
+const insertCarryStmt = db.prepare(
+  `INSERT INTO task_carry (user_id, original_task_id, from_date, to_date)
+   VALUES (?, ?, ?, ?)`
 );
 
-function carryTask(taskId, fromDate, toDate) {
-  const original = getTaskById.get(taskId);
+function carryTask(userId, taskId, fromDate, toDate) {
+  const original = getTaskById(userId, taskId);
   if (!original) throw new Error(`Task ${taskId} not found`);
 
-  const info = insertTask.run(
+  const info = insertTask(
+    userId,
     toDate,
     original.name,
     original.business,
     original.time || null,
     original.priority || 'normal'
   );
-  logTaskInsert('carry-forward', original.name, { date: toDate, business: original.business, fromTaskId: taskId });
-  insertCarry.run(taskId, fromDate, toDate);
-  return getTaskById.get(info.lastInsertRowid);
+  logTaskInsert('carry-forward', original.name, { date: toDate, business: original.business, fromTaskId: taskId, userId });
+  insertCarryStmt.run(userId, taskId, fromDate, toDate);
+  return getTaskById(userId, info.lastInsertRowid);
 }
 
 // ── prepared statements — ideas ───────────────────────────────────────────────
 
-const addIdea  = db.prepare('INSERT INTO ideas (business, content) VALUES (?, ?)');
-const getIdeas = db.prepare('SELECT * FROM ideas ORDER BY created_at DESC LIMIT 20');
+const addIdeaStmt  = db.prepare('INSERT INTO ideas (user_id, business, content) VALUES (?, ?, ?)');
+const getIdeasStmt = db.prepare('SELECT * FROM ideas WHERE user_id = ? ORDER BY created_at DESC LIMIT 20');
+const addIdea  = (userId, business, content) => addIdeaStmt.run(userId, business, content);
+const getIdeas = (userId) => getIdeasStmt.all(userId);
 
 // ── prepared statements — notes ───────────────────────────────────────────────
 
-const addNote  = db.prepare('INSERT INTO notes (business, content) VALUES (?, ?)');
-const getNotes = db.prepare('SELECT * FROM notes ORDER BY created_at DESC LIMIT 20');
+const addNoteStmt  = db.prepare('INSERT INTO notes (user_id, business, content) VALUES (?, ?, ?)');
+const getNotesStmt = db.prepare('SELECT * FROM notes WHERE user_id = ? ORDER BY created_at DESC LIMIT 20');
+const addNote  = (userId, business, content) => addNoteStmt.run(userId, business, content);
+const getNotes = (userId) => getNotesStmt.all(userId);
 
 // ── prepared statements — nudges ─────────────────────────────────────────────
 
-const getNudgeRecord = db.prepare(
+const getNudgeRecordStmt = db.prepare(
   'SELECT * FROM task_nudges WHERE task_id = ? AND date = ?'
 );
+const getNudgeRecord = (taskId, date) => getNudgeRecordStmt.get(taskId, date);
 
-const upsertNudge = db.prepare(`
+const upsertNudgeStmt = db.prepare(`
   INSERT INTO task_nudges (task_id, date, nudge_count, last_nudged_at)
   VALUES (?, ?, ?, ?)
   ON CONFLICT(task_id, date)
   DO UPDATE SET nudge_count = excluded.nudge_count, last_nudged_at = excluded.last_nudged_at
 `);
+const upsertNudge = (taskId, date, count, lastNudgedAt) => upsertNudgeStmt.run(taskId, date, count, lastNudgedAt);
 
-const snoozeTask = db.prepare(`
+const snoozeTaskStmt = db.prepare(`
   INSERT INTO task_nudges (task_id, date, nudge_count, snoozed_until)
   VALUES (?, ?, 0, ?)
   ON CONFLICT(task_id, date)
   DO UPDATE SET snoozed_until = excluded.snoozed_until
 `);
+const snoozeTask = (taskId, date, snoozedUntil) => snoozeTaskStmt.run(taskId, date, snoozedUntil);
 
-function getPendingNudges(date) {
+function getPendingNudges(userId, date) {
   const now         = new Date(Date.now() + 60 * 60 * 1000);
   const hhmm        = String(now.getUTCHours()).padStart(2, '0') + ':' +
                       String(now.getUTCMinutes()).padStart(2, '0');
@@ -667,7 +986,7 @@ function getPendingNudges(date) {
            n.snoozed_until
     FROM   tasks t
     LEFT JOIN task_nudges n ON n.task_id = t.id AND n.date = ?
-    WHERE  t.date = ?
+    WHERE  t.user_id = ? AND t.date = ?
       AND  t.done = 0
       AND  t.business != 'anchor'
       AND  t.time IS NOT NULL
@@ -675,54 +994,76 @@ function getPendingNudges(date) {
       AND  COALESCE(n.nudge_count, 0) < 3
       AND  (n.snoozed_until IS NULL OR n.snoozed_until <= ?)
     ORDER BY t.time, t.id
-  `).all(date, date, hhmm, nowDatetime);
+  `).all(date, userId, date, hhmm, nowDatetime);
 }
 
 // ── prepared statements — goals ───────────────────────────────────────────────
 
-const getGoals         = db.prepare('SELECT * FROM goals WHERE business = ? ORDER BY dimension');
-const getAllGoals       = db.prepare('SELECT * FROM goals ORDER BY business, dimension');
-const addGoal          = db.prepare(`
-  INSERT INTO goals (business, dimension, title, description, target_date, year)
-  VALUES (?, ?, ?, ?, ?, ?)
+const getGoalsStmt      = db.prepare('SELECT * FROM goals WHERE user_id = ? AND business = ? ORDER BY dimension');
+const getAllGoalsStmt   = db.prepare('SELECT * FROM goals WHERE user_id = ? ORDER BY business, dimension');
+const getGoalByIdStmt   = db.prepare('SELECT * FROM goals WHERE user_id = ? AND id = ?');
+const addGoalStmt       = db.prepare(`
+  INSERT INTO goals (user_id, business, dimension, title, description, target_date, year)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
 `);
-const updateGoalStatus = db.prepare('UPDATE goals SET status = ? WHERE id = ?');
-const updateGoalTitle  = db.prepare('UPDATE goals SET title = ? WHERE id = ?');
+const updateGoalStatusStmt = db.prepare('UPDATE goals SET status = ? WHERE user_id = ? AND id = ?');
+const updateGoalTitleStmt  = db.prepare('UPDATE goals SET title = ? WHERE user_id = ? AND id = ?');
+
+const getGoals    = (userId, business) => getGoalsStmt.all(userId, business);
+const getAllGoals = (userId) => getAllGoalsStmt.all(userId);
+// Ownership check for routes that take a bare goal :id (e.g. progress notes)
+// where the id doesn't come from an already user-scoped list — goal_progress
+// itself carries no user_id, so this is the only thing standing between one
+// user and writing/reading another user's goal progress notes.
+const getGoalById = (userId, id) => getGoalByIdStmt.get(userId, id);
+const addGoal     = (userId, business, dimension, title, description, target_date, year) =>
+  addGoalStmt.run(userId, business, dimension, title, description || null, target_date || null, year);
+const updateGoalStatus = (userId, status, id) => updateGoalStatusStmt.run(status, userId, id);
+const updateGoalTitle  = (userId, title, id)  => updateGoalTitleStmt.run(title, userId, id);
 
 // ── prepared statements — monthly cycles ─────────────────────────────────────
 
-const getCycles = db.prepare(`
+const getCyclesStmt = db.prepare(`
   SELECT mc.*, g.title AS goal_title, g.dimension
   FROM   monthly_cycles mc
   LEFT JOIN goals g ON g.id = mc.goal_id
-  WHERE  mc.month = ?
+  WHERE  mc.user_id = ? AND mc.month = ?
   ORDER  BY mc.business, mc.id
 `);
-const getCyclesByGoal = db.prepare(
-  'SELECT * FROM monthly_cycles WHERE goal_id = ? ORDER BY month DESC'
+const getCyclesByGoalStmt = db.prepare(
+  'SELECT * FROM monthly_cycles WHERE user_id = ? AND goal_id = ? ORDER BY month DESC'
 );
-const getCycleById = db.prepare('SELECT * FROM monthly_cycles WHERE id = ?');
-const addCycle     = db.prepare(`
-  INSERT INTO monthly_cycles (business, goal_id, month, title, commitment_1, commitment_2, commitment_3)
-  VALUES (?, ?, ?, ?, ?, ?, ?)
+const getCycleByIdStmt = db.prepare('SELECT * FROM monthly_cycles WHERE user_id = ? AND id = ?');
+const addCycleStmt     = db.prepare(`
+  INSERT INTO monthly_cycles (user_id, business, goal_id, month, title, commitment_1, commitment_2, commitment_3)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 `);
-const updateCycleReflection = db.prepare(
-  'UPDATE monthly_cycles SET reflection = ? WHERE id = ?'
+const updateCycleReflectionStmt = db.prepare(
+  'UPDATE monthly_cycles SET reflection = ? WHERE user_id = ? AND id = ?'
 );
 
-function updateCycleCommitment(id, which, status) {
+const getCycles       = (userId, month) => getCyclesStmt.all(userId, month);
+const getCyclesByGoal = (userId, goalId) => getCyclesByGoalStmt.all(userId, goalId);
+const getCycleById    = (userId, id) => getCycleByIdStmt.get(userId, id);
+const addCycle         = (userId, business, goal_id, month, title, c1, c2, c3) =>
+  addCycleStmt.run(userId, business, goal_id || null, month, title, c1, c2, c3 || null);
+const updateCycleReflection = (userId, reflection, id) => updateCycleReflectionStmt.run(reflection, userId, id);
+
+function updateCycleCommitment(userId, id, which, status) {
   const n = Number(which);
   if (![1, 2, 3].includes(n)) throw new Error('which must be 1, 2, or 3');
-  db.prepare(`UPDATE monthly_cycles SET status_${n} = ? WHERE id = ?`).run(status, id);
-  return getCycleById.get(id);
+  db.prepare(`UPDATE monthly_cycles SET status_${n} = ? WHERE user_id = ? AND id = ?`).run(status, userId, id);
+  return getCycleById(userId, id);
 }
 
 // ── prepared statements — goal progress ──────────────────────────────────────
 
-const addGoalProgress = db.prepare('INSERT INTO goal_progress (goal_id, note) VALUES (?, ?)');
-const getGoalProgress = db.prepare(
+const addGoalProgressStmt = db.prepare('INSERT INTO goal_progress (goal_id, note) VALUES (?, ?)');
+const getGoalProgressStmt = db.prepare(
   'SELECT * FROM goal_progress WHERE goal_id = ? ORDER BY logged_at DESC LIMIT 10'
 );
+const addGoalProgress = (goalId, note) => addGoalProgressStmt.run(goalId, note);
+const getGoalProgress = (goalId) => getGoalProgressStmt.all(goalId);
 
 // ── prepared statements — event sync ─────────────────────────────────────────
 
@@ -730,59 +1071,66 @@ const getGoalProgress = db.prepare(
 // the column getTaskByEventId/updateTaskFromCalendar/deleteTaskByEventId all
 // read, so a task LIFELINE pushes to Google Calendar is recognized as already-
 // linked on the next poll instead of being re-imported as a duplicate.
-const updateTaskEventId = db.prepare('UPDATE tasks SET calendar_event_id = ? WHERE id = ?');
+const updateTaskEventIdStmt = db.prepare('UPDATE tasks SET calendar_event_id = ? WHERE user_id = ? AND id = ?');
+const updateTaskEventId = (userId, eventId, id) => updateTaskEventIdStmt.run(eventId, userId, id);
 
 // ── prepared statements — Google Calendar import ──────────────────────────────
 
-const getTaskByEventId = db.prepare(
-  'SELECT * FROM tasks WHERE calendar_event_id = ? LIMIT 1'
+const getTaskByEventIdStmt = db.prepare(
+  'SELECT * FROM tasks WHERE user_id = ? AND calendar_event_id = ? LIMIT 1'
 );
-const insertCalendarTask = db.prepare(
-  `INSERT INTO tasks (date, name, business, time, done, priority, calendar_source, calendar_event_id)
-   VALUES (?, ?, ?, ?, 0, 'normal', 'google', ?)`
+const insertCalendarTaskStmt = db.prepare(
+  `INSERT INTO tasks (user_id, date, name, business, time, done, priority, calendar_source, calendar_event_id)
+   VALUES (?, ?, ?, ?, ?, 0, 'normal', 'google', ?)`
 );
-const updateTaskFromCalendar = db.prepare(
-  'UPDATE tasks SET name = ?, time = ?, date = ? WHERE calendar_event_id = ?'
+const updateTaskFromCalendarStmt = db.prepare(
+  'UPDATE tasks SET name = ?, time = ?, date = ? WHERE user_id = ? AND calendar_event_id = ?'
 );
-const deleteTaskByEventId = db.prepare(
-  'DELETE FROM tasks WHERE calendar_event_id = ?'
+const deleteTaskByEventIdStmt = db.prepare(
+  'DELETE FROM tasks WHERE user_id = ? AND calendar_event_id = ?'
 );
+
+const getTaskByEventId = (userId, eventId) => getTaskByEventIdStmt.get(userId, eventId);
+const insertCalendarTask = (userId, date, name, business, time, eventId) =>
+  insertCalendarTaskStmt.run(userId, date, name, business, time || null, eventId);
+const updateTaskFromCalendar = (userId, name, time, date, eventId) =>
+  updateTaskFromCalendarStmt.run(name, time, date, userId, eventId);
+const deleteTaskByEventId = (userId, eventId) => deleteTaskByEventIdStmt.run(userId, eventId);
 
 // ── prepared statements — task/recurring time update ─────────────────────────
 
-const updateTaskTime      = db.prepare('UPDATE tasks SET time = ? WHERE id = ?');
-const updateRecurringTime = db.prepare('UPDATE recurring_tasks SET scheduled_time = ? WHERE id = ?');
+const updateTaskTimeStmt      = db.prepare('UPDATE tasks SET time = ? WHERE user_id = ? AND id = ?');
+const updateRecurringTimeStmt = db.prepare('UPDATE recurring_tasks SET scheduled_time = ? WHERE user_id = ? AND id = ?');
+const updateTaskTime      = (userId, time, id) => updateTaskTimeStmt.run(time, userId, id);
+const updateRecurringTime = (userId, time, id) => updateRecurringTimeStmt.run(time, userId, id);
 
 // ── prepared statements — businesses ─────────────────────────────────────────
 
-const getBusinesses    = db.prepare('SELECT * FROM businesses WHERE active = 1 ORDER BY id');
-const addBusiness      = db.prepare(
-  `INSERT INTO businesses (name, slug, color_bg, color_text) VALUES (?, ?, ?, ?)`
+const getBusinessesStmt    = db.prepare('SELECT * FROM businesses WHERE user_id = ? AND active = 1 ORDER BY id');
+const addBusinessStmt      = db.prepare(
+  `INSERT INTO businesses (user_id, name, slug, color_bg, color_text) VALUES (?, ?, ?, ?, ?)`
 );
-const deactivateBusiness = db.prepare('UPDATE businesses SET active = 0 WHERE id = ?');
-const getBusinessBySlug  = db.prepare('SELECT * FROM businesses WHERE slug = ?');
+const deactivateBusinessStmt = db.prepare('UPDATE businesses SET active = 0 WHERE user_id = ? AND id = ?');
+const getBusinessBySlugStmt  = db.prepare('SELECT * FROM businesses WHERE user_id = ? AND slug = ?');
+
+const getBusinesses = (userId) => getBusinessesStmt.all(userId);
+const addBusiness    = (userId, name, slug, color_bg, color_text) =>
+  addBusinessStmt.run(userId, name, slug, color_bg, color_text);
+const deactivateBusiness = (userId, id) => deactivateBusinessStmt.run(userId, id);
+const getBusinessBySlug  = (userId, slug) => getBusinessBySlugStmt.get(userId, slug);
 
 // ── prepared statements — toggle recurring active ─────────────────────────────
 
-function toggleRecurringActive(id) {
-  const row = db.prepare('SELECT active FROM recurring_tasks WHERE id = ?').get(id);
+function toggleRecurringActive(userId, id) {
+  const row = db.prepare('SELECT active FROM recurring_tasks WHERE user_id = ? AND id = ?').get(userId, id);
   if (!row) throw new Error(`Recurring task ${id} not found`);
   if (row.active) {
-    deactivateRecurring.run(id);
+    deactivateRecurring(userId, id);
   } else {
-    activateRecurring.run(id);
+    activateRecurring(userId, id);
   }
   return { id: Number(id), active: row.active ? 0 : 1 };
 }
-
-// ── prepared statements — settings ───────────────────────────────────────────
-
-const getSetting    = db.prepare('SELECT value FROM settings WHERE key = ?');
-const upsertSetting = db.prepare(`
-  INSERT INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))
-  ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')
-`);
-const deleteSetting = db.prepare('DELETE FROM settings WHERE key = ?');
 
 // ── founder profile ───────────────────────────────────────────────────────────
 // Everything that used to be hardcoded into AI prompts and schedule defaults
@@ -790,6 +1138,8 @@ const deleteSetting = db.prepare('DELETE FROM settings WHERE key = ?');
 // this codebase can serve any founder, not just the one it was written for.
 // Stored as a JSON blob under settings.founder_profile; DEFAULT_FOUNDER_PROFILE
 // is the seed for this instance and also the fallback shape for new ones.
+// New (non-OGV) users get a genuinely blank-slate variant of this default —
+// see BLANK_FOUNDER_PROFILE below — filled in by the onboarding wizard.
 
 const DEFAULT_FOUNDER_PROFILE = {
   name:       'OGV',
@@ -874,129 +1224,221 @@ const DEFAULT_FOUNDER_PROFILE = {
   ],
 };
 
-function getFounderProfile() {
-  const row = getSetting.get('founder_profile');
-  if (!row) return DEFAULT_FOUNDER_PROFILE;
+// Blank-slate default for newly signed-up (non-OGV) users — no OGV-specific
+// names/businesses/schedule leak in; the onboarding wizard (Phase B) fills
+// this in per-user. Suggested anchor defaults kept (prayer/journaling/family
+// time/wind-down) since the task spec calls for them as editable suggestions,
+// not because they're OGV-specific.
+const BLANK_FOUNDER_PROFILE = {
+  name:       '',
+  brandName:  '',
+  identity:   '',
+  ventures:   [],
+  personalPillars: ['Spiritual', 'Mental', 'Physical', 'Family'],
+  personalLabel:   'TAKE CARE OF YOURSELF FIRST',
+  closingLabel:    'CLOSE THE DAY WELL',
+  currentGoals:    [],
+  nonNegotiables:  '',
+  investorCadence: [],
+  scheduleBlocks: [
+    { time: '05:30', end: '05:45', name: 'Prayer',                                  biz: 'anchor' },
+    { time: '05:45', end: '06:00', name: 'Journaling',                              biz: 'anchor' },
+    { time: '17:30', end: '18:00', name: 'Calls to loved ones and family',          biz: 'anchor' },
+    { time: '20:30', end: '21:00', name: 'Evening wind-down and next day planning', biz: 'anchor' },
+  ],
+};
+
+function getFounderProfile(userId) {
+  const row = getSetting(userId, 'founder_profile');
+  const fallback = userId === 1 ? DEFAULT_FOUNDER_PROFILE : BLANK_FOUNDER_PROFILE;
+  if (!row) return fallback;
   try {
     const stored = JSON.parse(row.value);
-    return { ...DEFAULT_FOUNDER_PROFILE, ...stored };
+    return { ...fallback, ...stored };
   } catch {
-    return DEFAULT_FOUNDER_PROFILE;
+    return fallback;
   }
 }
 
-function saveFounderProfile(partial) {
-  const updated = { ...getFounderProfile(), ...partial };
-  upsertSetting.run('founder_profile', JSON.stringify(updated));
+function saveFounderProfile(userId, partial) {
+  const updated = { ...getFounderProfile(userId), ...partial };
+  upsertSetting(userId, 'founder_profile', JSON.stringify(updated));
   return updated;
 }
 
 // ── prepared statements — document analyses ───────────────────────────────────
+// Scoped directly by user_id — the standalone paste-and-analyze flow
+// (/api/documents/analyze) creates a document_analyses row with no
+// corresponding uploaded_documents row at all, so it can't be scoped
+// transitively the way the upload-library flow can.
 
-const saveDocumentAnalysis = db.prepare(
-  `INSERT INTO document_analyses (business, document_excerpt, summary, key_insight, risk, tasks_json)
-   VALUES (?, ?, ?, ?, ?, ?)`
+const saveDocumentAnalysisStmt = db.prepare(
+  `INSERT INTO document_analyses (user_id, business, document_excerpt, summary, key_insight, risk, tasks_json)
+   VALUES (?, ?, ?, ?, ?, ?, ?)`
 );
-const getDocumentAnalyses = db.prepare(
-  'SELECT * FROM document_analyses ORDER BY created_at DESC LIMIT 10'
+const getDocumentAnalysesStmt = db.prepare(
+  'SELECT * FROM document_analyses WHERE user_id = ? ORDER BY created_at DESC LIMIT 10'
 );
+const saveDocumentAnalysis = (userId, business, excerpt, summary, keyInsight, risk, tasksJson) =>
+  saveDocumentAnalysisStmt.run(userId, business, excerpt, summary, keyInsight, risk, tasksJson);
+const getDocumentAnalyses = (userId) => getDocumentAnalysesStmt.all(userId);
 
 // ── prepared statements — uploaded documents ──────────────────────────────────
 
-const saveUploadedDocument = db.prepare(
-  `INSERT INTO uploaded_documents (filename, original_name, file_type, file_size, business, parsed_text)
-   VALUES (?, ?, ?, ?, ?, ?)`
+const saveUploadedDocumentStmt = db.prepare(
+  `INSERT INTO uploaded_documents (user_id, filename, original_name, file_type, file_size, business, parsed_text)
+   VALUES (?, ?, ?, ?, ?, ?, ?)`
 );
-const getUploadedDocument = db.prepare(
-  'SELECT * FROM uploaded_documents WHERE id = ?'
+const getUploadedDocumentStmt = db.prepare(
+  'SELECT * FROM uploaded_documents WHERE user_id = ? AND id = ?'
 );
-const getAllUploadedDocuments = db.prepare(
+const getAllUploadedDocumentsStmt = db.prepare(
   `SELECT d.id, d.filename, d.original_name, d.file_type, d.file_size, d.business,
           d.upload_date, d.status, d.analysis_id, d.assigned_to, d.tags,
           a.summary, a.key_insight, a.risk, a.tasks_json
    FROM uploaded_documents d
    LEFT JOIN document_analyses a ON a.id = d.analysis_id
-   WHERE d.status != 'archived'
+   WHERE d.user_id = ? AND d.status != 'archived'
    ORDER BY d.upload_date DESC
    LIMIT 50`
 );
-const getUploadedDocumentsByBusiness = db.prepare(
+const getUploadedDocumentsByBusinessStmt = db.prepare(
   `SELECT d.id, d.filename, d.original_name, d.file_type, d.file_size, d.business,
           d.upload_date, d.status, d.analysis_id, d.assigned_to,
           a.summary
    FROM uploaded_documents d
    LEFT JOIN document_analyses a ON a.id = d.analysis_id
-   WHERE d.business = ? AND d.status != 'archived'
+   WHERE d.user_id = ? AND d.business = ? AND d.status != 'archived'
    ORDER BY d.upload_date DESC`
 );
-const updateUploadedDocumentStatus = db.prepare(
-  'UPDATE uploaded_documents SET status = ? WHERE id = ?'
+const updateUploadedDocumentStatusStmt = db.prepare(
+  'UPDATE uploaded_documents SET status = ? WHERE user_id = ? AND id = ?'
 );
-const linkDocumentToAnalysis = db.prepare(
-  'UPDATE uploaded_documents SET analysis_id = ?, status = ? WHERE id = ?'
+const linkDocumentToAnalysisStmt = db.prepare(
+  'UPDATE uploaded_documents SET analysis_id = ?, status = ? WHERE user_id = ? AND id = ?'
 );
-const archiveUploadedDocument = db.prepare(
-  "UPDATE uploaded_documents SET status = 'archived' WHERE id = ?"
+const archiveUploadedDocumentStmt = db.prepare(
+  "UPDATE uploaded_documents SET status = 'archived' WHERE user_id = ? AND id = ?"
 );
-const searchUploadedDocuments = db.prepare(
+const searchUploadedDocumentsStmt = db.prepare(
   `SELECT id, filename, original_name, file_type, business, upload_date, status,
           substr(parsed_text, 1, 200) AS excerpt
    FROM uploaded_documents
-   WHERE status != 'archived'
+   WHERE user_id = ? AND status != 'archived'
      AND (original_name LIKE ? OR parsed_text LIKE ?)
    ORDER BY upload_date DESC
    LIMIT 20`
 );
 
+const saveUploadedDocument = (userId, filename, originalName, fileType, fileSize, business, parsedText) =>
+  saveUploadedDocumentStmt.run(userId, filename, originalName, fileType, fileSize, business, parsedText);
+const getUploadedDocument = (userId, id) => getUploadedDocumentStmt.get(userId, id);
+const getAllUploadedDocuments = (userId) => getAllUploadedDocumentsStmt.all(userId);
+const getUploadedDocumentsByBusiness = (userId, business) => getUploadedDocumentsByBusinessStmt.all(userId, business);
+const updateUploadedDocumentStatus = (userId, status, id) => updateUploadedDocumentStatusStmt.run(status, userId, id);
+const linkDocumentToAnalysis = (userId, analysisId, status, id) => linkDocumentToAnalysisStmt.run(analysisId, status, userId, id);
+const archiveUploadedDocument = (userId, id) => archiveUploadedDocumentStmt.run(userId, id);
+const searchUploadedDocuments = (userId, q1, q2) => searchUploadedDocumentsStmt.all(userId, q1, q2);
+
 // ── prepared statements — team members ───────────────────────────────────────
 
-const getTeamMembers = db.prepare(
-  'SELECT * FROM team_members WHERE active = 1 ORDER BY business, name'
+const getTeamMembersStmt = db.prepare(
+  'SELECT * FROM team_members WHERE user_id = ? AND active = 1 ORDER BY business, name'
 );
-const getMembersByBusiness = db.prepare(
-  'SELECT * FROM team_members WHERE (business = ? OR business = ?) AND active = 1 ORDER BY name'
+const getMembersByBusinessStmt = db.prepare(
+  'SELECT * FROM team_members WHERE user_id = ? AND (business = ? OR business = ?) AND active = 1 ORDER BY name'
 );
+const getTeamMembers = (userId) => getTeamMembersStmt.all(userId);
+const getMembersByBusiness = (userId, b1, b2) => getMembersByBusinessStmt.all(userId, b1, b2);
 
-// ── team members seed (runs once if table is empty) ──────────────────────────
+// ── per-user default data seed (businesses + team members) ───────────────────
+// Runs once per user the first time their data is touched with nothing seeded
+// yet. For user 1 (OGV) this reproduces the original hardcoded defaults he's
+// always had. For any other user this is a no-op — Phase B's onboarding
+// wizard is what actually populates their businesses/ventures, not this.
 
-{
-  const count = db.prepare('SELECT COUNT(*) AS n FROM team_members').get();
-  if (!count || count.n === 0) {
+function seedDefaultsForUser(userId) {
+  if (userId !== 1) return; // non-OGV users are seeded by the onboarding wizard, not here
+  const bizCount = db.prepare('SELECT COUNT(*) AS n FROM businesses WHERE user_id = ?').get(userId);
+  if (!bizCount || bizCount.n === 0) {
+    db.transaction(() => {
+      addBusiness(userId, 'Blok AI',     'blok',     '#f0effe', '#4a3fa0');
+      addBusiness(userId, 'APHL Africa', 'aphl',     '#edf7f2', '#1a6646');
+      addBusiness(userId, 'TradeSol',    'trade',    '#fef8ec', '#7a4a0a');
+      addBusiness(userId, 'Personal',    'personal', '#fdf0f4', '#8a2a4a');
+    })();
+    console.log(`[db] Businesses seeded for user ${userId}`);
+  }
+  const teamCount = db.prepare('SELECT COUNT(*) AS n FROM team_members WHERE user_id = ?').get(userId);
+  if (!teamCount || teamCount.n === 0) {
     const stmt = db.prepare(
-      'INSERT INTO team_members (name, role, business, contact) VALUES (?, ?, ?, ?)'
+      'INSERT INTO team_members (user_id, name, role, business, contact) VALUES (?, ?, ?, ?, ?)'
     );
     db.transaction(() => {
       for (const v of DEFAULT_FOUNDER_PROFILE.ventures) {
-        if (v.lead) stmt.run(v.lead, v.leadRole || 'Lead', v.slug, '');
+        if (v.lead) stmt.run(userId, v.lead, v.leadRole || 'Lead', v.slug, '');
       }
-      stmt.run(DEFAULT_FOUNDER_PROFILE.name, 'CEO', 'all', '');
+      stmt.run(userId, DEFAULT_FOUNDER_PROFILE.name, 'CEO', 'all', '');
     })();
-    console.log('[db] Team members seeded');
+    console.log(`[db] Team members seeded for user ${userId}`);
   }
 }
 
-// ── businesses seed (runs once if table is empty) ─────────────────────────────
+// ── one-time migrations (global, run once across the whole DB) ───────────────
+// Guarded by settings rows under the reserved SYSTEM_USER_ID (see above) —
+// same guard-flag pattern this file has always used (recurring_seeded_v4,
+// anchors_seeded_v2, kanban_status_seeded_v1), just now explicitly scoped to
+// the system pseudo-user instead of implicitly global.
 
+// v5 — multi-tenancy: create user 1 (OGV), backfill every previously-global
+// table's user_id to 1, seed his businesses/team the same way seedDefaultsForUser
+// does for consistency (idempotent — only runs if nothing's there yet).
 {
-  const count = db.prepare('SELECT COUNT(*) AS n FROM businesses').get();
-  if (!count || count.n === 0) {
-    const stmt = db.prepare(
-      'INSERT INTO businesses (name, slug, color_bg, color_text) VALUES (?, ?, ?, ?)'
-    );
+  const alreadyMigrated = getSystemFlag('multiuser_migrated_v1');
+  if (!alreadyMigrated) {
+    const OGV_EMAIL = 'chijiokechinonso@gmail.com';
+    let ogv = getUserByEmail.get(OGV_EMAIL);
+    if (!ogv) {
+      const info = insertUser.run(OGV_EMAIL, null, 'OGV', 1); // password_hash NULL — set on first login (see auth.js)
+      ogv = getUserById.get(info.lastInsertRowid);
+      console.log(`[db] created user 1 (OGV) — password will be set on first login`);
+    }
+    const ogvId = ogv.id;
+
+    if (process.env.TELEGRAM_CHAT_ID && !ogv.telegram_chat_id) {
+      try { setUserChatId.run(process.env.TELEGRAM_CHAT_ID, ogvId); }
+      catch (err) { console.error('[db] failed to auto-link OGV telegram_chat_id:', err.message); }
+    }
+
+    const backfillTables = [
+      'tasks', 'recurring_tasks', 'task_carry', 'ideas', 'notes', 'task_nudges',
+      'goals', 'monthly_cycles', 'document_analyses', 'uploaded_documents',
+      'team_members', 'businesses', 'pending_recurring', 'anchor_log', 'day_log', 'kpis',
+    ];
     db.transaction(() => {
-      stmt.run('Blok AI',     'blok',     '#f0effe', '#4a3fa0');
-      stmt.run('APHL Africa', 'aphl',     '#edf7f2', '#1a6646');
-      stmt.run('TradeSol',    'trade',    '#fef8ec', '#7a4a0a');
-      stmt.run('Personal',    'personal', '#fdf0f4', '#8a2a4a');
+      for (const t of backfillTables) {
+        db.prepare(`UPDATE ${t} SET user_id = ? WHERE user_id IS NULL`).run(ogvId);
+      }
+      // settings rows that predate multi-tenancy: everything that isn't a
+      // system migration-guard flag belongs to OGV.
+      db.prepare(`UPDATE settings SET user_id = ? WHERE user_id IS NULL OR user_id = 1`).run(ogvId);
     })();
-    console.log('[db] Businesses seeded');
+
+    setSystemFlag('multiuser_migrated_v1', '1');
+    console.log(`[db] multi-tenancy migration complete — existing data backfilled to user ${ogvId}`);
   }
 }
+
+// ── team members seed (legacy path, now routed through seedDefaultsForUser) ──
+
+seedDefaultsForUser(1);
 
 // ── startup seeds (v4 — runs once, resets previous seeds) ────────────────────
+// Recurring-task seed data is OGV-specific (his actual daily routine) — only
+// ever seeded for user 1, same as before this migration.
 
 {
-  const alreadySeeded = getSetting.get('recurring_seeded_v4');
+  const alreadySeeded = getSystemFlag('recurring_seeded_v4');
   if (!alreadySeeded) {
     const SEEDS_V4 = [
       // BLOK AI — INVESTOR RELATIONSHIP BUILDING
@@ -1039,21 +1481,21 @@ const getMembersByBusiness = db.prepare(
     ];
 
     const seedStmt = db.prepare(
-      `INSERT INTO recurring_tasks (name, business, scheduled_time, days, time_block, category, notes, active)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO recurring_tasks (user_id, name, business, scheduled_time, days, time_block, category, notes, active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     );
 
-    db.prepare('DELETE FROM recurring_tasks').run();
+    db.prepare('DELETE FROM recurring_tasks WHERE user_id = 1').run();
     db.transaction(() => {
       for (const s of SEEDS_V4) {
         seedStmt.run(
-          s.name, s.business, s.scheduled_time || null, s.days || 'daily',
+          1, s.name, s.business, s.scheduled_time || null, s.days || 'daily',
           s.time_block || null, s.category || 'work', s.notes || null,
           s.active !== undefined ? s.active : 1
         );
       }
     })();
-    upsertSetting.run('recurring_seeded_v4', '1');
+    setSystemFlag('recurring_seeded_v4', '1');
     console.log('[db] Recurring tasks reset to v4');
   }
 }
@@ -1061,9 +1503,9 @@ const getMembersByBusiness = db.prepare(
 // ── anchors migration (v2) — renames schedule blocks in stored settings ───────
 
 {
-  const alreadyMigrated = getSetting.get('anchors_seeded_v2');
+  const alreadyMigrated = getSystemFlag('anchors_seeded_v2');
   if (!alreadyMigrated) {
-    const stored = getSetting.get('schedule_blocks');
+    const stored = getSetting(1, 'schedule_blocks');
     if (stored) {
       try {
         let blocks = JSON.parse(stored.value);
@@ -1072,10 +1514,10 @@ const getMembersByBusiness = db.prepare(
           if (b.name === 'Raise: 5 investor emails, CRM update') return { ...b, name: 'Raise: investor relations' };
           return b;
         });
-        upsertSetting.run('schedule_blocks', JSON.stringify(blocks));
+        upsertSetting(1, 'schedule_blocks', JSON.stringify(blocks));
       } catch {}
     }
-    upsertSetting.run('anchors_seeded_v2', '1');
+    setSystemFlag('anchors_seeded_v2', '1');
     console.log('[db] Anchor blocks migrated to v2');
   }
 }
@@ -1085,7 +1527,7 @@ const getMembersByBusiness = db.prepare(
 // unless done flips) ───────────────────────────────────────────────────────
 
 {
-  const alreadySeeded = getSetting.get('kanban_status_seeded_v1');
+  const alreadySeeded = getSystemFlag('kanban_status_seeded_v1');
   if (!alreadySeeded) {
     db.exec(`
       UPDATE tasks SET status = CASE
@@ -1095,16 +1537,16 @@ const getMembersByBusiness = db.prepare(
       END
       WHERE status IS NULL;
     `);
-    upsertSetting.run('kanban_status_seeded_v1', '1');
+    setSystemFlag('kanban_status_seeded_v1', '1');
     console.log('[db] Task status backfilled for kanban board');
   }
 }
 
 // ── day log + recurring population ───────────────────────────────────────────
 
-function syncDayLog(date) {
-  populateRecurring(date);
-  db.prepare('INSERT OR IGNORE INTO day_log (date) VALUES (?)').run(date);
+function syncDayLog(userId, date) {
+  populateRecurring(userId, date);
+  db.prepare('INSERT OR IGNORE INTO day_log (user_id, date) VALUES (?, ?)').run(userId, date);
 }
 
 // ── exports ───────────────────────────────────────────────────────────────────
@@ -1120,6 +1562,22 @@ module.exports = {
   watTomorrow,
   watCutoff,
   weekStart,
+
+  // users / auth
+  SYSTEM_USER_ID,
+  getUserById,
+  getUserByEmail,
+  getUserByChatId,
+  insertUser,
+  setUserPassword,
+  setOnboardingDone,
+  setUserChatId,
+  clearUserChatId,
+  getAllUsersWithChat,
+  insertConnectToken,
+  getConnectToken,
+  deleteConnectToken,
+  seedDefaultsForUser,
 
   // tasks
   getTasksByDate,
@@ -1186,6 +1644,7 @@ module.exports = {
   // goals
   getGoals,
   getAllGoals,
+  getGoalById,
   addGoal,
   updateGoalStatus,
   updateGoalTitle,
@@ -1229,6 +1688,7 @@ module.exports = {
   getFounderProfile,
   saveFounderProfile,
   DEFAULT_FOUNDER_PROFILE,
+  BLANK_FOUNDER_PROFILE,
 
   // scorecard
   getInvestorTouchesThisWeek,

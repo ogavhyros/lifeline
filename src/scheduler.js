@@ -35,10 +35,42 @@ function isQuietHours() {
   return mins < 320 || mins >= 1230; // before 05:20 or from 20:30 onwards
 }
 
+// ── multi-user iteration helpers ──────────────────────────────────────────────
+// Every job used to assume "the one user" — now each either loops every user
+// (data maintenance: carry-forward, calendar push/pull — these should happen
+// for everyone regardless of whether Telegram is linked) or every user with a
+// linked telegram_chat_id (anything that's purely a message — sendMessage
+// already no-ops gracefully for an unlinked user, but there's no point
+// looping and logging for accounts that can't receive it).
+
+function getAllUserIds() {
+  return db.prepare('SELECT id FROM users').all();
+}
+
+function getUsersWithTelegram() {
+  return db.prepare('SELECT id FROM users WHERE telegram_chat_id IS NOT NULL').all();
+}
+
+function forEachUser(fn) {
+  return async () => {
+    for (const u of getAllUserIds()) {
+      try { await fn(u.id); } catch (err) { console.error(`[scheduler] job failed for user ${u.id}:`, err.message); }
+    }
+  };
+}
+
+function forEachTelegramUser(fn) {
+  return async () => {
+    for (const u of getUsersWithTelegram()) {
+      try { await fn(u.id); } catch (err) { console.error(`[scheduler] job failed for user ${u.id}:`, err.message); }
+    }
+  };
+}
+
 // ── notification preferences ──────────────────────────────────────────────────
 
-function notifEnabled(key) {
-  const row = getSetting.get('notification_prefs');
+function notifEnabled(userId, key) {
+  const row = getSetting(userId, 'notification_prefs');
   if (!row) return true; // default all on
   try {
     const prefs = JSON.parse(row.value);
@@ -48,9 +80,9 @@ function notifEnabled(key) {
 
 // ── task helper ───────────────────────────────────────────────────────────────
 
-function getTodayTasks() {
+function getTodayTasks(userId) {
   try {
-    return getTasksByDate.all(watToday());
+    return getTasksByDate(userId, watToday());
   } catch {
     return [];
   }
@@ -58,9 +90,9 @@ function getTodayTasks() {
 
 // ── block reminder helper ─────────────────────────────────────────────────────
 
-function buildBlockMessage(time, blockName, biz) {
+function buildBlockMessage(userId, time, blockName, biz) {
   const today   = watToday();
-  const tasks   = getTasksByDate.all(today);
+  const tasks   = getTasksByDate(userId, today);
   const pending = tasks.filter(t => !t.done && t.business === biz);
 
   if (!pending.length) return `${time} — ${blockName}`;
@@ -71,128 +103,139 @@ function buildBlockMessage(time, blockName, biz) {
 
 // ── job actions ───────────────────────────────────────────────────────────────
 
-async function renewCalWatch() {
-  const row = getSetting.get('google_watch_channel');
+const renewCalWatch = forEachUser(async (userId) => {
+  const row = getSetting(userId, 'google_watch_channel');
   if (!row) return;
   const channel = JSON.parse(row.value);
   const age     = Date.now() - (channel.created_at || 0);
   if (age < 6 * 24 * 60 * 60 * 1000) return; // not old enough yet
   const serverUrl = process.env.SERVER_URL;
   if (!serverUrl || serverUrl.includes('localhost')) return;
-  await gcal.renewCalendarWatch(serverUrl);
-  console.log('[scheduler] Calendar watch channel renewed');
-}
+  await gcal.renewCalendarWatch(userId, serverUrl);
+  console.log(`[scheduler] Calendar watch channel renewed for user ${userId}`);
+});
 
-async function morningBriefing() {
-  if (!notifEnabled('briefing')) return;
-  const today   = watToday();
-  const tasks   = getTodayTasksIncludingPending(today);
+const morningBriefing = forEachTelegramUser(async (userId) => {
+  if (!notifEnabled(userId, 'briefing')) return;
+  const today    = watToday();
+  const tasks    = getTodayTasksIncludingPending(userId, today);
   const briefing = await generateMorningBriefing(tasks, today);
-  await sendMessage(briefing);
+  await sendMessage(userId, briefing);
   // Follow-up: send recurring tasks confirmation prompt
-  const pending = getPendingRecurring.all(today);
+  const pending = getPendingRecurring(userId, today);
   if (pending.length) {
-    await sendRecurringConfirmation(today);
+    await sendRecurringConfirmation(userId, today);
   }
-}
+});
 
-async function eodReview() {
-  if (!notifEnabled('eod')) return;
-  const tasks  = getTodayTasks();
+const eodReview = forEachTelegramUser(async (userId) => {
+  if (!notifEnabled(userId, 'eod')) return;
+  const tasks  = getTodayTasks(userId);
+  if (!tasks.length) return;
   const review = await generateEODReview(tasks, watToday());
-  await sendMessage(review);
-}
+  await sendMessage(userId, review);
+});
 
 async function midnightCarry() {
   const today     = watToday();
   const yesterday = new Date(Date.now() + 60 * 60 * 1000 - 86400000).toISOString().slice(0, 10);
 
-  // Clean up any duplicate tasks from yesterday (Google Calendar sync loop)
-  // before carrying incomplete ones forward — otherwise duplicates get carried too.
-  const removedYesterday = deduplicateTasks(yesterday);
-  if (removedYesterday > 0) {
-    console.log(`[scheduler] midnight — cleaned ${removedYesterday} duplicate task(s) for ${yesterday}`);
+  for (const u of getAllUserIds()) {
+    const userId = u.id;
+    try {
+      // Clean up any duplicate tasks from yesterday (Google Calendar sync
+      // loop) before carrying incomplete ones forward — otherwise duplicates
+      // get carried too.
+      const removedYesterday = deduplicateTasks(userId, yesterday);
+      if (removedYesterday > 0) {
+        console.log(`[scheduler] midnight — cleaned ${removedYesterday} duplicate task(s) for user ${userId} on ${yesterday}`);
+      }
+
+      // Carry incomplete non-recurring tasks from yesterday
+      const yesterdayTasks = getTasksByDate(userId, yesterday);
+      const todayTasks     = getTasksByDate(userId, today);
+      const todayNames     = new Set(todayTasks.map(t => t.name));
+
+      const toCarry = yesterdayTasks.filter(t =>
+        !t.done &&
+        t.source !== 'recurring' &&
+        t.business !== 'anchor'
+      );
+
+      let carried = 0;
+      for (const t of toCarry) {
+        if (todayNames.has(t.name)) continue;
+        insertCarriedTask(userId, today, t.name, t.business, t.time || null, t.priority || 'normal');
+        todayNames.add(t.name);
+        carried++;
+      }
+
+      // Queue recurring tasks for today's confirmation
+      populateRecurring(userId, today);
+      db.prepare('INSERT OR IGNORE INTO day_log (user_id, date) VALUES (?, ?)').run(userId, today);
+
+      console.log(`[scheduler] midnight — carried ${carried} task(s) from ${yesterday} for user ${userId}`);
+
+      const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+      const dayLabel = DAYS[new Date(today + 'T12:00:00Z').getUTCDay()];
+
+      if (carried > 0) {
+        await sendMessage(userId,
+          `New day started — ${dayLabel}, ${today}\n\n` +
+          `Carried forward from yesterday:\n${carried} incomplete task${carried !== 1 ? 's' : ''}\n\n` +
+          `Recurring tasks will be confirmed at morning briefing.\n\n` +
+          `Rest well.`
+        );
+      } else {
+        await sendMessage(userId,
+          `New day — ${dayLabel}, ${today}\n\n` +
+          `Yesterday was clean. Well done.\n` +
+          `Recurring tasks confirmed at morning briefing.`
+        );
+      }
+    } catch (err) {
+      console.error(`[scheduler] midnightCarry failed for user ${userId}:`, err.message);
+    }
   }
 
-  // Carry incomplete non-recurring tasks from yesterday
-  const yesterdayTasks = getTasksByDate.all(yesterday);
-  const todayTasks     = getTasksByDate.all(today);
-  const todayNames     = new Set(todayTasks.map(t => t.name));
-
-  const toCarry = yesterdayTasks.filter(t =>
-    !t.done &&
-    t.source !== 'recurring' &&
-    t.business !== 'anchor'
-  );
-
-  let carried = 0;
-  for (const t of toCarry) {
-    if (todayNames.has(t.name)) continue;
-    insertCarriedTask.run(today, t.name, t.business, t.time || null, t.priority || 'normal');
-    todayNames.add(t.name);
-    carried++;
-  }
-
-  // Queue recurring tasks for today's confirmation
-  populateRecurring(today);
-  db.prepare('INSERT OR IGNORE INTO day_log (date) VALUES (?)').run(today);
-
+  // Global, not per-user — shared dedup Set for taskDueTick, reset once a day.
   sentReminders.clear();
-  console.log(`[scheduler] midnight — carried ${carried} task(s) from ${yesterday}`);
-
-  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-  const dayLabel = DAYS[new Date(today + 'T12:00:00Z').getUTCDay()];
-
-  if (carried > 0) {
-    await sendMessage(
-      `New day started — ${dayLabel}, ${today}\n\n` +
-      `Carried forward from yesterday:\n${carried} incomplete task${carried !== 1 ? 's' : ''}\n\n` +
-      `Recurring tasks will be confirmed at morning briefing.\n\n` +
-      `Rest well.`
-    );
-  } else {
-    await sendMessage(
-      `New day — ${dayLabel}, ${today}\n\n` +
-      `Yesterday was clean. Well done.\n` +
-      `Recurring tasks confirmed at morning briefing.`
-    );
-  }
 }
 
-async function morningCalendarSync() {
-  const tokenRow = getSetting.get('google_tokens');
+async function morningCalendarSyncForUser(userId) {
+  const tokenRow = getSetting(userId, 'google_tokens');
   if (!tokenRow) return;
 
-  const today   = watToday();
-  const tasks   = getTasksByDate.all(today);
+  const today    = watToday();
+  const tasks    = getTasksByDate(userId, today);
   const unsynced = tasks.filter(t => !t.calendar_event_id);
 
   let synced = 0;
   for (const task of unsynced) {
     try {
-      await gcal.syncTaskToCalendar(task);
+      await gcal.syncTaskToCalendar(userId, task);
       synced++;
       await new Promise(r => setTimeout(r, 200));
     } catch (err) {
-      console.error('[calendar] morning sync failed:', err.message);
+      console.error(`[calendar] morning sync failed for user ${userId}:`, err.message);
     }
   }
-  if (synced > 0) console.log(`[calendar] morning sync — ${synced} tasks pushed`);
+  if (synced > 0) console.log(`[calendar] morning sync — ${synced} tasks pushed for user ${userId}`);
 
   // Pull any new Google Calendar events not yet tracked in LIFELINE.
   // gcal.getEventsForDate() already filters out LIFELINE-created events (tagged
   // or legacy "[BUSINESS] name" titles) — see google-calendar.js sync rules —
   // so this can't re-import a task LIFELINE just pushed above.
-  console.log(`[calendar-sync] RUN START caller=morningCalendarSync pid=${process.pid} time=${new Date().toISOString()}`);
+  console.log(`[calendar-sync] RUN START caller=morningCalendarSync userId=${userId} pid=${process.pid} time=${new Date().toISOString()}`);
   let calEvents;
-  try { calEvents = await gcal.getEventsForDate(today); }
+  try { calEvents = await gcal.getEventsForDate(userId, today); }
   catch (err) {
-    console.log(`[calendar-sync] RUN END caller=morningCalendarSync ABORTED err=${err.message} pid=${process.pid}`);
+    console.log(`[calendar-sync] RUN END caller=morningCalendarSync userId=${userId} ABORTED err=${err.message} pid=${process.pid}`);
     return;
   }
-  console.log(`[calendar-sync] caller=morningCalendarSync fetched=${calEvents.length} event(s): ${calEvents.map(e => e.id).join(',')} pid=${process.pid}`);
+  console.log(`[calendar-sync] caller=morningCalendarSync userId=${userId} fetched=${calEvents.length} event(s): ${calEvents.map(e => e.id).join(',')} pid=${process.pid}`);
 
-  const taskEventIds = new Set(getTasksByDate.all(today).map(t => t.calendar_event_id).filter(Boolean));
+  const taskEventIds = new Set(getTasksByDate(userId, today).map(t => t.calendar_event_id).filter(Boolean));
   const newEvents    = calEvents.filter(ev => !taskEventIds.has(ev.id));
 
   const pulledItems = [];
@@ -206,20 +249,22 @@ async function morningCalendarSync() {
         start:       ev.allDay ? { date: ev.startRaw } : { dateTime: ev.startRaw },
         end:         ev.allDay ? { date: ev.endRaw }   : { dateTime: ev.endRaw },
       };
-      await gcal.processCalendarEvent(rawEv, 'morningCalendarSync');
+      await gcal.processCalendarEvent(userId, rawEv, 'morningCalendarSync');
       pulledItems.push(`${ev.title}${ev.start ? ' — ' + ev.start : ''}`);
     } catch { }
   }
 
-  console.log(`[calendar-sync] RUN END caller=morningCalendarSync pushed=${synced} pulled=${pulledItems.length} pid=${process.pid} time=${new Date().toISOString()}`);
+  console.log(`[calendar-sync] RUN END caller=morningCalendarSync userId=${userId} pushed=${synced} pulled=${pulledItems.length} pid=${process.pid} time=${new Date().toISOString()}`);
 
   if (pulledItems.length) {
-    await sendMessage(
+    await sendMessage(userId,
       `Pulled ${pulledItems.length} event${pulledItems.length !== 1 ? 's' : ''} from Google Calendar into today:\n` +
       pulledItems.map(item => `• ${item}`).join('\n')
     );
   }
 }
+
+const morningCalendarSync = forEachUser(morningCalendarSyncForUser);
 
 // ── task due reminder ─────────────────────────────────────────────────────────
 
@@ -233,22 +278,26 @@ async function taskDueTick() {
 
   const hhmm  = watHHMM(now);
   const today = now.toISOString().slice(0, 10);
-  const tasks = getTasksByDate.all(today);
 
-  for (const task of tasks) {
-    if (task.done || !task.time || task.time !== hhmm) continue;
-    const key = `${task.id}:${today}`;
-    if (sentReminders.has(key)) continue;
-    sentReminders.add(key);
+  for (const u of getUsersWithTelegram()) {
+    const userId = u.id;
+    const tasks  = getTasksByDate(userId, today);
 
-    const taskNum = tasks.findIndex(t => t.id === task.id) + 1;
-    try {
-      await sendMessage(
-        `Due now: [${task.business.toUpperCase()}] ${task.name}\n` +
-        `/done ${taskNum} to mark complete`
-      );
-    } catch (err) {
-      console.error('[scheduler] taskDue send failed:', err.message);
+    for (const task of tasks) {
+      if (task.done || !task.time || task.time !== hhmm) continue;
+      const key = `${task.id}:${today}`; // task.id is globally unique — safe without userId in the key
+      if (sentReminders.has(key)) continue;
+      sentReminders.add(key);
+
+      const taskNum = tasks.findIndex(t => t.id === task.id) + 1;
+      try {
+        await sendMessage(userId,
+          `Due now: [${task.business.toUpperCase()}] ${task.name}\n` +
+          `/done ${taskNum} to mark complete`
+        );
+      } catch (err) {
+        console.error(`[scheduler] taskDue send failed for user ${userId}:`, err.message);
+      }
     }
   }
 }
@@ -266,28 +315,28 @@ const JOBS = [
   { time: '05:25', label: 'morning-cal-sync', action: morningCalendarSync, noQuiet: true },
 
   // anchor blocks
-  { time: '05:25', label: 'prayer-5min',    action: () => notifEnabled('block_reminders') && sendMessage('Prayer block in 5 minutes') },
-  { time: '05:40', label: 'journaling-now', action: () => sendMessage(buildBlockMessage('05:45', 'Journaling', 'anchor'))             },
-  { time: '06:25', label: 'orient-now',     action: () => sendMessage(buildBlockMessage('06:00', 'Orient and daily priority', 'blok'))  },
-  { time: '06:25', label: 'pre-day-5min',   action: () => sendMessage(buildBlockMessage('06:30', 'Pre-day setup', 'aphl'))            },
+  { time: '05:25', label: 'prayer-5min',    action: forEachTelegramUser(userId => notifEnabled(userId, 'block_reminders') && sendMessage(userId, 'Prayer block in 5 minutes')) },
+  { time: '05:40', label: 'journaling-now', action: forEachTelegramUser(userId => sendMessage(userId, buildBlockMessage(userId, '05:45', 'Journaling', 'anchor'))) },
+  { time: '06:25', label: 'orient-now',     action: forEachTelegramUser(userId => sendMessage(userId, buildBlockMessage(userId, '06:00', 'Orient and daily priority', 'blok'))) },
+  { time: '06:25', label: 'pre-day-5min',   action: forEachTelegramUser(userId => sendMessage(userId, buildBlockMessage(userId, '06:30', 'Pre-day setup', 'aphl'))) },
 
   // daily briefing
   { time: '06:30', label: 'briefing',       action: morningBriefing },
-  { time: '06:50', label: 'morning-cmd',    action: () => sendMessage(buildBlockMessage('07:00', 'Morning command', 'aphl'))          },
+  { time: '06:50', label: 'morning-cmd',    action: forEachTelegramUser(userId => sendMessage(userId, buildBlockMessage(userId, '07:00', 'Morning command', 'aphl'))) },
 
   // work blocks
-  { time: '07:20', label: 'raise',        action: () => sendMessage(buildBlockMessage('07:30', 'Raise — investor relations', 'blok'))  },
-  { time: '08:50', label: 'product',      action: () => sendMessage(buildBlockMessage('09:00', 'Product block', 'blok'))              },
-  { time: '09:50', label: 'operations',   action: () => sendMessage(buildBlockMessage('10:00', 'Operations block', 'aphl'))           },
-  { time: '10:20', label: 'comms',        action: () => sendMessage(buildBlockMessage('10:30', 'Comms block', 'blok'))                },
-  { time: '11:20', label: 'brand',        action: () => sendMessage(buildBlockMessage('11:30', 'Brand block', 'blok'))                },
-  { time: '12:50', label: 'md-strategic', action: () => sendMessage(buildBlockMessage('13:00', 'MD strategic hour', 'aphl'))          },
-  { time: '13:50', label: 'strategy',     action: () => sendMessage(buildBlockMessage('14:00', 'Strategy block', 'blok'))             },
-  { time: '15:50', label: 'day-close',    action: () => sendMessage(buildBlockMessage('16:00', 'Day close', 'blok'))                  },
+  { time: '07:20', label: 'raise',        action: forEachTelegramUser(userId => sendMessage(userId, buildBlockMessage(userId, '07:30', 'Raise — investor relations', 'blok'))) },
+  { time: '08:50', label: 'product',      action: forEachTelegramUser(userId => sendMessage(userId, buildBlockMessage(userId, '09:00', 'Product block', 'blok'))) },
+  { time: '09:50', label: 'operations',   action: forEachTelegramUser(userId => sendMessage(userId, buildBlockMessage(userId, '10:00', 'Operations block', 'aphl'))) },
+  { time: '10:20', label: 'comms',        action: forEachTelegramUser(userId => sendMessage(userId, buildBlockMessage(userId, '10:30', 'Comms block', 'blok'))) },
+  { time: '11:20', label: 'brand',        action: forEachTelegramUser(userId => sendMessage(userId, buildBlockMessage(userId, '11:30', 'Brand block', 'blok'))) },
+  { time: '12:50', label: 'md-strategic', action: forEachTelegramUser(userId => sendMessage(userId, buildBlockMessage(userId, '13:00', 'MD strategic hour', 'aphl'))) },
+  { time: '13:50', label: 'strategy',     action: forEachTelegramUser(userId => sendMessage(userId, buildBlockMessage(userId, '14:00', 'Strategy block', 'blok'))) },
+  { time: '15:50', label: 'day-close',    action: forEachTelegramUser(userId => sendMessage(userId, buildBlockMessage(userId, '16:00', 'Day close', 'blok'))) },
 
   // personal blocks
-  { time: '17:50', label: 'personal',     action: () => sendMessage(buildBlockMessage('18:00', 'Personal block', 'personal'))        },
-  { time: '19:00', label: 'physical',     action: () => sendMessage(buildBlockMessage('19:00', 'Physical activity', 'personal'))     },
+  { time: '17:50', label: 'personal',     action: forEachTelegramUser(userId => sendMessage(userId, buildBlockMessage(userId, '18:00', 'Personal block', 'personal'))) },
+  { time: '19:00', label: 'physical',     action: forEachTelegramUser(userId => sendMessage(userId, buildBlockMessage(userId, '19:00', 'Physical activity', 'personal'))) },
 
   // EOD review
   { time: '21:00', label: 'eod', action: eodReview },
@@ -333,7 +382,7 @@ function tick() {
 
 // ── nudge loop (every 30 minutes) ─────────────────────────────────────────────
 
-async function nudgeTick() {
+const nudgeTick = forEachTelegramUser(async (userId) => {
   if (isQuietHours()) return;
 
   const now  = watNow();
@@ -341,61 +390,54 @@ async function nudgeTick() {
 
   // Only nudge during working hours: 06:00–20:30
   if (mins < 360 || mins >= 1230) return;
+  if (!notifEnabled(userId, 'nudges')) return;
 
   const date = now.toISOString().slice(0, 10);
 
   let pending;
   try {
-    pending = getPendingNudges(date);
+    pending = getPendingNudges(userId, date);
   } catch (err) {
-    console.error('[scheduler] nudgeTick getPendingNudges failed:', err.message);
+    console.error(`[scheduler] nudgeTick getPendingNudges failed for user ${userId}:`, err.message);
     return;
   }
 
-  const allTasks = getTasksByDate.all(date);
+  const allTasks = getTasksByDate(userId, date);
 
-  if (!notifEnabled('nudges')) return;
-
-  try {
-    await sendNudgeDigest(date, pending, allTasks);
-    if (pending.length) {
-      console.log(`[scheduler] nudge digest sent — ${pending.length} overdue task(s)`);
-    }
-  } catch (err) {
-    console.error('[scheduler] nudge digest failed:', err.message);
+  await sendNudgeDigest(userId, date, pending, allTasks);
+  if (pending.length) {
+    console.log(`[scheduler] nudge digest sent — user ${userId} — ${pending.length} overdue task(s)`);
   }
-}
+});
 
 // ── Google Calendar polling fallback (every 15 min) ──────────────────────────
 // gcal.getEventsForDate() filters out LIFELINE-created events before returning
 // them, so this loop only ever sees externally created events — it can't
 // re-import a task LIFELINE itself pushed to Calendar as a duplicate.
 
-async function calendarPoll() {
-  const tokenRow = getSetting.get('google_tokens');
+async function calendarPollForUser(userId) {
+  const tokenRow = getSetting(userId, 'google_tokens');
   if (!tokenRow) return; // not connected
 
-  if (isQuietHours()) return; // includes stop-after-20:30
-
-  console.log(`[calendar-sync] RUN START caller=calendarPoll pid=${process.pid} time=${new Date().toISOString()}`);
+  console.log(`[calendar-sync] RUN START caller=calendarPoll userId=${userId} pid=${process.pid} time=${new Date().toISOString()}`);
 
   const today = watToday();
   let events;
   try {
-    events = await gcal.getEventsForDate(today);
+    events = await gcal.getEventsForDate(userId, today);
   } catch (err) {
     if (err.message !== 'Not authenticated') {
-      console.error('[calendar] poll error:', err.message);
+      console.error(`[calendar] poll error for user ${userId}:`, err.message);
     }
-    console.log(`[calendar-sync] RUN END caller=calendarPoll ABORTED err=${err.message} pid=${process.pid}`);
+    console.log(`[calendar-sync] RUN END caller=calendarPoll userId=${userId} ABORTED err=${err.message} pid=${process.pid}`);
     return;
   }
-  console.log(`[calendar-sync] caller=calendarPoll fetched=${events.length} event(s): ${events.map(e => e.id).join(',')} pid=${process.pid}`);
+  console.log(`[calendar-sync] caller=calendarPoll userId=${userId} fetched=${events.length} event(s): ${events.map(e => e.id).join(',')} pid=${process.pid}`);
 
   let checked = 0;
   for (const ev of events) {
-    const existing = getTaskByEventId.get(ev.id);
-    console.log(`[calendar-sync] caller=calendarPoll eventId=${ev.id} title=${JSON.stringify(ev.title)} existingMatch=${existing ? `YES(taskId=${existing.id})` : 'NO'} pid=${process.pid}`);
+    const existing = getTaskByEventId(userId, ev.id);
+    console.log(`[calendar-sync] caller=calendarPoll userId=${userId} eventId=${ev.id} title=${JSON.stringify(ev.title)} existingMatch=${existing ? `YES(taskId=${existing.id})` : 'NO'} pid=${process.pid}`);
     if (!existing) {
       // Reconstruct raw-format event that processCalendarEvent expects
       const rawEv = {
@@ -406,18 +448,25 @@ async function calendarPoll() {
         start:       ev.allDay ? { date: ev.startRaw } : { dateTime: ev.startRaw },
         end:         ev.allDay ? { date: ev.endRaw }   : { dateTime: ev.endRaw },
       };
-      await gcal.processCalendarEvent(rawEv, 'calendarPoll').catch(err =>
-        console.error('[calendar] processCalendarEvent failed:', err.message)
+      await gcal.processCalendarEvent(userId, rawEv, 'calendarPoll').catch(err =>
+        console.error(`[calendar] processCalendarEvent failed for user ${userId}:`, err.message)
       );
     } else if (existing.name !== ev.title) {
       // Silent update — event was renamed in Google Calendar
-      updateTaskFromCalendar.run(ev.title, ev.start || null, today, ev.id);
+      updateTaskFromCalendar(userId, ev.title, ev.start || null, today, ev.id);
     }
     checked++;
   }
 
-  console.log(`[calendar-sync] RUN END caller=calendarPoll checked=${checked} pid=${process.pid} time=${new Date().toISOString()}`);
-  console.log(`[calendar] polled — ${checked} event${checked !== 1 ? 's' : ''} checked`);
+  console.log(`[calendar-sync] RUN END caller=calendarPoll userId=${userId} checked=${checked} pid=${process.pid} time=${new Date().toISOString()}`);
+  console.log(`[calendar] polled — ${checked} event${checked !== 1 ? 's' : ''} checked for user ${userId}`);
+}
+
+async function calendarPoll() {
+  if (isQuietHours()) return; // includes stop-after-20:30 — same for everyone, single WAT clock
+  for (const u of getAllUserIds()) {
+    await calendarPollForUser(u.id);
+  }
 }
 
 // ── init ──────────────────────────────────────────────────────────────────────

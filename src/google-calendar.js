@@ -6,16 +6,22 @@
 // isLifelineTaggedEvent below for why it isn't renamed).
 // These are never re-imported back into LIFELINE — that's what caused the
 // duplicate-task loop (LIFELINE pushes a task out, then reads it back in as new).
+//
+// MULTI-USER: every function here takes userId as its first argument. Tokens,
+// calendar id, sync token, and watch channel are all stored per-user under
+// the (user_id, key) settings table — there is no more "the one connected
+// account", each user has their own.
 
 require('dotenv').config();
 const { google } = require('googleapis');
 const {
-  getSetting, upsertSetting, deleteSetting, updateTaskEventId,
+  db, getSetting, upsertSetting, deleteSetting, updateTaskEventId,
   getTaskByEventId, insertCalendarTask, updateTaskFromCalendar, deleteTaskByEventId,
   getTasksByDate, syncDayLog, getFounderProfile, logTaskInsert,
 } = require('./db');
 
 // Injected by server.js after both modules load — avoids circular dependency
+// (telegram.js requires this module too). Signature: (userId, text) => Promise.
 let _sendMessage = () => Promise.resolve();
 function setMessageSender(fn) { _sendMessage = fn; }
 
@@ -34,29 +40,35 @@ function makeOAuth2Client() {
   );
 }
 
-function getAuthUrl() {
+function getAuthUrl(userId) {
+  // `state` carries the userId through Google's redirect as a defense-in-depth
+  // CSRF check — the callback (server.js) already gets the real userId from
+  // the session cookie riding along on the same browser round trip, but
+  // cross-checking state against that catches a stale/replayed auth link
+  // being completed under a different logged-in session.
   return makeOAuth2Client().generateAuthUrl({
     access_type: 'offline',
     scope:       SCOPES,
     prompt:      'consent',
+    state:       String(userId),
   });
 }
 
-async function exchangeCode(code) {
+async function exchangeCode(userId, code) {
   const client = makeOAuth2Client();
   const { tokens } = await client.getToken(code);
-  upsertSetting.run('google_tokens', JSON.stringify(tokens));
+  upsertSetting(userId, 'google_tokens', JSON.stringify(tokens));
   return tokens;
 }
 
-function getClient() {
-  const row = getSetting.get('google_tokens');
+function getClient(userId) {
+  const row = getSetting(userId, 'google_tokens');
   if (!row) throw new Error('Not authenticated');
   const stored = JSON.parse(row.value);
   const client = makeOAuth2Client();
   client.setCredentials(stored);
   client.on('tokens', (fresh) => {
-    upsertSetting.run('google_tokens', JSON.stringify({ ...stored, ...fresh }));
+    upsertSetting(userId, 'google_tokens', JSON.stringify({ ...stored, ...fresh }));
   });
   return client;
 }
@@ -96,8 +108,8 @@ function mapEvent(e) {
 
 // ── calendar list ─────────────────────────────────────────────────────────────
 
-async function listCalendars() {
-  const cal = google.calendar({ version: 'v3', auth: getClient() });
+async function listCalendars(userId) {
+  const cal = google.calendar({ version: 'v3', auth: getClient(userId) });
   const res = await cal.calendarList.list();
   return (res.data.items || []).map(c => ({
     id:      c.id,
@@ -130,10 +142,10 @@ function isLifelineCreatedEvent(event) {
 
 // ── event fetching ────────────────────────────────────────────────────────────
 
-async function getEventsForDate(dateStr) {
-  const cal             = google.calendar({ version: 'v3', auth: getClient() });
+async function getEventsForDate(userId, dateStr) {
+  const cal             = google.calendar({ version: 'v3', auth: getClient(userId) });
   const { start, end }  = watMidnight(dateStr);
-  const calRow          = getSetting.get('google_calendar_id');
+  const calRow          = getSetting(userId, 'google_calendar_id');
   const calendarId      = calRow ? calRow.value : 'primary';
   const res = await cal.events.list({
     calendarId,
@@ -145,14 +157,14 @@ async function getEventsForDate(dateStr) {
   return (res.data.items || []).filter(e => !isLifelineCreatedEvent(e)).map(mapEvent);
 }
 
-async function getTodayEvents() {
+async function getTodayEvents(userId) {
   const today = new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 10);
-  return getEventsForDate(today);
+  return getEventsForDate(userId, today);
 }
 
-async function getEventsForMonth(year, month) {
-  const cal         = google.calendar({ version: 'v3', auth: getClient() });
-  const calRow      = getSetting.get('google_calendar_id');
+async function getEventsForMonth(userId, year, month) {
+  const cal         = google.calendar({ version: 'v3', auth: getClient(userId) });
+  const calRow      = getSetting(userId, 'google_calendar_id');
   const calendarId  = calRow ? calRow.value : 'primary';
   const mm          = String(month).padStart(2, '0');
   const lastDay     = new Date(year, month, 0).getDate(); // day 0 of next month = last day of this month
@@ -176,9 +188,9 @@ async function getEventsForMonth(year, month) {
 
 // ── event creation / update / delete ─────────────────────────────────────────
 
-async function createEvent(title, dateStr, startTime, endTime, description, calendarId) {
-  const cal     = google.calendar({ version: 'v3', auth: getClient() });
-  const calId   = calendarId || getSetting.get('google_calendar_id')?.value || 'primary';
+async function createEvent(userId, title, dateStr, startTime, endTime, description, calendarId) {
+  const cal     = google.calendar({ version: 'v3', auth: getClient(userId) });
+  const calId   = calendarId || getSetting(userId, 'google_calendar_id')?.value || 'primary';
   const start   = `${dateStr}T${startTime}:00+01:00`;
   const end     = `${dateStr}T${endTime}:00+01:00`;
   const res = await cal.events.insert({
@@ -193,9 +205,9 @@ async function createEvent(title, dateStr, startTime, endTime, description, cale
   return res.data;
 }
 
-async function updateEvent(eventId, updates, calendarId) {
-  const cal   = google.calendar({ version: 'v3', auth: getClient() });
-  const calId = calendarId || getSetting.get('google_calendar_id')?.value || 'primary';
+async function updateEvent(userId, eventId, updates, calendarId) {
+  const cal   = google.calendar({ version: 'v3', auth: getClient(userId) });
+  const calId = calendarId || getSetting(userId, 'google_calendar_id')?.value || 'primary';
   const res   = await cal.events.patch({
     calendarId: calId,
     eventId,
@@ -204,9 +216,9 @@ async function updateEvent(eventId, updates, calendarId) {
   return res.data;
 }
 
-async function deleteEvent(eventId, calendarId) {
-  const cal   = google.calendar({ version: 'v3', auth: getClient() });
-  const calId = calendarId || getSetting.get('google_calendar_id')?.value || 'primary';
+async function deleteEvent(userId, eventId, calendarId) {
+  const cal   = google.calendar({ version: 'v3', auth: getClient(userId) });
+  const calId = calendarId || getSetting(userId, 'google_calendar_id')?.value || 'primary';
   await cal.events.delete({ calendarId: calId, eventId });
 }
 
@@ -218,13 +230,13 @@ const BIZ_LABEL_CAL = {
 };
 const BIZ_COLOR_CAL = { blok: '9', aphl: '2', trade: '5', personal: '4', anchor: '8' };
 
-async function syncTaskToCalendar(task) {
+async function syncTaskToCalendar(userId, task) {
   if (!process.env.GOOGLE_CLIENT_ID) return null;
-  const tokenRow = getSetting.get('google_tokens');
+  const tokenRow = getSetting(userId, 'google_tokens');
   if (!tokenRow) return null;
 
-  const cal        = google.calendar({ version: 'v3', auth: getClient() });
-  const calRow     = getSetting.get('google_calendar_id');
+  const cal        = google.calendar({ version: 'v3', auth: getClient(userId) });
+  const calRow     = getSetting(userId, 'google_calendar_id');
   const calendarId = calRow ? calRow.value : 'primary';
 
   const biz      = task.business || 'personal';
@@ -234,7 +246,7 @@ async function syncTaskToCalendar(task) {
   const colorId  = isDone ? '8' : (BIZ_COLOR_CAL[biz] || '4');
 
   const description =
-    (getFounderProfile().brandName || 'LIFELINE') + ' task\n' +
+    (getFounderProfile(userId).brandName || 'LIFELINE') + ' task\n' +
     'Business: ' + bizLabel + '\n' +
     'Priority: ' + (task.priority || 'normal') + '\n' +
     'Source: '   + (task.source   || 'manual');
@@ -294,7 +306,7 @@ async function syncTaskToCalendar(task) {
       if (err.code === 404 || err.code === 410) {
         const res = await cal.events.insert({ calendarId, requestBody });
         event = res.data;
-        updateTaskEventId.run(event.id, task.id);
+        updateTaskEventId(userId, event.id, task.id);
       } else {
         throw err;
       }
@@ -302,7 +314,7 @@ async function syncTaskToCalendar(task) {
   } else {
     const res = await cal.events.insert({ calendarId, requestBody });
     event = res.data;
-    updateTaskEventId.run(event.id, task.id);
+    updateTaskEventId(userId, event.id, task.id);
   }
 
   return event;
@@ -310,14 +322,14 @@ async function syncTaskToCalendar(task) {
 
 // ── schedule blocks sync ──────────────────────────────────────────────────────
 
-async function syncBlocksToCalendar(blocks) {
-  const cal     = google.calendar({ version: 'v3', auth: getClient() });
+async function syncBlocksToCalendar(userId, blocks) {
+  const cal     = google.calendar({ version: 'v3', auth: getClient(userId) });
   const today   = new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 10);
 
   // Find or create the schedule calendar. Setting key is kept stable across
   // the rename so an already-connected calendar doesn't get duplicated.
-  const brand = getFounderProfile().brandName || 'LIFELINE';
-  let calId = getSetting.get('daywan_calendar_id')?.value;
+  const brand = getFounderProfile(userId).brandName || 'LIFELINE';
+  let calId = getSetting(userId, 'daywan_calendar_id')?.value;
   if (!calId) {
     const listRes = await cal.calendarList.list();
     const existing = (listRes.data.items || []).find(c => c.summary === `${brand} Schedule` || c.summary === 'DAYWAN Schedule');
@@ -329,7 +341,7 @@ async function syncBlocksToCalendar(blocks) {
       });
       calId = created.data.id;
     }
-    upsertSetting.run('daywan_calendar_id', calId);
+    upsertSetting(userId, 'daywan_calendar_id', calId);
   }
 
   // Delete today's existing events on this calendar to avoid duplicates
@@ -363,22 +375,22 @@ async function syncBlocksToCalendar(blocks) {
 
 // ── webhook watch management ──────────────────────────────────────────────────
 
-async function setupCalendarWatch(serverUrl) {
+async function setupCalendarWatch(userId, serverUrl) {
   if (!serverUrl || serverUrl.includes('localhost')) {
     console.log('[calendar] Skipping webhook setup — no public URL');
     return null;
   }
-  const cal        = google.calendar({ version: 'v3', auth: getClient() });
-  const calRow     = getSetting.get('google_calendar_id');
+  const cal        = google.calendar({ version: 'v3', auth: getClient(userId) });
+  const calRow     = getSetting(userId, 'google_calendar_id');
   const calendarId = calRow ? calRow.value : 'primary';
 
   // Stop existing channel first
-  await stopCalendarWatch().catch(() => {});
+  await stopCalendarWatch(userId).catch(() => {});
 
   const res = await cal.events.watch({
     calendarId,
     requestBody: {
-      id:         `lifeline-channel-${Date.now()}`,
+      id:         `lifeline-channel-${userId}-${Date.now()}`,
       type:       'web_hook',
       address:    `${serverUrl}/api/calendar/webhook`,
       token:      process.env.GOOGLE_WEBHOOK_TOKEN || 'lifeline-secret',
@@ -392,37 +404,55 @@ async function setupCalendarWatch(serverUrl) {
     expiration: res.data.expiration,
     created_at: Date.now(),
   };
-  upsertSetting.run('google_watch_channel', JSON.stringify(channel));
-  console.log(`[calendar] Watch channel registered: ${channel.id}`);
+  upsertSetting(userId, 'google_watch_channel', JSON.stringify(channel));
+  console.log(`[calendar] Watch channel registered for user ${userId}: ${channel.id}`);
   return channel;
 }
 
-async function stopCalendarWatch() {
-  const row = getSetting.get('google_watch_channel');
+async function stopCalendarWatch(userId) {
+  const row = getSetting(userId, 'google_watch_channel');
   if (!row) return;
   const channel = JSON.parse(row.value);
   try {
-    const cal = google.calendar({ version: 'v3', auth: getClient() });
+    const cal = google.calendar({ version: 'v3', auth: getClient(userId) });
     await cal.channels.stop({
       requestBody: { id: channel.id, resourceId: channel.resourceId },
     });
   } catch (err) {
     console.warn('[calendar] Stop watch warning:', err.message);
   }
-  deleteSetting.run('google_watch_channel');
+  deleteSetting(userId, 'google_watch_channel');
 }
 
-async function renewCalendarWatch(serverUrl) {
-  console.log('[calendar] Renewing watch channel');
-  await stopCalendarWatch().catch(() => {});
-  return setupCalendarWatch(serverUrl);
+async function renewCalendarWatch(userId, serverUrl) {
+  console.log(`[calendar] Renewing watch channel for user ${userId}`);
+  await stopCalendarWatch(userId).catch(() => {});
+  return setupCalendarWatch(userId, serverUrl);
+}
+
+// Given a Google push-notification channel id (from the webhook's
+// x-goog-channel-id header), finds which user it belongs to. Needed because
+// the webhook endpoint is a single shared URL for every user's watch channel
+// — there's no session/userId on that request, only whatever Google's push
+// tells us. Scans everyone's stored google_watch_channel setting; cheap at
+// this app's user scale (a handful of users, not thousands).
+async function resolveUserIdForWatchChannel(channelId) {
+  if (!channelId) return null;
+  const rows = db.prepare(`SELECT user_id, value FROM settings WHERE key = 'google_watch_channel'`).all();
+  for (const row of rows) {
+    try {
+      const channel = JSON.parse(row.value);
+      if (channel.id === channelId) return row.user_id;
+    } catch { /* skip malformed rows */ }
+  }
+  return null;
 }
 
 // ── incremental sync ──────────────────────────────────────────────────────────
 
-async function getChangedEvents(syncToken) {
-  const cal        = google.calendar({ version: 'v3', auth: getClient() });
-  const calRow     = getSetting.get('google_calendar_id');
+async function getChangedEvents(userId, syncToken) {
+  const cal        = google.calendar({ version: 'v3', auth: getClient(userId) });
+  const calRow     = getSetting(userId, 'google_calendar_id');
   const calendarId = calRow ? calRow.value : 'primary';
 
   const params = {
@@ -442,14 +472,14 @@ async function getChangedEvents(syncToken) {
   try {
     const res = await cal.events.list(params);
     if (res.data.nextSyncToken) {
-      upsertSetting.run('google_sync_token', res.data.nextSyncToken);
+      upsertSetting(userId, 'google_sync_token', res.data.nextSyncToken);
     }
     return res.data.items || [];
   } catch (err) {
     if (err.code === 410) {
       // Sync token expired — full re-sync
-      deleteSetting.run('google_sync_token');
-      return getChangedEvents(null);
+      deleteSetting(userId, 'google_sync_token');
+      return getChangedEvents(userId, null);
     }
     throw err;
   }
@@ -465,15 +495,15 @@ function _detectBusiness(title, description) {
   return 'personal';
 }
 
-async function processCalendarEvent(event, caller = 'unknown') {
-  console.log(`[calendar] processCalendarEvent ENTER caller=${caller} eventId=${event.id} summary=${JSON.stringify(event.summary)} status=${event.status} pid=${process.pid} time=${new Date().toISOString()}`);
+async function processCalendarEvent(userId, event, caller = 'unknown') {
+  console.log(`[calendar] processCalendarEvent ENTER caller=${caller} userId=${userId} eventId=${event.id} summary=${JSON.stringify(event.summary)} status=${event.status} pid=${process.pid} time=${new Date().toISOString()}`);
 
   if (event.status === 'cancelled') {
-    const task = getTaskByEventId.get(event.id);
+    const task = getTaskByEventId(userId, event.id);
     if (task && task.calendar_source === 'google') {
-      deleteTaskByEventId.run(event.id);
-      syncDayLog(task.date);
-      _sendMessage(
+      deleteTaskByEventId(userId, event.id);
+      syncDayLog(userId, task.date);
+      _sendMessage(userId,
         `Calendar event deleted — task removed:\n[${task.business.toUpperCase()}] ${task.name}`
       ).catch(() => {});
     }
@@ -495,25 +525,25 @@ async function processCalendarEvent(event, caller = 'unknown') {
 
   const startTime = watHHMM(event.start?.dateTime) || null;
   const business  = _detectBusiness(title, event.description || '');
-  const existing  = getTaskByEventId.get(event.id);
+  const existing  = getTaskByEventId(userId, event.id);
 
-  console.log(`[calendar] processCalendarEvent caller=${caller} eventId=${event.id} existingMatch=${existing ? `YES(taskId=${existing.id})` : 'NO'} pid=${process.pid}`);
+  console.log(`[calendar] processCalendarEvent caller=${caller} userId=${userId} eventId=${event.id} existingMatch=${existing ? `YES(taskId=${existing.id})` : 'NO'} pid=${process.pid}`);
 
   if (existing) {
-    updateTaskFromCalendar.run(title, startTime, date, event.id);
-    syncDayLog(date);
-    _sendMessage(
+    updateTaskFromCalendar(userId, title, startTime, date, event.id);
+    syncDayLog(userId, date);
+    _sendMessage(userId,
       `Calendar event updated — task updated:\n` +
       `[${business.toUpperCase()}] ${title}` +
       (startTime ? ` — ${date} at ${startTime}` : '')
     ).catch(() => {});
   } else {
-    insertCalendarTask.run(date, title, business, startTime, event.id);
-    logTaskInsert('calendar', title, { date, business, eventId: event.id, caller });
-    syncDayLog(date);
-    const allTasks = getTasksByDate.all(date);
+    insertCalendarTask(userId, date, title, business, startTime, event.id);
+    logTaskInsert('calendar', title, { date, business, eventId: event.id, caller, userId });
+    syncDayLog(userId, date);
+    const allTasks = getTasksByDate(userId, date);
     const taskNum  = allTasks.findIndex(t => t.calendar_event_id === event.id) + 1;
-    _sendMessage(
+    _sendMessage(userId,
       `New calendar event — task added:\n` +
       `[${business.toUpperCase()}] ${title}` +
       (startTime ? ` — ${date} at ${startTime}` : '') +
@@ -539,6 +569,7 @@ module.exports = {
   setupCalendarWatch,
   stopCalendarWatch,
   renewCalendarWatch,
+  resolveUserIdForWatchChannel,
   getChangedEvents,
   processCalendarEvent,
   isLifelineCreatedEvent,

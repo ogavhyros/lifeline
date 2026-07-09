@@ -33,7 +33,7 @@
 
     /* ── app shell ────────────────────────────────────────────────────────────── */
     .app {
-      display: flex;
+      display: none; /* revealed by JS once the auth-gate check passes */
       height: 100vh;
     }
 
@@ -2332,10 +2332,93 @@
       .routines-biz-grid { grid-template-columns: 1fr; }
       .routines-personal-grid { grid-template-columns: 1fr; }
     }
+
+    /* ── auth gate ─────────────────────────────────────────────────────────────── */
+    #auth-gate {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background: #ffffff;
+      padding: 24px;
+    }
+    .auth-card {
+      width: 100%;
+      max-width: 320px;
+    }
+    .auth-logo {
+      font-size: 16px;
+      font-weight: 500;
+      color: #1a1a1a;
+      letter-spacing: -0.01em;
+      text-align: center;
+    }
+    .auth-tag {
+      font-size: 12px;
+      color: #999;
+      text-align: center;
+      margin-bottom: 28px;
+    }
+    .auth-input {
+      max-width: none !important;
+      width: 100%;
+      display: block;
+      margin-bottom: 10px;
+      padding: 9px 10px !important;
+      font-size: 14px !important;
+    }
+    .auth-submit-btn {
+      width: 100%;
+      padding: 10px 16px;
+      font-size: 13px;
+      margin-top: 4px;
+    }
+    .auth-error {
+      font-size: 12px;
+      color: #cc3300;
+      margin-top: 8px;
+      min-height: 14px;
+    }
+    .auth-switch {
+      font-size: 12px;
+      color: #999;
+      text-align: center;
+      margin-top: 16px;
+    }
+    .auth-switch a {
+      color: #1a1a1a;
+      text-decoration: underline;
+      text-decoration-style: dotted;
+    }
   </style>
 </head>
 
 <body>
+
+<!-- ── auth gate — shown instead of the app when not logged in ────────────────── -->
+<div id="auth-gate">
+  <div class="auth-card">
+    <div class="auth-logo">LIFELINE</div>
+    <div class="auth-tag">Your Operating System</div>
+
+    <div id="auth-login-form">
+      <input class="settings-input auth-input" id="auth-login-email" type="email" placeholder="Email" autocomplete="username" />
+      <input class="settings-input auth-input" id="auth-login-password" type="password" placeholder="Password" autocomplete="current-password" />
+      <button class="primary-btn auth-submit-btn" onclick="doLogin()">Log in</button>
+      <div class="auth-error" id="auth-login-error"></div>
+      <p class="auth-switch">No account? <a href="#" onclick="showSignupForm();return false;">Sign up</a></p>
+    </div>
+
+    <div id="auth-signup-form" style="display:none">
+      <input class="settings-input auth-input" id="auth-signup-name" type="text" placeholder="Name" autocomplete="name" />
+      <input class="settings-input auth-input" id="auth-signup-email" type="email" placeholder="Email" autocomplete="username" />
+      <input class="settings-input auth-input" id="auth-signup-password" type="password" placeholder="Password (min 8 characters)" autocomplete="new-password" />
+      <button class="primary-btn auth-submit-btn" onclick="doSignup()">Create account</button>
+      <div class="auth-error" id="auth-signup-error"></div>
+      <p class="auth-switch">Already have an account? <a href="#" onclick="showLoginForm();return false;">Log in</a></p>
+    </div>
+  </div>
+</div>
 
 <!-- ── mobile top bar ──────────────────────────────────────────────────────── -->
 <div id="mobile-topbar">
@@ -2932,6 +3015,41 @@
             <button class="secondary-btn" onclick="addNewBusiness()">Add business</button>
           </div>
         </div>
+      </div>
+
+      <!-- Telegram -->
+      <div class="settings-section">
+        <div class="settings-section-head">Telegram</div>
+        <div id="telegram-settings-status">
+          <div class="settings-row">
+            <span class="settings-label">Status</span>
+            <span id="telegram-status-text" class="settings-value">Checking…</span>
+          </div>
+          <div id="telegram-connected-ui" style="display:none">
+            <p class="settings-hint">Bot messages, nudges, and reminders are sent to this chat.</p>
+            <button class="secondary-btn danger-btn" style="margin-top:8px" onclick="disconnectTelegram()">Disconnect</button>
+          </div>
+          <div id="telegram-disconnected-ui" style="display:none">
+            <div style="margin-top:8px">
+              <button class="primary-btn" id="telegram-connect-btn" onclick="connectTelegram()">Connect Telegram</button>
+              <p class="settings-hint">Links this account to a Telegram chat so you can manage tasks and get reminders there.</p>
+            </div>
+            <div id="telegram-connect-link" style="display:none;margin-top:10px">
+              <p class="settings-hint">Open this link in Telegram to finish connecting:</p>
+              <a id="telegram-deep-link" href="#" target="_blank" style="font-size:13px;word-break:break-all"></a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Account -->
+      <div class="settings-section">
+        <div class="settings-section-head">Account</div>
+        <div class="settings-row">
+          <span class="settings-label">Email</span>
+          <span class="settings-value" id="account-email-disp">—</span>
+        </div>
+        <button class="secondary-btn" style="margin-top:10px" onclick="logout()">Log out</button>
       </div>
     </div>
 
@@ -6039,7 +6157,7 @@ async function syncWeekTasks() {
 // ── SETTINGS VIEW ─────────────────────────────────────────────────────────────
 
 async function loadSettings() {
-  await Promise.all([loadGcalStatus(), loadSchedDefaults(), loadNotifPrefs(), loadFounderProfile()]);
+  await Promise.all([loadGcalStatus(), loadSchedDefaults(), loadNotifPrefs(), loadFounderProfile(), loadTelegramStatus()]);
   renderBusinessesList();
 }
 
@@ -6419,7 +6537,152 @@ function updateSub() {
   if (el) el.textContent = getActiveBlock() || '—';
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+// ── auth gate ─────────────────────────────────────────────────────────────────
+// The real access-control boundary is server-side (every /api/* route behind
+// requireAuth) — this is purely so the browser doesn't render the app shell
+// (or fetch any data into it) before we know someone's logged in.
+
+let CURRENT_USER = null;
+
+async function checkAuth() {
+  try {
+    const res = await fetch('/api/auth/me');
+    if (!res.ok) return false;
+    CURRENT_USER = await res.json();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function wireAuthForms() {
+  const onEnter = (id, fn) => document.getElementById(id)?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') fn();
+  });
+  onEnter('auth-login-email', doLogin);
+  onEnter('auth-login-password', doLogin);
+  onEnter('auth-signup-name', doSignup);
+  onEnter('auth-signup-email', doSignup);
+  onEnter('auth-signup-password', doSignup);
+}
+
+async function doLogin() {
+  const email    = document.getElementById('auth-login-email').value.trim();
+  const password = document.getElementById('auth-login-password').value;
+  const errEl    = document.getElementById('auth-login-error');
+  errEl.textContent = '';
+  if (!email || !password) { errEl.textContent = 'Enter your email and password.'; return; }
+  try {
+    const res  = await fetch('/api/auth/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) { errEl.textContent = data.error || 'Login failed.'; return; }
+    window.location.reload();
+  } catch {
+    errEl.textContent = 'Could not reach the server.';
+  }
+}
+
+async function doSignup() {
+  const name     = document.getElementById('auth-signup-name').value.trim();
+  const email    = document.getElementById('auth-signup-email').value.trim();
+  const password = document.getElementById('auth-signup-password').value;
+  const errEl    = document.getElementById('auth-signup-error');
+  errEl.textContent = '';
+  if (!email || !password) { errEl.textContent = 'Enter an email and password.'; return; }
+  if (password.length < 8) { errEl.textContent = 'Password must be at least 8 characters.'; return; }
+  try {
+    const res  = await fetch('/api/auth/signup', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) { errEl.textContent = data.error || 'Signup failed.'; return; }
+    window.location.reload();
+  } catch {
+    errEl.textContent = 'Could not reach the server.';
+  }
+}
+
+function showSignupForm() {
+  document.getElementById('auth-login-form').style.display  = 'none';
+  document.getElementById('auth-signup-form').style.display = 'block';
+}
+function showLoginForm() {
+  document.getElementById('auth-signup-form').style.display = 'none';
+  document.getElementById('auth-login-form').style.display  = 'block';
+}
+
+async function logout() {
+  await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+  window.location.reload();
+}
+
+// ── Telegram connect (Settings) ─────────────────────────────────────────────
+
+async function loadTelegramStatus() {
+  try {
+    if (!CURRENT_USER) CURRENT_USER = await api('/api/auth/me');
+    const statusEl = document.getElementById('telegram-status-text');
+    const connUI   = document.getElementById('telegram-connected-ui');
+    const discUI   = document.getElementById('telegram-disconnected-ui');
+    document.getElementById('account-email-disp').textContent = CURRENT_USER.email || '—';
+
+    if (CURRENT_USER.telegram_connected) {
+      statusEl.textContent = 'Connected';
+      statusEl.style.color = '#1a6646';
+      connUI.style.display = '';
+      discUI.style.display = 'none';
+    } else {
+      statusEl.textContent = 'Not connected';
+      statusEl.style.color = '#888';
+      connUI.style.display = 'none';
+      discUI.style.display = '';
+      document.getElementById('telegram-connect-link').style.display = 'none';
+    }
+  } catch {}
+}
+
+async function connectTelegram() {
+  const btn = document.getElementById('telegram-connect-btn');
+  btn.disabled = true;
+  try {
+    const { deepLink } = await api('/api/telegram/connect-token', { method: 'POST' });
+    const linkEl = document.getElementById('telegram-connect-link');
+    const aEl    = document.getElementById('telegram-deep-link');
+    aEl.href = deepLink;
+    aEl.textContent = deepLink;
+    linkEl.style.display = '';
+  } catch (e) {
+    showToast(e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function disconnectTelegram() {
+  try {
+    await api('/api/telegram/connect', { method: 'DELETE' });
+    CURRENT_USER.telegram_connected = false;
+    await loadTelegramStatus();
+    showToast('Telegram disconnected');
+  } catch (e) {
+    showToast(e.message);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+
+  const authed = await checkAuth();
+  if (!authed) {
+    document.getElementById('auth-gate').style.display = 'flex';
+    wireAuthForms();
+    return; // don't fetch or render any app data until logged in
+  }
+  document.getElementById('auth-gate').style.display = 'none';
+  document.querySelector('.app').style.display = 'flex';
 
   // Handle OAuth redirect
   const urlParams = new URLSearchParams(window.location.search);
