@@ -241,6 +241,7 @@ try { db.exec(`ALTER TABLE tasks ADD COLUMN calendar_source TEXT`); } catch {}
 try { db.exec(`ALTER TABLE recurring_tasks ADD COLUMN category TEXT DEFAULT 'work'`); } catch {}
 try { db.exec(`ALTER TABLE recurring_tasks ADD COLUMN notes TEXT`); } catch {}
 try { db.exec(`ALTER TABLE tasks ADD COLUMN status TEXT`); } catch {}
+try { db.exec(`ALTER TABLE businesses ADD COLUMN icon TEXT`); } catch {}
 
 // ── multi-tenancy: user_id column on every previously-global table ───────────
 // Nullable on add (existing rows get backfilled to user 1 in the one-time
@@ -513,6 +514,10 @@ if (!_hasUserIdInUniqueIndex('pending_recurring')) {
 }
 
 if (!_hasUserIdInUniqueIndex('businesses')) {
+  // icon may or may not exist yet on the source table depending on whether
+  // this is a fresh DB (already has it, added above) or one rebuilt before
+  // that ALTER TABLE line existed — check rather than assume either way.
+  const businessesHasIcon = db.prepare(`PRAGMA table_info(businesses)`).all().some(c => c.name === 'icon');
   db.exec(`
     CREATE TABLE businesses_new (
       id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -521,12 +526,13 @@ if (!_hasUserIdInUniqueIndex('businesses')) {
       slug       TEXT    NOT NULL,
       color_bg   TEXT    DEFAULT '#f0f0ee',
       color_text TEXT    DEFAULT '#333333',
+      icon       TEXT,
       active     INTEGER DEFAULT 1,
       created_at TEXT    DEFAULT (datetime('now')),
       UNIQUE(user_id, slug)
     );
-    INSERT INTO businesses_new (id, user_id, name, slug, color_bg, color_text, active, created_at)
-      SELECT id, COALESCE(user_id, 1), name, slug, color_bg, color_text, active, created_at FROM businesses;
+    INSERT INTO businesses_new (id, user_id, name, slug, color_bg, color_text, icon, active, created_at)
+      SELECT id, COALESCE(user_id, 1), name, slug, color_bg, color_text, ${businessesHasIcon ? 'icon' : 'NULL'}, active, created_at FROM businesses;
     DROP TABLE businesses;
     ALTER TABLE businesses_new RENAME TO businesses;
     CREATE INDEX IF NOT EXISTS idx_businesses_user_id ON businesses(user_id);
@@ -1132,14 +1138,14 @@ const updateRecurringTime = (userId, time, id) => updateRecurringTimeStmt.run(ti
 
 const getBusinessesStmt    = db.prepare('SELECT * FROM businesses WHERE user_id = ? AND active = 1 ORDER BY id');
 const addBusinessStmt      = db.prepare(
-  `INSERT INTO businesses (user_id, name, slug, color_bg, color_text) VALUES (?, ?, ?, ?, ?)`
+  `INSERT INTO businesses (user_id, name, slug, color_bg, color_text, icon) VALUES (?, ?, ?, ?, ?, ?)`
 );
 const deactivateBusinessStmt = db.prepare('UPDATE businesses SET active = 0 WHERE user_id = ? AND id = ?');
 const getBusinessBySlugStmt  = db.prepare('SELECT * FROM businesses WHERE user_id = ? AND slug = ?');
 
 const getBusinesses = (userId) => getBusinessesStmt.all(userId);
-const addBusiness    = (userId, name, slug, color_bg, color_text) =>
-  addBusinessStmt.run(userId, name, slug, color_bg, color_text);
+const addBusiness    = (userId, name, slug, color_bg, color_text, icon) =>
+  addBusinessStmt.run(userId, name, slug, color_bg, color_text, icon || null);
 const deactivateBusiness = (userId, id) => deactivateBusinessStmt.run(userId, id);
 const getBusinessBySlug  = (userId, slug) => getBusinessBySlugStmt.get(userId, slug);
 
@@ -1386,10 +1392,10 @@ function seedDefaultsForUser(userId) {
   const bizCount = db.prepare('SELECT COUNT(*) AS n FROM businesses WHERE user_id = ?').get(userId);
   if (!bizCount || bizCount.n === 0) {
     db.transaction(() => {
-      addBusiness(userId, 'Blok AI',     'blok',     '#f0effe', '#4a3fa0');
-      addBusiness(userId, 'APHL Africa', 'aphl',     '#edf7f2', '#1a6646');
-      addBusiness(userId, 'TradeSol',    'trade',    '#fef8ec', '#7a4a0a');
-      addBusiness(userId, 'Personal',    'personal', '#fdf0f4', '#8a2a4a');
+      addBusiness(userId, 'Blok AI',     'blok',     '#f0effe', '#4a3fa0', 'ti-rocket');
+      addBusiness(userId, 'APHL Africa', 'aphl',     '#edf7f2', '#1a6646', 'ti-truck');
+      addBusiness(userId, 'TradeSol',    'trade',    '#fef8ec', '#7a4a0a', 'ti-building-store');
+      addBusiness(userId, 'Personal',    'personal', '#fdf0f4', '#8a2a4a', 'ti-user');
     })();
     console.log(`[db] Businesses seeded for user ${userId}`);
   }

@@ -2390,6 +2390,104 @@
       text-decoration: underline;
       text-decoration-style: dotted;
     }
+
+    /* ── onboarding wizard ─────────────────────────────────────────────────────── */
+    #onboarding-gate {
+      display: none;
+      align-items: flex-start;
+      justify-content: center;
+      min-height: 100vh;
+      background: #ffffff;
+      padding: 48px 24px;
+    }
+    .onboarding-card {
+      width: 100%;
+      max-width: 420px;
+    }
+    .onboarding-progress {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #999;
+      margin-bottom: 20px;
+    }
+    .onboarding-step-title {
+      font-size: 18px;
+      font-weight: 400;
+      color: #1a1a1a;
+      margin-bottom: 4px;
+    }
+    .onboarding-step-sub {
+      font-size: 12px;
+      color: #999;
+      margin-bottom: 16px;
+      line-height: 1.5;
+    }
+    .onboarding-nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 28px;
+      padding-top: 16px;
+      border-top: 1px solid #f0f0ee;
+    }
+    .ob-icon-picker {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .ob-icon-choice {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      border: 1px solid #e8e8e6;
+      background: #fff;
+      color: #999;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+    }
+    .ob-icon-choice:hover { border-color: #c9c9c5; color: #1a1a1a; }
+    .ob-icon-choice.selected { background: #1a1a1a; border-color: #1a1a1a; color: #fff; }
+    .ob-biz-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 0;
+      border-bottom: 1px solid #f5f5f4;
+    }
+    .ob-biz-swatch {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+    .ob-biz-name {
+      flex: 1;
+      font-size: 13px;
+      color: #1a1a1a;
+    }
+    .ob-anchor-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 0;
+    }
+    .ob-anchor-time {
+      max-width: 64px !important;
+      flex-shrink: 0;
+    }
+    .ob-goal-form {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid #f0f0ee;
+    }
   </style>
 </head>
 
@@ -2416,6 +2514,84 @@
       <button class="primary-btn auth-submit-btn" onclick="doSignup()">Create account</button>
       <div class="auth-error" id="auth-signup-error"></div>
       <p class="auth-switch">Already have an account? <a href="#" onclick="showLoginForm();return false;">Log in</a></p>
+    </div>
+  </div>
+</div>
+
+<!-- ── onboarding wizard — shown once after signup until finished ────────────── -->
+<div id="onboarding-gate">
+  <div class="onboarding-card">
+    <div class="onboarding-progress" id="onboarding-progress">Step 1 of 6</div>
+
+    <div class="onboarding-step" id="onboarding-step-1">
+      <div class="onboarding-step-title">You and your brand</div>
+      <div class="onboarding-step-sub">This becomes your instance's identity — used in briefings, reminders, and around the app.</div>
+      <input class="settings-input auth-input" id="ob-name" type="text" placeholder="Your name" />
+      <input class="settings-input auth-input" id="ob-brand" type="text" placeholder="Brand / instance name (e.g. your name + OS)" />
+      <textarea class="settings-textarea auth-input" id="ob-identity" rows="2" placeholder="A short line about who you are (optional)"></textarea>
+    </div>
+
+    <div class="onboarding-step" id="onboarding-step-2" style="display:none">
+      <div class="onboarding-step-title">Your ventures</div>
+      <div class="onboarding-step-sub">Add at least one — your businesses, projects, or areas of focus. Pick an icon and it's yours everywhere in the app.</div>
+      <div class="ob-icon-picker" id="ob-icon-picker"></div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <input class="settings-input" id="ob-biz-name" type="text" placeholder="e.g. Blok AI" style="max-width:none;flex:1" />
+        <button class="secondary-btn" type="button" onclick="addOnboardingBusiness()">Add</button>
+      </div>
+      <div class="ob-biz-list" id="ob-biz-list" style="margin-top:14px"></div>
+    </div>
+
+    <div class="onboarding-step" id="onboarding-step-3" style="display:none">
+      <div class="onboarding-step-title">Personal pillars</div>
+      <div class="onboarding-step-sub">Suggested defaults below — edit, remove, or add your own.</div>
+      <div id="ob-pillars-list"></div>
+      <div style="display:flex;gap:8px;margin:8px 0 16px">
+        <input class="settings-input" id="ob-pillar-add" type="text" placeholder="Add a pillar" style="max-width:none;flex:1" />
+        <button class="secondary-btn" type="button" onclick="addOnboardingPillar()">Add</button>
+      </div>
+      <div class="onboarding-step-sub" style="margin-top:4px">Non-negotiables (optional)</div>
+      <textarea class="settings-textarea auth-input" id="ob-nonneg" rows="2" placeholder="Anything that should never slip, named directly if it does"></textarea>
+    </div>
+
+    <div class="onboarding-step" id="onboarding-step-4" style="display:none">
+      <div class="onboarding-step-title">Daily anchors</div>
+      <div class="onboarding-step-sub">Suggested habit blocks — edit the times/names, remove any, or add your own.</div>
+      <div id="ob-anchors-list"></div>
+      <button class="secondary-btn" type="button" style="margin-top:8px" onclick="addOnboardingAnchor()">Add anchor</button>
+    </div>
+
+    <div class="onboarding-step" id="onboarding-step-5" style="display:none">
+      <div class="onboarding-step-title">Goals for the year</div>
+      <div class="onboarding-step-sub">Optional — skip this and add goals later if you'd rather.</div>
+      <div id="ob-goals-list"></div>
+      <div class="ob-goal-form">
+        <select class="settings-select" id="ob-goal-biz" style="max-width:none;width:100%;margin-bottom:6px"></select>
+        <select class="settings-select" id="ob-goal-dim" style="max-width:none;width:100%;margin-bottom:6px">
+          <option value="growth">Growth</option>
+          <option value="finance">Finance</option>
+          <option value="operations">Operations</option>
+        </select>
+        <input class="settings-input" id="ob-goal-title" type="text" placeholder="Goal title" style="max-width:none;width:100%;margin-bottom:6px" />
+        <button class="secondary-btn" type="button" onclick="addOnboardingGoal()">Add goal</button>
+      </div>
+    </div>
+
+    <div class="onboarding-step" id="onboarding-step-6" style="display:none">
+      <div class="onboarding-step-title">Notifications</div>
+      <div class="onboarding-step-sub">You can change these anytime in Settings.</div>
+      <div class="notif-list">
+        <div class="notif-row"><span>Morning briefing</span><label class="toggle-switch"><input type="checkbox" id="ob-notif-briefing" checked><span class="toggle-track"></span></label></div>
+        <div class="notif-row"><span>Block reminders</span><label class="toggle-switch"><input type="checkbox" id="ob-notif-block" checked><span class="toggle-track"></span></label></div>
+        <div class="notif-row"><span>Task nudges</span><label class="toggle-switch"><input type="checkbox" id="ob-notif-nudges" checked><span class="toggle-track"></span></label></div>
+        <div class="notif-row"><span>EOD review</span><label class="toggle-switch"><input type="checkbox" id="ob-notif-eod" checked><span class="toggle-track"></span></label></div>
+      </div>
+    </div>
+
+    <div class="onboarding-nav">
+      <button class="secondary-btn" id="onboarding-back-btn" type="button" onclick="onboardingBack()">Back</button>
+      <button class="primary-btn" id="onboarding-next-btn" type="button" onclick="onboardingNext()">Next</button>
+      <button class="primary-btn" id="onboarding-finish-btn" type="button" onclick="finishOnboarding()" style="display:none">Finish setup</button>
     </div>
   </div>
 </div>
@@ -2572,7 +2748,7 @@
           <div id="rec-list"></div>
           <div class="rec-add-row">
             <input class="rec-add-input" id="rec-name" type="text" placeholder="Task name" autocomplete="off" />
-            <select class="rec-add-select" id="rec-biz">
+            <select class="rec-add-select biz-select" id="rec-biz">
               <option value="blok">blok</option>
               <option value="aphl">aphl</option>
               <option value="trade">trade</option>
@@ -2745,7 +2921,7 @@
 
       <div class="new-cycle-form-wrap" id="new-cycle-form" style="display:none">
         <label>Business</label>
-        <select class="cycle-form-select" id="cycle-biz-sel">
+        <select class="cycle-form-select biz-select" id="cycle-biz-sel">
           <option value="blok">Blok AI</option>
           <option value="aphl">APHL Africa</option>
           <option value="trade">TradeSol</option>
@@ -3257,7 +3433,7 @@
       <div class="rec-add-row" style="margin-top:8px">
         <input class="rec-add-input" id="rt-future-name" type="text" placeholder="Future routine name" autocomplete="off" />
         <input class="rec-add-time" id="rt-future-time" type="text" placeholder="time" />
-        <select class="rec-add-select" id="rt-future-biz">
+        <select class="rec-add-select biz-select" id="rt-future-biz">
           <option value="blok">blok</option>
           <option value="aphl">aphl</option>
           <option value="personal" selected>personal</option>
@@ -3468,6 +3644,7 @@ async function loadBusinesses() {
     BUSINESSES = await api('/api/businesses');
     for (const b of BUSINESSES) BIZ_LABEL[b.slug] = b.name;
     updateAllBizSelects();
+    renderDocBizPills();
   } catch {}
 }
 
@@ -3478,6 +3655,15 @@ function updateAllBizSelects() {
       .map(b => `<option value="${esc(b.slug)}" ${b.slug === val ? 'selected' : ''}>${esc(b.name)}</option>`)
       .join('');
   });
+}
+
+function renderDocBizPills() {
+  const el = document.getElementById('doc-biz-pills');
+  if (!el || !BUSINESSES.length) return;
+  if (!BUSINESSES.some(b => b.slug === _docSelectedBiz)) _docSelectedBiz = BUSINESSES[0].slug;
+  el.innerHTML = BUSINESSES.map(b => `
+    <button class="doc-biz-pill${b.slug === _docSelectedBiz ? ' selected' : ''}" data-biz="${esc(b.slug)}" onclick="selectDocBiz(this)">${esc(b.name)}</button>
+  `).join('');
 }
 
 function tagHtml(biz) {
@@ -4257,7 +4443,9 @@ function setBoardFilter(slug) {
 }
 
 function boardCardIcon(biz) {
-  return BOARD_BIZ_ICON[String(biz || '').toLowerCase()] || 'ti-briefcase';
+  const slug = String(biz || '').toLowerCase();
+  const bizData = BUSINESSES.find(b => b.slug === slug);
+  return (bizData && bizData.icon) || BOARD_BIZ_ICON[slug] || 'ti-briefcase';
 }
 
 function renderBoard() {
@@ -6673,6 +6861,271 @@ async function disconnectTelegram() {
   }
 }
 
+// ── onboarding wizard ─────────────────────────────────────────────────────────
+// Shown once, right after signup, in place of the normal app shell. Nothing
+// is written to the server until "Finish" — going back and forth just edits
+// local state — so an abandoned wizard leaves nothing behind.
+
+const ONBOARDING_TOTAL_STEPS = 6;
+const ONBOARDING_ICONS = ['ti-rocket', 'ti-truck', 'ti-building-store', 'ti-briefcase', 'ti-chart-line', 'ti-currency-dollar', 'ti-home', 'ti-heart', 'ti-book', 'ti-palette', 'ti-code', 'ti-user'];
+const ONBOARDING_COLOR_PALETTE = [
+  { bg: '#f0effe', text: '#4a3fa0' },
+  { bg: '#edf7f2', text: '#1a6646' },
+  { bg: '#fef8ec', text: '#7a4a0a' },
+  { bg: '#fdf0f4', text: '#8a2a4a' },
+  { bg: '#eef6fb', text: '#1a5a7a' },
+  { bg: '#f5f0e8', text: '#6b5030' },
+];
+
+let onboardingStep = 1;
+let _obPickedIcon  = ONBOARDING_ICONS[0];
+let onboardingData = {
+  name: '', brandName: '', identity: '',
+  businesses: [],
+  personalPillars: ['Spiritual', 'Mental', 'Physical', 'Family'],
+  nonNegotiables: '',
+  anchors: [
+    { time: '05:30', end: '05:45', name: 'Prayer',              biz: 'anchor' },
+    { time: '05:45', end: '06:00', name: 'Journaling',           biz: 'anchor' },
+    { time: '17:30', end: '18:00', name: 'Family time',          biz: 'anchor' },
+    { time: '20:30', end: '21:00', name: 'Evening wind-down',    biz: 'anchor' },
+  ],
+  goals: [],
+};
+
+function slugifyBizName(name) {
+  return name.toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-').slice(0, 30);
+}
+
+function startOnboarding() {
+  onboardingStep = 1;
+  document.getElementById('onboarding-gate').style.display = 'flex';
+  renderOnboardingStep();
+}
+
+function renderOnboardingStep() {
+  for (let i = 1; i <= ONBOARDING_TOTAL_STEPS; i++) {
+    document.getElementById(`onboarding-step-${i}`).style.display = i === onboardingStep ? 'block' : 'none';
+  }
+  document.getElementById('onboarding-progress').textContent = `Step ${onboardingStep} of ${ONBOARDING_TOTAL_STEPS}`;
+  document.getElementById('onboarding-back-btn').style.visibility = onboardingStep === 1 ? 'hidden' : 'visible';
+  document.getElementById('onboarding-next-btn').style.display   = onboardingStep === ONBOARDING_TOTAL_STEPS ? 'none' : '';
+  document.getElementById('onboarding-finish-btn').style.display = onboardingStep === ONBOARDING_TOTAL_STEPS ? '' : 'none';
+
+  if (onboardingStep === 2) renderOnboardingBusinesses();
+  if (onboardingStep === 3) renderOnboardingPillars();
+  if (onboardingStep === 4) renderOnboardingAnchors();
+  if (onboardingStep === 5) renderOnboardingGoals();
+}
+
+function onboardingNext() {
+  if (onboardingStep === 1) {
+    onboardingData.name      = document.getElementById('ob-name').value.trim();
+    onboardingData.brandName = document.getElementById('ob-brand').value.trim();
+    onboardingData.identity  = document.getElementById('ob-identity').value.trim();
+    if (!onboardingData.name || !onboardingData.brandName) {
+      showToast('Enter your name and a brand name to continue.');
+      return;
+    }
+  }
+  if (onboardingStep === 2 && !onboardingData.businesses.length) {
+    showToast('Add at least one venture or business to continue.');
+    return;
+  }
+  if (onboardingStep === 3) {
+    onboardingData.nonNegotiables = document.getElementById('ob-nonneg').value.trim();
+  }
+  onboardingStep++;
+  renderOnboardingStep();
+}
+
+function onboardingBack() {
+  onboardingStep--;
+  renderOnboardingStep();
+}
+
+// ── step 2: businesses ─────────────────────────────────────────────────────
+
+function renderOnboardingBusinesses() {
+  renderOnboardingIconPicker();
+  renderOnboardingBusinessList();
+}
+
+function renderOnboardingIconPicker() {
+  document.getElementById('ob-icon-picker').innerHTML = ONBOARDING_ICONS.map(icon => `
+    <button type="button" class="ob-icon-choice${icon === _obPickedIcon ? ' selected' : ''}" onclick="pickOnboardingIcon('${icon}')"><i class="ti ${icon}"></i></button>
+  `).join('');
+}
+
+function pickOnboardingIcon(icon) {
+  _obPickedIcon = icon;
+  renderOnboardingIconPicker();
+}
+
+function addOnboardingBusiness() {
+  const input = document.getElementById('ob-biz-name');
+  const name  = input.value.trim();
+  if (!name) return;
+  const slug = slugifyBizName(name);
+  if (!slug) { showToast('Enter a valid name.'); return; }
+  if (onboardingData.businesses.some(b => b.slug === slug)) { showToast('You already added that.'); return; }
+  const palette = ONBOARDING_COLOR_PALETTE[onboardingData.businesses.length % ONBOARDING_COLOR_PALETTE.length];
+  onboardingData.businesses.push({ name, slug, icon: _obPickedIcon, color_bg: palette.bg, color_text: palette.text });
+  input.value = '';
+  _obPickedIcon = ONBOARDING_ICONS[0];
+  renderOnboardingBusinesses();
+}
+
+function removeOnboardingBusiness(i) {
+  onboardingData.businesses.splice(i, 1);
+  renderOnboardingBusinesses();
+}
+
+function renderOnboardingBusinessList() {
+  const el = document.getElementById('ob-biz-list');
+  el.innerHTML = onboardingData.businesses.map((b, i) => `
+    <div class="ob-biz-row">
+      <span class="ob-biz-swatch" style="background:${b.color_bg};color:${b.color_text}"><i class="ti ${b.icon}"></i></span>
+      <span class="ob-biz-name">${esc(b.name)}</span>
+      <button class="fp-remove-btn" onclick="removeOnboardingBusiness(${i})">&times;</button>
+    </div>
+  `).join('') || '<div style="font-size:12px;color:#aaa">No ventures added yet.</div>';
+}
+
+// ── step 3: personal pillars ─────────────────────────────────────────────────
+
+function renderOnboardingPillars() {
+  document.getElementById('ob-nonneg').value = onboardingData.nonNegotiables;
+  const el = document.getElementById('ob-pillars-list');
+  el.innerHTML = onboardingData.personalPillars.map((p, i) => `
+    <div class="fp-list-row">
+      <input type="text" class="settings-input" value="${esc(p)}" oninput="onboardingData.personalPillars[${i}] = this.value" />
+      <button class="fp-remove-btn" onclick="removeOnboardingPillar(${i})">&times;</button>
+    </div>
+  `).join('') || '<div style="font-size:12px;color:#aaa">No pillars yet.</div>';
+}
+
+function addOnboardingPillar() {
+  const input = document.getElementById('ob-pillar-add');
+  const val   = input.value.trim();
+  if (!val) return;
+  onboardingData.personalPillars.push(val);
+  input.value = '';
+  renderOnboardingPillars();
+}
+
+function removeOnboardingPillar(i) {
+  onboardingData.personalPillars.splice(i, 1);
+  renderOnboardingPillars();
+}
+
+// ── step 4: anchors ───────────────────────────────────────────────────────────
+
+function renderOnboardingAnchors() {
+  const el = document.getElementById('ob-anchors-list');
+  el.innerHTML = onboardingData.anchors.map((a, i) => `
+    <div class="ob-anchor-row">
+      <input type="text" class="settings-input ob-anchor-time" value="${esc(a.time)}" oninput="onboardingData.anchors[${i}].time = this.value" placeholder="05:30" />
+      <input type="text" class="settings-input ob-anchor-time" value="${esc(a.end)}" oninput="onboardingData.anchors[${i}].end = this.value" placeholder="05:45" />
+      <input type="text" class="settings-input" style="flex:1" value="${esc(a.name)}" oninput="onboardingData.anchors[${i}].name = this.value" />
+      <button class="fp-remove-btn" onclick="removeOnboardingAnchor(${i})">&times;</button>
+    </div>
+  `).join('') || '<div style="font-size:12px;color:#aaa">No anchors yet.</div>';
+}
+
+function addOnboardingAnchor() {
+  onboardingData.anchors.push({ time: '', end: '', name: '', biz: 'anchor' });
+  renderOnboardingAnchors();
+}
+
+function removeOnboardingAnchor(i) {
+  onboardingData.anchors.splice(i, 1);
+  renderOnboardingAnchors();
+}
+
+// ── step 5: goals (optional) ──────────────────────────────────────────────────
+
+function renderOnboardingGoals() {
+  document.getElementById('ob-goal-biz').innerHTML = onboardingData.businesses
+    .map(b => `<option value="${esc(b.slug)}">${esc(b.name)}</option>`).join('');
+  const el = document.getElementById('ob-goals-list');
+  el.innerHTML = onboardingData.goals.map((g, i) => `
+    <div class="fp-list-row">
+      <span style="flex:1;font-size:13px">[${esc(g.business)}] ${esc(g.dimension)}: ${esc(g.title)}</span>
+      <button class="fp-remove-btn" onclick="removeOnboardingGoal(${i})">&times;</button>
+    </div>
+  `).join('') || '<div style="font-size:12px;color:#aaa">No goals yet — optional, add these later if you\'d rather.</div>';
+}
+
+function addOnboardingGoal() {
+  const business  = document.getElementById('ob-goal-biz').value;
+  const dimension = document.getElementById('ob-goal-dim').value;
+  const title     = document.getElementById('ob-goal-title').value.trim();
+  if (!business || !title) { showToast('Pick a venture and enter a goal title.'); return; }
+  onboardingData.goals.push({ business, dimension, title });
+  document.getElementById('ob-goal-title').value = '';
+  renderOnboardingGoals();
+}
+
+function removeOnboardingGoal(i) {
+  onboardingData.goals.splice(i, 1);
+  renderOnboardingGoals();
+}
+
+// ── finish ────────────────────────────────────────────────────────────────────
+
+async function finishOnboarding() {
+  const btn = document.getElementById('onboarding-finish-btn');
+  btn.disabled = true;
+  btn.textContent = 'Setting up…';
+  try {
+    await api('/api/profile', { method: 'PATCH', body: {
+      name:            onboardingData.name,
+      brandName:       onboardingData.brandName,
+      identity:        onboardingData.identity,
+      personalPillars: onboardingData.personalPillars,
+      nonNegotiables:  onboardingData.nonNegotiables,
+      scheduleBlocks:  onboardingData.anchors,
+      ventures: onboardingData.businesses.map(b => ({
+        slug: b.slug, name: b.name, description: '', lead: null, leadRole: null,
+        investorFocus: false, activeDays: 'daily', status: 'active',
+      })),
+    }});
+
+    for (const b of onboardingData.businesses) {
+      await api('/api/businesses', {
+        method: 'POST',
+        body: { name: b.name, color_bg: b.color_bg, color_text: b.color_text, icon: b.icon },
+      });
+    }
+
+    for (const g of onboardingData.goals) {
+      await api('/api/goals', {
+        method: 'POST',
+        body: { business: g.business, dimension: g.dimension, title: g.title, year: new Date().getFullYear() },
+      });
+    }
+
+    await api('/api/settings/notifications', {
+      method: 'PATCH',
+      body: {
+        briefing:         document.getElementById('ob-notif-briefing').checked,
+        block_reminders:  document.getElementById('ob-notif-block').checked,
+        nudges:            document.getElementById('ob-notif-nudges').checked,
+        eod:               document.getElementById('ob-notif-eod').checked,
+      },
+    });
+
+    await api('/api/auth/me', { method: 'PATCH', body: { onboarding_completed: true } });
+
+    window.location.reload();
+  } catch (e) {
+    showToast('Setup failed: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = 'Finish setup';
+  }
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
 
   const authed = await checkAuth();
@@ -6682,6 +7135,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     return; // don't fetch or render any app data until logged in
   }
   document.getElementById('auth-gate').style.display = 'none';
+
+  if (!CURRENT_USER.onboarding_completed) {
+    startOnboarding();
+    return; // don't fetch or render app data until setup is finished
+  }
   document.querySelector('.app').style.display = 'flex';
 
   // Handle OAuth redirect

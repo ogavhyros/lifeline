@@ -2,7 +2,7 @@ const session = require('express-session');
 const bcrypt  = require('bcryptjs');
 const {
   db, getUserById, getUserByEmail, insertUser, setUserPassword,
-  seedDefaultsForUser,
+  seedDefaultsForUser, setOnboardingDone,
 } = require('./db');
 
 // ── session store ─────────────────────────────────────────────────────────────
@@ -193,6 +193,19 @@ function registerAuthRoutes(app) {
     const user = getUserById.get(userId);
     if (!user) return res.status(401).json({ error: 'Not authenticated' });
     res.json(publicUser(user));
+  });
+
+  // Onboarding wizard's "Finish" step. Only supports flipping
+  // onboarding_completed — nothing else about the account is editable here.
+  app.patch('/api/auth/me', (req, res) => {
+    const userId = req.session.userId;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+    const user = getUserById.get(userId);
+    if (!user) return res.status(401).json({ error: 'Not authenticated' });
+    if (req.body && req.body.onboarding_completed === true) {
+      setOnboardingDone.run(userId);
+    }
+    res.json(publicUser(getUserById.get(userId)));
   });
 }
 

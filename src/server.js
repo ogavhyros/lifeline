@@ -391,7 +391,7 @@ app.get('/api/businesses', requireAuth, (req, res) => {
 });
 
 app.post('/api/businesses', requireAuth, (req, res) => {
-  const { name, color_bg, color_text } = req.body;
+  const { name, color_bg, color_text, icon } = req.body;
   if (!name) return res.status(400).json({ error: 'name is required' });
   const slug = name.toLowerCase()
     .replace(/[^a-z0-9\s-]/g, '')
@@ -400,7 +400,7 @@ app.post('/api/businesses', requireAuth, (req, res) => {
     .slice(0, 30);
   if (!slug) return res.status(400).json({ error: 'invalid name — no valid slug characters' });
   try {
-    addBusiness(req.user.id, name, slug, color_bg || '#f0f0ee', color_text || '#333333');
+    addBusiness(req.user.id, name, slug, color_bg || '#f0f0ee', color_text || '#333333', icon || null);
     res.status(201).json(getBusinesses(req.user.id));
   } catch (e) {
     if (e.message.includes('UNIQUE')) {
