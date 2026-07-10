@@ -26,6 +26,10 @@ const {
   getInvestorTouchesThisWeek, getQuarterlyGoalPct,
   getAnchorsForDate, toggleAnchor,
   insertConnectToken, getConnectToken, deleteConnectToken, clearUserChatId,
+  getUserById, getUserByEmail,
+  addBoardMember, removeBoardMember, getBoardMembers, isBoardMember, canAssignTo, canAccessTask,
+  getVisibleTasksByDate, getVisibleBoardTasks, getVisibleTaskById,
+  toggleTaskById, updatePriorityById, updateTaskTimeById, updateTaskStatusById, updateTaskDateById, setTaskAssignee,
 } = require('./db');
 const { parseDocument, cleanDocumentText } = require('./document-parser');
 const gcal = require('./google-calendar');
@@ -153,7 +157,10 @@ registerAuthRoutes(app); // POST /api/auth/signup, /login, /logout, GET /api/aut
 app.get('/api/tasks', requireAuth, (req, res) => {
   const date  = req.query.date || watToday();
   syncDayLog(req.user.id, date);
-  const tasks = getTasksByDate(req.user.id, date);
+  // Widened for board sharing: own tasks + tasks on boards I'm a member of +
+  // tasks assigned to me. syncDayLog above only touches the requester's own
+  // day_log row, which is correct — day_log/streaks/scorecard stay personal.
+  const tasks = getVisibleTasksByDate(req.user.id, date);
 
   // Safety net against the Google Calendar sync loop: a calendar-derived task
   // whose title is just a business-prefixed rewrite of a non-calendar task's
@@ -192,11 +199,16 @@ app.post('/api/tasks', requireAuth, (req, res) => {
 });
 
 app.patch('/api/tasks/:id/toggle', requireAuth, (req, res) => {
-  const task = getTaskById(req.user.id, req.params.id);
-  if (!task) return res.status(404).json({ error: 'not found' });
-  toggleTask(req.user.id, task.done ? 0 : 1, task.id);
-  const updated = getTaskById(req.user.id, task.id);
-  gcal.syncTaskToCalendar(req.user.id, updated).catch(err => console.error('[calendar] sync failed:', err.message));
+  // Widened for board sharing: board owner, any board member, or the
+  // assignee may toggle a task — not just its literal owner.
+  const task = getVisibleTaskById(req.user.id, req.params.id);
+  if (!task || !canAccessTask(req.user.id, task)) return res.status(404).json({ error: 'not found' });
+  toggleTaskById(task.done ? 0 : 1, task.id);
+  const updated = getVisibleTaskById(req.user.id, task.id);
+  // Calendar sync is always the task OWNER's calendar, never the acting
+  // member's — a member toggling someone else's task shouldn't touch (or
+  // silently no-op against) their own unrelated Google Calendar connection.
+  gcal.syncTaskToCalendar(updated.user_id, updated).catch(err => console.error('[calendar] sync failed:', err.message));
   res.json(updated);
 });
 
@@ -205,18 +217,18 @@ app.patch('/api/tasks/:id/priority', requireAuth, (req, res) => {
   if (!['high', 'normal', 'low'].includes(priority)) {
     return res.status(400).json({ error: 'priority must be high, normal, or low' });
   }
-  const task = getTaskById(req.user.id, req.params.id);
-  if (!task) return res.status(404).json({ error: 'not found' });
-  updatePriority(req.user.id, priority, task.id);
-  res.json(getTasksByDate(req.user.id, watToday()));
+  const task = getVisibleTaskById(req.user.id, req.params.id);
+  if (!task || !canAccessTask(req.user.id, task)) return res.status(404).json({ error: 'not found' });
+  updatePriorityById(priority, task.id);
+  res.json(getVisibleTasksByDate(req.user.id, watToday()));
 });
 
 app.patch('/api/tasks/:id/time', requireAuth, (req, res) => {
-  const task = getTaskById(req.user.id, req.params.id);
-  if (!task) return res.status(404).json({ error: 'not found' });
+  const task = getVisibleTaskById(req.user.id, req.params.id);
+  if (!task || !canAccessTask(req.user.id, task)) return res.status(404).json({ error: 'not found' });
   const { scheduled_time } = req.body;
-  updateTaskTime(req.user.id, scheduled_time || null, task.id);
-  res.json(getTasksByDate(req.user.id, task.date || watToday()));
+  updateTaskTimeById(scheduled_time || null, task.id);
+  res.json(getVisibleTasksByDate(req.user.id, task.date || watToday()));
 });
 
 // ── kanban board ──────────────────────────────────────────────────────────────
@@ -224,7 +236,7 @@ app.patch('/api/tasks/:id/time', requireAuth, (req, res) => {
 const TASK_STATUSES = ['backlog', 'today', 'in_progress', 'done'];
 
 app.get('/api/tasks/board', requireAuth, (req, res) => {
-  res.json(getBoardTasks(req.user.id));
+  res.json(getVisibleBoardTasks(req.user.id));
 });
 
 app.patch('/api/tasks/:id/status', requireAuth, (req, res) => {
@@ -232,8 +244,8 @@ app.patch('/api/tasks/:id/status', requireAuth, (req, res) => {
   if (!TASK_STATUSES.includes(status)) {
     return res.status(400).json({ error: `status must be one of ${TASK_STATUSES.join(', ')}` });
   }
-  const task = getTaskById(req.user.id, req.params.id);
-  if (!task) return res.status(404).json({ error: 'not found' });
+  const task = getVisibleTaskById(req.user.id, req.params.id);
+  if (!task || !canAccessTask(req.user.id, task)) return res.status(404).json({ error: 'not found' });
 
   // Moving to Done marks the task complete; moving out of Done un-completes
   // it. Moving to Today reschedules it for today. The done-change trigger in
@@ -241,19 +253,47 @@ app.patch('/api/tasks/:id/status', requireAuth, (req, res) => {
   // writes, so the explicit status write below always runs last and wins.
   const wantDone = status === 'done';
   if (!!task.done !== wantDone) {
-    toggleTask(req.user.id, wantDone ? 1 : 0, task.id);
+    toggleTaskById(wantDone ? 1 : 0, task.id);
   }
   if (status === 'today' && task.date !== watToday()) {
-    updateTaskDate(req.user.id, watToday(), task.id);
+    updateTaskDateById(watToday(), task.id);
   }
-  updateTaskStatus(req.user.id, status, task.id);
+  updateTaskStatusById(status, task.id);
 
-  const updated = getTaskById(req.user.id, task.id);
-  gcal.syncTaskToCalendar(req.user.id, updated).catch(err => console.error('[calendar] sync failed:', err.message));
+  const updated = getVisibleTaskById(req.user.id, task.id);
+  gcal.syncTaskToCalendar(updated.user_id, updated).catch(err => console.error('[calendar] sync failed:', err.message));
   res.json(updated);
 });
 
+app.patch('/api/tasks/:id/assign', requireAuth, (req, res) => {
+  const task = getVisibleTaskById(req.user.id, req.params.id);
+  if (!task || !canAccessTask(req.user.id, task)) return res.status(404).json({ error: 'not found' });
+
+  const { assignee_id } = req.body;
+  if (assignee_id === null || assignee_id === undefined) {
+    setTaskAssignee(null, task.id);
+    return res.json(getVisibleTaskById(req.user.id, task.id));
+  }
+  // The task's board is defined by its real owner (task.user_id), not by
+  // whoever happens to be making this request — a member reassigning a
+  // shared task must still only be able to hand it to the owner or another
+  // current member of that SAME board, never to an outside third party.
+  if (!canAssignTo(task.user_id, assignee_id)) {
+    return res.status(400).json({ error: 'Assignee must be the board owner or a current board member' });
+  }
+  setTaskAssignee(assignee_id, task.id);
+  res.json(getVisibleTaskById(req.user.id, task.id));
+});
+
 app.delete('/api/tasks/:id', requireAuth, (req, res) => {
+  // Deliberately unchanged — deletion stays owner-only (strict getTaskById/
+  // deleteTask, both scoped to req.user.id). Members never create tasks
+  // directly on someone else's board (only POST /api/tasks under their own
+  // id), so "the task's creator" and "the board owner" are always the same
+  // person for every task in this system — this single check already covers
+  // both cases the spec calls out, and correctly 404s for any member trying
+  // to delete a task they don't own, matching "members cannot delete others'
+  // cards."
   const task = getTaskById(req.user.id, req.params.id);
   if (!task) return res.status(404).json({ error: 'not found' });
   if (task.calendar_event_id) {
@@ -262,6 +302,56 @@ app.delete('/api/tasks/:id', requireAuth, (req, res) => {
     );
   }
   deleteTask(req.user.id, req.params.id);
+  res.status(204).end();
+});
+
+// ── board membership (Task 4: board sharing) ─────────────────────────────────
+
+// Owner entry first (synthesized — not a real board_members row), then
+// invited members. Both routes below return this same shape so the frontend
+// can treat a POST response exactly like a fresh GET without re-fetching.
+function buildRoster(ownerId) {
+  const owner = getUserById.get(ownerId);
+  return [
+    { id: owner.id, name: owner.name, email: owner.email, role: 'owner' },
+    ...getBoardMembers(ownerId),
+  ];
+}
+
+app.post('/api/board/members', requireAuth, (req, res) => {
+  const email = (req.body?.email || '').trim().toLowerCase();
+  if (!email) return res.status(400).json({ error: 'Email is required' });
+
+  const invitee = getUserByEmail.get(email);
+  if (!invitee) return res.status(404).json({ error: 'No LIFELINE account with that email' });
+  if (invitee.id === req.user.id) return res.status(400).json({ error: "You can't invite yourself" });
+  if (isBoardMember(req.user.id, invitee.id)) {
+    return res.status(409).json({ error: `${invitee.name || invitee.email} is already on your board` });
+  }
+
+  addBoardMember(req.user.id, invitee.id);
+  res.status(201).json(buildRoster(req.user.id));
+});
+
+app.get('/api/board/members', requireAuth, (req, res) => {
+  // Defaults to the requester's own board. A member viewing a task on
+  // someone else's board (e.g. to populate an "assign to" dropdown) can ask
+  // for that board's roster instead — only allowed if they actually belong
+  // to it, so this can't be used to enumerate an arbitrary board's members.
+  const ownerId = req.query.owner_id ? Number(req.query.owner_id) : req.user.id;
+  if (ownerId !== req.user.id && !isBoardMember(ownerId, req.user.id)) {
+    return res.status(403).json({ error: 'Not a member of that board' });
+  }
+  res.json(buildRoster(ownerId));
+});
+
+app.delete('/api/board/members/:memberId', requireAuth, (req, res) => {
+  // Owner only — a member can't remove themselves or anyone else this way.
+  const memberId = Number(req.params.memberId);
+  if (!isBoardMember(req.user.id, memberId)) {
+    return res.status(404).json({ error: 'Not a member of your board' });
+  }
+  removeBoardMember(req.user.id, memberId);
   res.status(204).end();
 });
 

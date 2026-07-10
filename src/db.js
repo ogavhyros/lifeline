@@ -228,6 +228,22 @@ db.exec(`
     sess    TEXT NOT NULL,
     expires INTEGER NOT NULL
   );
+
+  -- Board sharing (Task 4). The board owner is NOT stored as a row here —
+  -- ownership is implicit via tasks.user_id / board_owner_id matching a
+  -- real user's own id, so every row in this table represents an invited
+  -- collaborator, always role='member'. One board per owner (their own
+  -- personal board, now shareable), not one board per member.
+  CREATE TABLE IF NOT EXISTS board_members (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    board_owner_id INTEGER NOT NULL,
+    member_id      INTEGER NOT NULL,
+    role           TEXT NOT NULL DEFAULT 'member',
+    created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(board_owner_id, member_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_board_members_owner  ON board_members(board_owner_id);
+  CREATE INDEX IF NOT EXISTS idx_board_members_member ON board_members(member_id);
 `);
 
 // Add columns that may not exist yet (safe to run every startup)
@@ -242,6 +258,7 @@ try { db.exec(`ALTER TABLE recurring_tasks ADD COLUMN category TEXT DEFAULT 'wor
 try { db.exec(`ALTER TABLE recurring_tasks ADD COLUMN notes TEXT`); } catch {}
 try { db.exec(`ALTER TABLE tasks ADD COLUMN status TEXT`); } catch {}
 try { db.exec(`ALTER TABLE businesses ADD COLUMN icon TEXT`); } catch {}
+try { db.exec(`ALTER TABLE tasks ADD COLUMN assignee_id INTEGER`); } catch {}
 
 // ── multi-tenancy: user_id column on every previously-global table ───────────
 // Nullable on add (existing rows get backfilled to user 1 in the one-time
@@ -716,6 +733,120 @@ const getBoardTasksStmt = db.prepare(`
 function getBoardTasks(userId) {
   return getBoardTasksStmt.all(userId, watCutoff(60));
 }
+
+// ── board membership (Task 4: board sharing) ──────────────────────────────────
+
+const addBoardMemberStmt = db.prepare(
+  `INSERT INTO board_members (board_owner_id, member_id, role) VALUES (?, ?, 'member')`
+);
+const removeBoardMemberStmt = db.prepare(
+  `DELETE FROM board_members WHERE board_owner_id = ? AND member_id = ?`
+);
+const getBoardMembersStmt = db.prepare(`
+  SELECT bm.member_id AS id, u.name, u.email, bm.role, bm.created_at
+  FROM board_members bm JOIN users u ON u.id = bm.member_id
+  WHERE bm.board_owner_id = ? ORDER BY bm.created_at
+`);
+const getBoardOwnerIdsForMemberStmt = db.prepare(
+  `SELECT board_owner_id FROM board_members WHERE member_id = ?`
+);
+const isBoardMemberStmt = db.prepare(
+  `SELECT 1 FROM board_members WHERE board_owner_id = ? AND member_id = ?`
+);
+
+const addBoardMember    = (ownerId, memberId) => addBoardMemberStmt.run(ownerId, memberId);
+const removeBoardMember = (ownerId, memberId) => removeBoardMemberStmt.run(ownerId, memberId);
+const getBoardMembers   = (ownerId) => getBoardMembersStmt.all(ownerId);
+const getBoardOwnerIdsForMember = (memberId) =>
+  getBoardOwnerIdsForMemberStmt.all(memberId).map(r => r.board_owner_id);
+const isBoardMember = (ownerId, memberId) => !!isBoardMemberStmt.get(ownerId, memberId);
+
+// A user may assign a task to themselves (if they're the board owner) or to
+// any current member of that board — never to an unrelated third party.
+function canAssignTo(boardOwnerId, assigneeId) {
+  if (assigneeId === boardOwnerId) return true;
+  return isBoardMember(boardOwnerId, assigneeId);
+}
+
+// Board owner, any of their board's members, or the task's assignee may view
+// or modify a task. This is deliberately broader than "is a board member" —
+// the assignee clause covers a task assigned before the assignee was later
+// removed from the board, so it doesn't silently vanish from their view.
+function canAccessTask(userId, task) {
+  if (task.user_id === userId) return true;
+  if (isBoardMember(task.user_id, userId)) return true;
+  if (task.assignee_id === userId) return true;
+  return false;
+}
+
+// ── task visibility widened for board sharing ─────────────────────────────────
+// Personal per-user scoping (getTasksByDate/getTaskById/getBoardTasks above)
+// stays untouched and is still what every non-board-sharing call site uses
+// (calendar sync, Telegram, scheduler, brain dump) — these three functions
+// are additive, used only by the routes that need a member's widened view.
+
+const getVisibleTasksByDateStmt = db.prepare(`
+  SELECT DISTINCT t.* FROM tasks t
+  WHERE t.date = ?
+    AND (
+      t.user_id = ?
+      OR t.user_id IN (SELECT board_owner_id FROM board_members WHERE member_id = ?)
+      OR t.assignee_id = ?
+    )
+  ORDER BY t.time, t.id
+`);
+function getVisibleTasksByDate(userId, date) {
+  return getVisibleTasksByDateStmt.all(date, userId, userId, userId);
+}
+
+const getVisibleBoardTasksStmt = db.prepare(`
+  SELECT DISTINCT t.* FROM tasks t
+  WHERE t.date >= ?
+    AND (
+      t.user_id = ?
+      OR t.user_id IN (SELECT board_owner_id FROM board_members WHERE member_id = ?)
+      OR t.assignee_id = ?
+    )
+  ORDER BY
+    CASE t.status WHEN 'today' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'backlog' THEN 2 ELSE 3 END,
+    CASE t.priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
+    t.date, t.id
+`);
+function getVisibleBoardTasks(userId) {
+  return getVisibleBoardTasksStmt.all(watCutoff(60), userId, userId, userId);
+}
+
+const getVisibleTaskByIdStmt = db.prepare(`
+  SELECT * FROM tasks t
+  WHERE t.id = ?
+    AND (
+      t.user_id = ?
+      OR t.user_id IN (SELECT board_owner_id FROM board_members WHERE member_id = ?)
+      OR t.assignee_id = ?
+    )
+`);
+function getVisibleTaskById(userId, id) {
+  return getVisibleTaskByIdStmt.get(id, userId, userId, userId);
+}
+
+// By-id-only mutations, used ONLY after canAccessTask()/ownership has already
+// been verified against the task's real owner — the widened routes can't use
+// the personal toggleTask/updatePriority/etc. above because those filter
+// "WHERE user_id = ?" against the ACTING user, which is wrong the moment the
+// acting user is a board member rather than the task's actual owner.
+const toggleTaskByIdStmt       = db.prepare('UPDATE tasks SET done = ? WHERE id = ?');
+const updatePriorityByIdStmt   = db.prepare('UPDATE tasks SET priority = ? WHERE id = ?');
+const updateTaskTimeByIdStmt   = db.prepare('UPDATE tasks SET time = ? WHERE id = ?');
+const updateTaskStatusByIdStmt = db.prepare('UPDATE tasks SET status = ? WHERE id = ?');
+const updateTaskDateByIdStmt   = db.prepare('UPDATE tasks SET date = ? WHERE id = ?');
+const setTaskAssigneeStmt      = db.prepare('UPDATE tasks SET assignee_id = ? WHERE id = ?');
+
+const toggleTaskById       = (done, id)     => toggleTaskByIdStmt.run(done, id);
+const updatePriorityById   = (priority, id) => updatePriorityByIdStmt.run(priority, id);
+const updateTaskTimeById   = (time, id)     => updateTaskTimeByIdStmt.run(time, id);
+const updateTaskStatusById = (status, id)   => updateTaskStatusByIdStmt.run(status, id);
+const updateTaskDateById   = (date, id)     => updateTaskDateByIdStmt.run(date, id);
+const setTaskAssignee      = (assigneeId, id) => setTaskAssigneeStmt.run(assigneeId, id);
 
 // ── deduplication ─────────────────────────────────────────────────────────────
 // Guards against the Google Calendar sync loop: a task pushed to Calendar
@@ -1626,6 +1757,24 @@ module.exports = {
   updatePriority,
   deleteTask,
   deduplicateTasks,
+
+  // board sharing (Task 4)
+  addBoardMember,
+  removeBoardMember,
+  getBoardMembers,
+  getBoardOwnerIdsForMember,
+  isBoardMember,
+  canAssignTo,
+  canAccessTask,
+  getVisibleTasksByDate,
+  getVisibleBoardTasks,
+  getVisibleTaskById,
+  toggleTaskById,
+  updatePriorityById,
+  updateTaskTimeById,
+  updateTaskStatusById,
+  updateTaskDateById,
+  setTaskAssignee,
   updateTaskStatus,
   updateTaskDate,
   getBoardTasks,

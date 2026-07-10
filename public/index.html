@@ -2115,6 +2115,179 @@
     /* ── board (kanban) ───────────────────────────────────────────────────────── */
     #v-board { max-width: none; }
 
+    .board-header-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .members-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: #fff;
+      border: 1px solid #e8c9bb;
+      color: #A84B32;
+      border-radius: 20px;
+      padding: 7px 14px;
+      font-size: 12px;
+      cursor: pointer;
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+    .members-btn:hover { background: #fdf3ef; border-color: #A84B32; }
+
+    /* ── members panel ────────────────────────────────────────────────────────── */
+    .members-panel-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(26,26,26,.4);
+      z-index: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .members-panel-box {
+      background: #fff;
+      border-radius: 12px;
+      width: 100%;
+      max-width: 380px;
+      max-height: 80vh;
+      overflow-y: auto;
+      padding: 20px;
+    }
+    .members-panel-title {
+      font-size: 15px;
+      color: #1a1a1a;
+      margin-bottom: 4px;
+    }
+    .members-panel-sub {
+      font-size: 12px;
+      color: #999;
+      margin-bottom: 16px;
+    }
+    .member-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid #f5f5f4;
+    }
+    .member-row:last-of-type { border-bottom: none; }
+    .member-chip {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: #fdf0eb;
+      color: #A84B32;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .member-info { flex: 1; min-width: 0; }
+    .member-name { font-size: 13px; color: #1a1a1a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .member-email { font-size: 11px; color: #aaa; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .member-role-badge {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: #f0f0ee;
+      color: #888;
+      flex-shrink: 0;
+    }
+    .member-role-badge.owner { background: #fdf0eb; color: #A84B32; }
+    .member-remove-btn {
+      background: none;
+      border: none;
+      color: #ccc;
+      cursor: pointer;
+      font-size: 16px;
+      padding: 0 2px;
+      flex-shrink: 0;
+    }
+    .member-remove-btn:hover { color: #cc3300; }
+    .members-invite-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid #f0f0ee;
+    }
+    .members-invite-input {
+      flex: 1;
+      font-size: 13px;
+      border: 1px solid #e8e8e6;
+      border-radius: 6px;
+      padding: 8px 10px;
+    }
+    .members-invite-btn {
+      background: #A84B32;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 14px;
+      font-size: 13px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .members-invite-btn:hover { background: #8f3f2a; }
+    .members-panel-error { font-size: 12px; color: #cc3300; margin-top: 8px; min-height: 14px; }
+    .members-panel-close {
+      display: block;
+      width: 100%;
+      text-align: center;
+      background: #f5f5f4;
+      border: none;
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 13px;
+      color: #666;
+      margin-top: 16px;
+      cursor: pointer;
+    }
+
+    /* ── assignee chip + shared-task indicator on board cards ───────────────────── */
+    .board-card-assignee-chip {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #fdf0eb;
+      color: #A84B32;
+      font-size: 9px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-left: auto;
+    }
+    .board-card.board-card-shared { border-left: 2px solid #A84B32; }
+    .board-card-owner-tag {
+      font-size: 9px;
+      color: #A84B32;
+      background: #fdf0eb;
+      border-radius: 8px;
+      padding: 1px 6px;
+      flex-shrink: 0;
+    }
+    .board-card-assign-btn {
+      position: absolute;
+      top: 8px;
+      right: 56px;
+      background: none;
+      border: none;
+      color: #bbb;
+      cursor: pointer;
+      padding: 4px;
+      visibility: hidden;
+    }
+    .board-card:hover .board-card-assign-btn { visibility: visible; }
     .board-filter-row {
       display: flex;
       gap: 6px;
@@ -2438,6 +2611,8 @@
       .board-col { scroll-snap-align: start; }
       .board-col-switcher { display: flex; }
       .board-card-move-btn { display: flex; visibility: visible; }
+      .board-card-assign-btn { display: flex; visibility: visible; }
+      .board-header-row { flex-wrap: wrap; }
 
       /* brain dump */
       #dump-input { min-height: 120px; }
@@ -2980,8 +3155,15 @@
     <!-- BOARD ─────────────────────────────────────────────────────────────────── -->
     <div class="view" id="v-board">
 
-      <h1 class="page-title">Board</h1>
-      <p class="page-sub">Drag cards between columns to update status</p>
+      <div class="board-header-row">
+        <div>
+          <h1 class="page-title">Board</h1>
+          <p class="page-sub">Drag cards between columns to update status</p>
+        </div>
+        <button class="members-btn" id="members-btn" type="button" onclick="openMembersPanel()" style="display:none">
+          <i class="ti ti-users"></i> Members
+        </button>
+      </div>
 
       <div class="board-filter-row" id="board-filter-row"></div>
 
@@ -4623,11 +4805,175 @@ async function loadBoard() {
   });
   try {
     boardTasks = await api('/api/tasks/board');
+    // Prefetch each distinct task-owner's roster before rendering — the
+    // shared-task owner tag and assignee chip both need a name, and a
+    // member's board could include tasks owned by someone other than them.
+    await Promise.all([...new Set(boardTasks.map(t => t.user_id))].map(getRosterFor));
     renderBoardFilterRow();
     renderBoard();
     wireBoardColScrollSync();
   } catch (e) {
     console.error('loadBoard:', e);
+  }
+  loadBoardMembersFeature();
+}
+
+// ── board sharing: members panel + task assignment ─────────────────────────────
+// Graceful fallback by design: if /api/board/members 404s (older deploy that
+// hasn't run this migration yet), the Members button just stays hidden and
+// nothing else about the Board breaks.
+
+let boardMembers          = [];   // roster of MY OWN board (owner + members)
+let membersFeatureAvailable = false;
+const _rosterCache = {}; // ownerId -> roster array, memoized for this Board session
+
+async function loadBoardMembersFeature() {
+  try {
+    boardMembers = await api('/api/board/members');
+    membersFeatureAvailable = true;
+    _rosterCache[CURRENT_USER.id] = boardMembers;
+    document.getElementById('members-btn').style.display = '';
+  } catch (e) {
+    membersFeatureAvailable = false;
+    document.getElementById('members-btn').style.display = 'none';
+  }
+  renderBoard(); // re-render so shared-task indicators/chips reflect the roster
+}
+
+function initials(name, email) {
+  const label = (name || email || '?').trim();
+  const parts = label.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return label.slice(0, 2).toUpperCase();
+}
+
+function resolveUserLabel(userId) {
+  if (!userId) return null;
+  if (userId === CURRENT_USER.id) return CURRENT_USER.name || CURRENT_USER.email;
+  for (const ownerId in _rosterCache) {
+    const hit = _rosterCache[ownerId].find(m => m.id === userId);
+    if (hit) return hit.name || hit.email;
+  }
+  return null;
+}
+
+async function getRosterFor(ownerId) {
+  if (_rosterCache[ownerId]) return _rosterCache[ownerId];
+  try {
+    const roster = await api(`/api/board/members?owner_id=${ownerId}`);
+    _rosterCache[ownerId] = roster;
+    return roster;
+  } catch {
+    return [];
+  }
+}
+
+function openMembersPanel() {
+  renderMembersPanel();
+}
+
+function closeMembersPanel() {
+  document.getElementById('members-panel-overlay-el')?.remove();
+}
+
+function renderMembersPanel() {
+  closeMembersPanel();
+  const overlay = document.createElement('div');
+  overlay.className = 'members-panel-overlay';
+  overlay.id = 'members-panel-overlay-el';
+  overlay.onclick = (e) => { if (e.target === overlay) closeMembersPanel(); };
+  overlay.innerHTML = `
+    <div class="members-panel-box">
+      <div class="members-panel-title">Board members</div>
+      <div class="members-panel-sub">People who can see and move cards on your board.</div>
+      <div id="members-panel-list">
+        ${boardMembers.map(m => `
+          <div class="member-row">
+            <div class="member-chip">${esc(initials(m.name, m.email))}</div>
+            <div class="member-info">
+              <div class="member-name">${esc(m.name || m.email)}</div>
+              ${m.name ? `<div class="member-email">${esc(m.email)}</div>` : ''}
+            </div>
+            <span class="member-role-badge${m.role === 'owner' ? ' owner' : ''}">${esc(m.role)}</span>
+            ${m.role === 'member' ? `<button class="member-remove-btn" onclick="removeMember(${m.id})" title="Remove from board">&times;</button>` : ''}
+          </div>
+        `).join('')}
+      </div>
+      <div class="members-invite-row">
+        <input type="email" class="members-invite-input" id="members-invite-email" placeholder="Invite by email" />
+        <button class="members-invite-btn" type="button" onclick="inviteMember()">Invite</button>
+      </div>
+      <div class="members-panel-error" id="members-panel-error"></div>
+      <button class="members-panel-close" type="button" onclick="closeMembersPanel()">Close</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+}
+
+async function inviteMember() {
+  const input  = document.getElementById('members-invite-email');
+  const errEl  = document.getElementById('members-panel-error');
+  const email  = input.value.trim();
+  errEl.textContent = '';
+  if (!email) return;
+  try {
+    boardMembers = await api('/api/board/members', { method: 'POST', body: { email } });
+    _rosterCache[CURRENT_USER.id] = boardMembers;
+    input.value = '';
+    renderMembersPanel();
+    const invitee = boardMembers.find(m => m.email === email);
+    showToast(`${(invitee && invitee.name) || email} joined your board`);
+  } catch (e) {
+    errEl.textContent = e.message;
+  }
+}
+
+async function removeMember(memberId) {
+  try {
+    await api(`/api/board/members/${memberId}`, { method: 'DELETE' });
+    boardMembers = boardMembers.filter(m => m.id !== memberId);
+    _rosterCache[CURRENT_USER.id] = boardMembers;
+    renderMembersPanel();
+    loadBoard();
+    showToast('Removed from your board');
+  } catch (e) {
+    document.getElementById('members-panel-error').textContent = e.message;
+  }
+}
+
+async function openAssignMenu(taskId) {
+  const task = boardTasks.find(t => t.id === taskId);
+  if (!task) return;
+  const roster = await getRosterFor(task.user_id);
+  const menu = document.createElement('div');
+  menu.className = 'board-move-menu'; // reuse the bottom-sheet pattern from tap-to-move
+  menu.onclick = (e) => { if (e.target === menu) menu.remove(); };
+  const options = [
+    { id: null, label: 'Unassigned' },
+    ...roster.map(m => ({ id: m.id, label: m.name || m.email })),
+  ];
+  menu.innerHTML = `
+    <div class="board-move-menu-box">
+      <div class="board-move-menu-title">Assign "${esc(task.name)}" to…</div>
+      ${options.map(opt => `
+        <button class="board-move-menu-opt${opt.id === task.assignee_id ? ' current' : ''}" onclick="assignTask(${taskId}, ${opt.id === null ? 'null' : opt.id}); this.closest('.board-move-menu').remove();">
+          ${esc(opt.label)}${opt.id === task.assignee_id ? ' (current)' : ''}
+        </button>
+      `).join('')}
+      <button class="board-move-menu-cancel" type="button" onclick="this.closest('.board-move-menu').remove();">Cancel</button>
+    </div>
+  `;
+  document.body.appendChild(menu);
+}
+
+async function assignTask(taskId, assigneeId) {
+  try {
+    const updated = await api(`/api/tasks/${taskId}/assign`, { method: 'PATCH', body: { assignee_id: assigneeId } });
+    const i = boardTasks.findIndex(t => t.id === taskId);
+    if (i !== -1) boardTasks[i] = updated;
+    renderBoard();
+  } catch (e) {
+    showToast(e.message);
   }
 }
 
@@ -4675,19 +5021,29 @@ function renderBoard() {
           </div>
         `;
       }
+      const isShared      = t.user_id !== CURRENT_USER.id;
+      const ownerLabel    = isShared ? resolveUserLabel(t.user_id) : null;
+      const assigneeLabel = t.assignee_id ? resolveUserLabel(t.assignee_id) : null;
+      // Members can't delete others' cards — hide the delete affordance
+      // entirely for shared tasks that aren't mine to remove, rather than
+      // showing a button that would just 404.
+      const canDelete = !isShared;
       return `
-      <div class="board-card${t.priority === 'high' ? ' board-card-high' : ''}"
+      <div class="board-card${t.priority === 'high' ? ' board-card-high' : ''}${isShared ? ' board-card-shared' : ''}"
            draggable="true" data-id="${t.id}"
            ondragstart="boardDragStart(event,${t.id})" ondragend="boardDragEnd(event)"
            ontouchstart="boardTouchStart(event,${t.id})">
+        ${membersFeatureAvailable ? `<button class="board-card-assign-btn" onclick="event.stopPropagation(); openAssignMenu(${t.id})" title="Assign" aria-label="Assign"><i class="ti ti-user-plus"></i></button>` : ''}
         <button class="board-card-move-btn" onclick="event.stopPropagation(); openBoardMoveMenu(${t.id})" title="Move to column" aria-label="Move to column"><i class="ti ti-arrows-move"></i></button>
-        <button class="board-card-del" onclick="event.stopPropagation(); armBoardCardDelete(${t.id})" title="Delete task" aria-label="Delete task"><i class="ti ti-trash"></i></button>
+        ${canDelete ? `<button class="board-card-del" onclick="event.stopPropagation(); armBoardCardDelete(${t.id})" title="Delete task" aria-label="Delete task"><i class="ti ti-trash"></i></button>` : ''}
         <div class="board-card-title">${esc(t.name)}</div>
         <div class="board-card-meta">
           <i class="ti ${boardCardIcon(t.business)} board-card-biz" title="${esc(BIZ_LABEL[t.business] || t.business)}"></i>
           ${t.priority === 'high' ? '<span class="priority-dot priority-high" title="High priority"></span>' : ''}
           ${t.priority === 'low'  ? '<span class="priority-dot priority-low" title="Low priority"></span>'   : ''}
           ${t.time ? `<span class="board-card-time">${esc(t.time)}</span>` : ''}
+          ${isShared ? `<span class="board-card-owner-tag" title="On ${esc(ownerLabel || 'a teammate')}'s board">${esc(initials(ownerLabel))}</span>` : ''}
+          ${assigneeLabel ? `<span class="board-card-assignee-chip" title="Assigned to ${esc(assigneeLabel)}">${esc(initials(assigneeLabel))}</span>` : ''}
         </div>
       </div>
     `;
