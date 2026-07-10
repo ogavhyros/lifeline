@@ -3,10 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#A84B32" />
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="LIFELINE" />
-  <link rel="manifest" href="/manifest.json" />
   <title>LIFELINE — Your Operating System</title>
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -7389,6 +7391,12 @@ async function finishOnboarding() {
 
 document.addEventListener('DOMContentLoaded', async () => {
 
+  // Registered unconditionally — must run regardless of auth state so the
+  // login screen itself is installable/offline-capable, not just the app.
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  }
+
   const authed = await checkAuth();
   if (!authed) {
     document.getElementById('auth-gate').style.display = 'flex';
@@ -7506,11 +7514,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.addEventListener('touchmove', _boardTouchMove, { passive: false });
   document.addEventListener('touchend', _boardTouchEnd);
   document.addEventListener('touchcancel', _boardTouchEnd);
-
-  // Service worker registration
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
-  }
 
   // Detect date change when user returns to the tab (e.g. next morning)
   document.addEventListener('visibilitychange', () => {
