@@ -1428,6 +1428,46 @@
     .bnav-item.active { color: #1a1a1a; }
     .bnav-item:active { background: #f5f5f4; }
 
+    /* ── "More" drawer (mobile only) ────────────────────────────────────────── */
+    #more-drawer-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(26,26,26,.4);
+      z-index: 400;
+      align-items: flex-end;
+      justify-content: center;
+    }
+    #more-drawer-overlay.open { display: flex; }
+    #more-drawer {
+      background: #fff;
+      width: 100%;
+      max-width: 480px;
+      max-height: 78vh;
+      overflow-y: auto;
+      border-radius: 16px 16px 0 0;
+      padding: 10px 20px 24px;
+    }
+    .more-drawer-handle {
+      width: 36px; height: 4px; border-radius: 2px;
+      background: #e8e8e6; margin: 4px auto 14px;
+    }
+    .more-drawer-section { margin-bottom: 8px; }
+    .more-drawer-label {
+      font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+      color: #bbb; padding: 10px 4px 6px;
+    }
+    .more-drawer-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 13px 4px; font-size: 15px; color: #1a1a1a;
+      text-decoration: none; border-bottom: 1px solid #f5f5f4;
+      min-height: 44px;
+    }
+    .more-drawer-item:last-child { border-bottom: none; }
+    .more-drawer-item i { font-size: 18px; color: #999; width: 20px; text-align: center; }
+    .more-drawer-item.active { color: #1a1a1a; font-weight: 600; }
+    .more-drawer-item.active i { color: #1a1a1a; }
+
     /* ── Tablet: 601–900px ───────────────────────────────────────────────────── */
     @media (max-width: 900px) and (min-width: 601px) {
       .sidebar {
@@ -2128,6 +2168,86 @@
       padding: 1px 7px;
     }
 
+    /* mobile-only: shown/hidden via the max-width:600px block below */
+    .board-col-switcher {
+      display: none;
+      gap: 6px;
+      margin-bottom: 10px;
+      overflow-x: auto;
+    }
+    .board-col-switch-btn {
+      flex-shrink: 0;
+      font-size: 12px;
+      color: #999;
+      background: #fff;
+      border: 1px solid #e8e8e6;
+      border-radius: 20px;
+      padding: 6px 14px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .board-col-switch-btn.active { background: #1a1a1a; border-color: #1a1a1a; color: #fff; }
+
+    .board-card-move-btn {
+      display: none;
+      position: absolute;
+      top: 8px;
+      right: 32px;
+      background: none;
+      border: none;
+      color: #bbb;
+      cursor: pointer;
+      padding: 4px;
+      visibility: hidden;
+    }
+    .board-card:hover .board-card-move-btn,
+    .board-card-move-btn.always-visible { visibility: visible; }
+
+    .board-move-menu {
+      position: fixed;
+      inset: 0;
+      background: rgba(26,26,26,.4);
+      z-index: 600;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+    }
+    .board-move-menu-box {
+      background: #fff;
+      border-radius: 12px 12px 0 0;
+      width: 100%;
+      max-width: 480px;
+      padding: 16px;
+    }
+    .board-move-menu-title { font-size: 13px; color: #999; margin-bottom: 10px; }
+    .board-move-menu-opt {
+      display: block;
+      width: 100%;
+      text-align: left;
+      background: none;
+      border: none;
+      border-top: 1px solid #f0f0ee;
+      padding: 14px 4px;
+      font-size: 15px;
+      color: #1a1a1a;
+      cursor: pointer;
+    }
+    .board-move-menu-opt:first-of-type { border-top: none; }
+    .board-move-menu-opt.current { color: #ccc; }
+    .board-move-menu-cancel {
+      display: block;
+      width: 100%;
+      text-align: center;
+      background: #f5f5f4;
+      border: none;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 14px;
+      color: #666;
+      margin-top: 10px;
+      cursor: pointer;
+    }
+
     .board-col-body {
       display: flex;
       flex-direction: column;
@@ -2254,7 +2374,22 @@
         padding-top: 88px;  /* 48px topbar + 28px strip + 12px gap */
         padding-bottom: 72px; /* 60px bottom-nav + 12px gap */
         overflow-x: hidden;
+        max-width: 100vw;
       }
+
+      /* no input/select/textarea below 16px anywhere — smaller triggers
+         iOS Safari's auto-zoom-on-focus, which is jarring and hard to undo
+         mid-form. Overrides every scattered 13/14px declaration below. */
+      input, select, textarea, .settings-input, .settings-select, .settings-textarea {
+        font-size: 16px !important;
+      }
+
+      /* minimum comfortable touch target on every tappable control */
+      button, .icon-btn, .primary-btn, .secondary-btn, .add-btn,
+      .fp-remove-btn, a.bnav-item, .board-card-del {
+        min-height: 40px;
+      }
+      .icon-btn { min-width: 40px; }
 
       /* view headers */
       .view-header h1 { font-size: 20px; }
@@ -2263,6 +2398,7 @@
       /* today view */
       .day-header { flex-direction: column; align-items: flex-start; gap: 6px; }
       .day-date { font-size: 18px; }
+      .inline-stats { flex-wrap: wrap; row-gap: 4px; }
       .focus-grid {
         grid-template-columns: 1fr 1fr;
         gap: 8px;
@@ -2277,7 +2413,7 @@
 
       /* task form */
       .task-form { gap: 6px; }
-      .task-form input, .task-form select { font-size: 14px; padding: 8px 10px; }
+      .task-form input, .task-form select { padding: 10px 10px; }
       .task-form .form-row { flex-direction: column; }
 
       /* schedule */
@@ -2285,20 +2421,24 @@
       #schedule-table td { padding: 8px 6px; }
       .sched-time-cell { width: 52px; font-size: 11px; }
       .sched-actions { gap: 4px; }
-      .sched-actions button { padding: 3px 6px; font-size: 10px; }
+      .sched-actions button { padding: 3px 6px; font-size: 10px; min-height: 30px; }
 
       /* board */
       .board-cols {
         grid-template-columns: none;
         grid-auto-flow: column;
-        grid-auto-columns: 78vw;
+        grid-auto-columns: 88vw;
         overflow-x: auto;
         padding-bottom: 8px;
         -webkit-overflow-scrolling: touch;
+        scroll-snap-type: x mandatory;
       }
+      .board-col { scroll-snap-align: start; }
+      .board-col-switcher { display: flex; }
+      .board-card-move-btn { display: flex; visibility: visible; }
 
       /* brain dump */
-      #dump-input { font-size: 14px; min-height: 120px; }
+      #dump-input { min-height: 120px; }
 
       /* goals */
       .goal-card { padding: 14px; }
@@ -2307,7 +2447,8 @@
 
       /* dashboard */
       .dash-grid { grid-template-columns: 1fr; gap: 10px; }
-      .chart-wrap { height: 180px; }
+      .chart-wrap { height: 180px; max-width: 100%; overflow-x: auto; }
+      .monthly-chart-wrap { max-width: 100%; overflow-x: auto; padding: 10px; }
 
       /* modals */
       .modal-box {
@@ -2319,14 +2460,20 @@
 
       /* recurring panel */
       .rec-biz-group { margin-bottom: 12px; }
+      .rec-add-row { flex-wrap: wrap; }
+      .rec-add-row > * { flex: 1 1 auto; min-width: 100px; }
 
       /* monthly view */
       .mcal-cell { min-height: 60px; padding: 3px; }
       .mcal-dot  { font-size: 10px; }
       .monthly-stats-bar { grid-template-columns: repeat(3, 1fr); }
 
-      /* settings */
+      /* settings — stack label above control instead of squeezing both
+         onto one row, which was truncating input text on narrow screens */
       .settings-section { padding: 12px; }
+      .fp-row { flex-direction: column; align-items: stretch !important; gap: 4px; }
+      .fp-row .settings-label { font-size: 12px; color: #999; }
+      .settings-input, .settings-select, .settings-textarea { max-width: none; }
 
       /* routines */
       .routines-biz-grid { grid-template-columns: 1fr; }
@@ -2365,7 +2512,7 @@
       display: block;
       margin-bottom: 10px;
       padding: 9px 10px !important;
-      font-size: 14px !important;
+      font-size: 14px;
     }
     .auth-submit-btn {
       width: 100%;
@@ -2665,16 +2812,52 @@
     <a class="bnav-item" data-view="schedule">
       <i class="ti ti-calendar"></i><span>Schedule</span>
     </a>
+    <a class="bnav-item" data-view="board">
+      <i class="ti ti-layout-kanban"></i><span>Board</span>
+    </a>
     <a class="bnav-item" data-view="dump">
       <i class="ti ti-brain"></i><span>Dump</span>
     </a>
-    <a class="bnav-item" data-view="goals">
-      <i class="ti ti-target"></i><span>Goals</span>
-    </a>
-    <a class="bnav-item" data-view="dashboard">
-      <i class="ti ti-chart-bar"></i><span>Dashboard</span>
+    <a class="bnav-item" id="bnav-more" onclick="openMoreDrawer()">
+      <i class="ti ti-menu-2"></i><span>More</span>
     </a>
   </nav>
+
+  <!-- ── "More" drawer (mobile only) — reaches every section the 4 quick-access
+       bottom-nav items don't cover, mirroring the desktop sidebar's grouping ── -->
+  <div id="more-drawer-overlay" onclick="if(event.target===this) closeMoreDrawer()">
+    <div id="more-drawer">
+      <div class="more-drawer-handle"></div>
+      <div class="more-drawer-section">
+        <div class="more-drawer-label">Workspace</div>
+        <a class="more-drawer-item" data-view="today" onclick="switchTab('today');closeMoreDrawer()"><i class="ti ti-home"></i>Today</a>
+        <a class="more-drawer-item" data-view="schedule" onclick="switchTab('schedule');closeMoreDrawer()"><i class="ti ti-calendar"></i>Schedule</a>
+        <a class="more-drawer-item" data-view="board" onclick="switchTab('board');closeMoreDrawer()"><i class="ti ti-layout-kanban"></i>Board</a>
+      </div>
+      <div class="more-drawer-section">
+        <div class="more-drawer-label">Capture</div>
+        <a class="more-drawer-item" data-view="dump" onclick="switchTab('dump');closeMoreDrawer()"><i class="ti ti-brain"></i>Brain Dump</a>
+        <a class="more-drawer-item" data-view="ideas" onclick="switchTab('ideas');closeMoreDrawer()"><i class="ti ti-bulb"></i>Ideas</a>
+        <a class="more-drawer-item" data-view="notes" onclick="switchTab('notes');closeMoreDrawer()"><i class="ti ti-notes"></i>Notes</a>
+        <a class="more-drawer-item" data-view="documents" onclick="switchTab('documents');closeMoreDrawer()"><i class="ti ti-file-analytics"></i>Documents</a>
+      </div>
+      <div class="more-drawer-section">
+        <div class="more-drawer-label">Strategy</div>
+        <a class="more-drawer-item" data-view="goals" onclick="switchTab('goals');closeMoreDrawer()"><i class="ti ti-target"></i>Goals</a>
+        <a class="more-drawer-item" data-view="month" onclick="switchTab('month');closeMoreDrawer()"><i class="ti ti-calendar-month"></i>This Month</a>
+        <a class="more-drawer-item" data-view="routines" onclick="switchTab('routines');closeMoreDrawer()"><i class="ti ti-repeat"></i>Routines</a>
+      </div>
+      <div class="more-drawer-section">
+        <div class="more-drawer-label">Review</div>
+        <a class="more-drawer-item" data-view="dashboard" onclick="switchTab('dashboard');closeMoreDrawer()"><i class="ti ti-chart-bar"></i>Dashboard</a>
+        <a class="more-drawer-item" data-view="monthly" onclick="switchTab('monthly');closeMoreDrawer()"><i class="ti ti-calendar-stats"></i>Monthly</a>
+      </div>
+      <div class="more-drawer-section">
+        <div class="more-drawer-label">System</div>
+        <a class="more-drawer-item" data-view="settings" onclick="switchTab('settings');closeMoreDrawer()"><i class="ti ti-settings"></i>Settings</a>
+      </div>
+    </div>
+  </div>
 
   <!-- ── main content ──────────────────────────────────────────────────────────── -->
   <main class="content">
@@ -2800,7 +2983,14 @@
 
       <div class="board-filter-row" id="board-filter-row"></div>
 
-      <div class="board-cols">
+      <div class="board-col-switcher" id="board-col-switcher">
+        <button class="board-col-switch-btn active" data-status="backlog" onclick="switchBoardCol('backlog')">Backlog</button>
+        <button class="board-col-switch-btn" data-status="today" onclick="switchBoardCol('today')">Today</button>
+        <button class="board-col-switch-btn" data-status="in_progress" onclick="switchBoardCol('in_progress')">In Progress</button>
+        <button class="board-col-switch-btn" data-status="done" onclick="switchBoardCol('done')">Done</button>
+      </div>
+
+      <div class="board-cols" id="board-cols">
         <div class="board-col">
           <div class="board-col-head">Backlog <span class="board-col-count" id="board-count-backlog">0</span></div>
           <div class="board-col-body" id="board-body-backlog" data-status="backlog"
@@ -3683,12 +3873,20 @@ function tagHtml(biz) {
 
 // ── tab switching ─────────────────────────────────────────────────────────────
 
+const BNAV_DIRECT_VIEWS = ['today', 'schedule', 'board', 'dump'];
+
 function switchTab(name) {
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.bnav-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.more-drawer-item').forEach(el => el.classList.remove('active'));
   document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
   document.querySelectorAll(`.nav-item[data-view="${name}"]`).forEach(el => el.classList.add('active'));
-  document.querySelectorAll(`.bnav-item[data-view="${name}"]`).forEach(el => el.classList.add('active'));
+  document.querySelectorAll(`.more-drawer-item[data-view="${name}"]`).forEach(el => el.classList.add('active'));
+  if (BNAV_DIRECT_VIEWS.includes(name)) {
+    document.querySelectorAll(`.bnav-item[data-view="${name}"]`).forEach(el => el.classList.add('active'));
+  } else {
+    document.getElementById('bnav-more')?.classList.add('active');
+  }
   const viewEl = document.getElementById(`v-${name}`);
   if (viewEl) viewEl.classList.add('active');
   if (name === 'dashboard') renderDashboard();
@@ -3703,6 +3901,9 @@ function switchTab(name) {
   if (name === 'routines')  loadRoutines();
   if (name === 'documents') loadDocuments();
 }
+
+function openMoreDrawer()  { document.getElementById('more-drawer-overlay').classList.add('open'); }
+function closeMoreDrawer() { document.getElementById('more-drawer-overlay').classList.remove('open'); }
 
 // ── TODAY VIEW ────────────────────────────────────────────────────────────────
 
@@ -4422,6 +4623,7 @@ async function loadBoard() {
     boardTasks = await api('/api/tasks/board');
     renderBoardFilterRow();
     renderBoard();
+    wireBoardColScrollSync();
   } catch (e) {
     console.error('loadBoard:', e);
   }
@@ -4476,6 +4678,7 @@ function renderBoard() {
            draggable="true" data-id="${t.id}"
            ondragstart="boardDragStart(event,${t.id})" ondragend="boardDragEnd(event)"
            ontouchstart="boardTouchStart(event,${t.id})">
+        <button class="board-card-move-btn" onclick="event.stopPropagation(); openBoardMoveMenu(${t.id})" title="Move to column" aria-label="Move to column"><i class="ti ti-arrows-move"></i></button>
         <button class="board-card-del" onclick="event.stopPropagation(); armBoardCardDelete(${t.id})" title="Delete task" aria-label="Delete task"><i class="ti ti-trash"></i></button>
         <div class="board-card-title">${esc(t.name)}</div>
         <div class="board-card-meta">
@@ -4544,6 +4747,54 @@ async function boardApplyStatus(id, status) {
     renderBoard();
     console.error('boardApplyStatus:', e);
   }
+}
+
+// ── BOARD MOBILE: column switcher + tap-to-move ────────────────────────────────
+// Touch-drag (below) only reaches columns already visible on screen — on
+// mobile only ~1.1 of the 4 columns fit at once, so dragging from Backlog to
+// Done isn't physically possible by touch alone. The switcher scrolls between
+// columns; the move menu is a reliable tap-only path that doesn't depend on
+// how far a card has to travel.
+
+const BOARD_COL_LABEL = { backlog: 'Backlog', today: 'Today', in_progress: 'In Progress', done: 'Done' };
+
+function switchBoardCol(status) {
+  const idx = BOARD_STATUSES.indexOf(status);
+  const cols = document.querySelectorAll('.board-cols > .board-col');
+  if (cols[idx]) cols[idx].scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' });
+  document.querySelectorAll('.board-col-switch-btn').forEach(b => b.classList.toggle('active', b.dataset.status === status));
+}
+
+function wireBoardColScrollSync() {
+  const el = document.getElementById('board-cols');
+  if (!el || el.dataset.scrollSyncWired) return;
+  el.dataset.scrollSyncWired = '1';
+  el.addEventListener('scroll', () => {
+    const cols = [...el.querySelectorAll('.board-col')];
+    const idx = cols.findIndex(c => c.offsetLeft >= el.scrollLeft - 20);
+    const status = BOARD_STATUSES[Math.max(0, idx)];
+    document.querySelectorAll('.board-col-switch-btn').forEach(b => b.classList.toggle('active', b.dataset.status === status));
+  }, { passive: true });
+}
+
+function openBoardMoveMenu(id) {
+  const task = boardTasks.find(t => t.id === id);
+  if (!task) return;
+  const menu = document.createElement('div');
+  menu.className = 'board-move-menu';
+  menu.onclick = (e) => { if (e.target === menu) menu.remove(); };
+  menu.innerHTML = `
+    <div class="board-move-menu-box">
+      <div class="board-move-menu-title">Move "${esc(task.name)}" to…</div>
+      ${BOARD_STATUSES.map(status => `
+        <button class="board-move-menu-opt${status === task.status ? ' current' : ''}" onclick="boardApplyStatus(${id}, '${status}'); this.closest('.board-move-menu').remove();">
+          ${esc(BOARD_COL_LABEL[status])}${status === task.status ? ' (current)' : ''}
+        </button>
+      `).join('')}
+      <button class="board-move-menu-cancel" onclick="this.closest('.board-move-menu').remove();">Cancel</button>
+    </div>
+  `;
+  document.body.appendChild(menu);
 }
 
 // ── BOARD DRAG & DROP ─────────────────────────────────────────────────────────
@@ -6903,6 +7154,16 @@ function startOnboarding() {
   renderOnboardingStep();
 }
 
+// The mobile topbar/weekstrip/bottom-nav are shown purely by CSS media
+// query with no awareness of auth state, so pre-auth they'd otherwise
+// float over the login/onboarding screens showing stale placeholder data.
+function hideMobileAppChrome() {
+  ['mobile-topbar', 'mobile-weekstrip', 'bottom-nav'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+}
+
 function renderOnboardingStep() {
   for (let i = 1; i <= ONBOARDING_TOTAL_STEPS; i++) {
     document.getElementById(`onboarding-step-${i}`).style.display = i === onboardingStep ? 'block' : 'none';
@@ -7131,12 +7392,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   const authed = await checkAuth();
   if (!authed) {
     document.getElementById('auth-gate').style.display = 'flex';
+    hideMobileAppChrome();
     wireAuthForms();
     return; // don't fetch or render any app data until logged in
   }
   document.getElementById('auth-gate').style.display = 'none';
 
   if (!CURRENT_USER.onboarding_completed) {
+    hideMobileAppChrome();
     startOnboarding();
     return; // don't fetch or render app data until setup is finished
   }
