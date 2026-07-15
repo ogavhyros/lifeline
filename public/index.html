@@ -533,6 +533,19 @@
 
     .ai-box.show { display: block; }
 
+    .plan-week-row { margin-top: 12px; }
+    .pw-day-select, .pw-venture-select {
+      font-size: 11px;
+      max-width: 96px;
+      flex-shrink: 0;
+    }
+    .pw-reason {
+      font-size: 10px;
+      color: #999;
+      padding: 0 0 8px 0;
+      line-height: 1.4;
+    }
+
     .ai-focus {
       font-size: 14px;
       font-style: italic;
@@ -945,217 +958,6 @@
       font-weight: 400;
     }
 
-    /* ── goals view ───────────────────────────────────────────────────────────── */
-    .goal-biz-section { margin-bottom: 28px; }
-    .goal-biz-head {
-      font-size: 13px;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: #999;
-      font-weight: 400;
-      margin-bottom: 8px;
-    }
-    .goal-grid-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 7px 0;
-      border-bottom: 1px solid #f0f0ee;
-    }
-    .goal-dim-label {
-      font-size: 11px;
-      color: #999;
-      min-width: 90px;
-      flex-shrink: 0;
-    }
-    .goal-title-cell { flex: 1; min-width: 0; }
-    .goal-title-text {
-      font-size: 13px;
-      color: #1a1a1a;
-      cursor: pointer;
-    }
-    .goal-title-text:hover { text-decoration: underline; }
-    .goal-placeholder {
-      font-size: 13px;
-      color: #ccc;
-      cursor: pointer;
-    }
-    .goal-placeholder:hover { color: #999; }
-    .goal-edit-input {
-      font-size: 13px;
-      font-family: 'Geist', system-ui, sans-serif;
-      color: #1a1a1a;
-      border: none;
-      border-bottom: 1px solid #1a1a1a;
-      outline: none;
-      background: transparent;
-      width: 100%;
-      padding: 0;
-    }
-    .goal-status-pill {
-      font-size: 10px;
-      padding: 2px 6px;
-      border-radius: 3px;
-      cursor: pointer;
-      flex-shrink: 0;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-    }
-    .status-active   { background: #edf7f2; color: #1a6646; }
-    .status-achieved { background: #f0effe; color: #4a3fa0; }
-    .status-paused   { background: #f0f0ee; color: #999; }
-    .goal-id-hint    { font-size: 10px; color: #ccc; flex-shrink: 0; }
-    .goal-progress-area {
-      padding: 4px 0 8px 90px;
-      border-bottom: 1px solid #f0f0ee;
-    }
-    .goal-progress-note {
-      font-size: 11px;
-      color: #999;
-      padding: 2px 0;
-      line-height: 1.4;
-    }
-    .progress-date { color: #ccc; }
-    .goal-log-link {
-      font-size: 11px;
-      color: #ccc;
-      cursor: pointer;
-      display: inline-block;
-      margin-top: 4px;
-    }
-    .goal-log-link:hover { color: #1a1a1a; }
-    .goal-log-inline {
-      display: flex;
-      gap: 8px;
-      align-items: center;
-      margin-top: 6px;
-    }
-    .goal-log-input {
-      flex: 1;
-      font-size: 12px;
-      font-family: 'Geist', system-ui, sans-serif;
-      border: none;
-      border-bottom: 1px solid #e8e8e6;
-      outline: none;
-      background: transparent;
-      padding: 2px 0;
-    }
-    .goal-footer-hint {
-      font-size: 11px;
-      color: #ccc;
-      margin-top: 24px;
-    }
-
-    /* ── this month / cycles view ─────────────────────────────────────────────── */
-    .month-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 4px;
-    }
-    .cycle-card {
-      border: 1px solid #f0f0ee;
-      border-radius: 6px;
-      padding: 16px;
-      margin-bottom: 16px;
-    }
-    .cycle-header {
-      display: flex;
-      align-items: baseline;
-      gap: 8px;
-      margin-bottom: 4px;
-    }
-    .cycle-biz {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: #999;
-      flex-shrink: 0;
-    }
-    .cycle-title-text { font-size: 14px; color: #1a1a1a; }
-    .cycle-goal-link  { font-size: 11px; color: #999; margin-bottom: 10px; }
-    .cycle-completion-bar {
-      height: 2px;
-      background: #f0f0ee;
-      border-radius: 1px;
-      margin: 10px 0;
-      overflow: hidden;
-    }
-    .cycle-completion-fill {
-      height: 100%;
-      background: #1a1a1a;
-      border-radius: 1px;
-      transition: width 0.3s ease;
-    }
-    .cycle-commitment-row {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 6px 0;
-      cursor: pointer;
-    }
-    .cycle-commitment-row:hover { background: #fafafa; }
-    .commitment-check {
-      width: 14px;
-      height: 14px;
-      border: 1.5px solid #d0d0cc;
-      border-radius: 2px;
-      flex-shrink: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .commitment-check.checked {
-      background: #1a1a1a;
-      border-color: #1a1a1a;
-    }
-    .commitment-check.checked::after {
-      content: '';
-      display: block;
-      width: 4px;
-      height: 3px;
-      border-left: 1.5px solid #fff;
-      border-bottom: 1.5px solid #fff;
-      transform: translateY(-1px) rotate(-45deg);
-    }
-    .commitment-text        { font-size: 13px; color: #1a1a1a; }
-    .commitment-text.done   { color: #999; text-decoration: line-through; }
-    .cycle-reflect-link {
-      display: inline-block;
-      font-size: 11px;
-      color: #4a3fa0;
-      cursor: pointer;
-      margin-top: 8px;
-    }
-    .cycle-reflect-link:hover { text-decoration: underline; }
-    .cycle-reflection-saved {
-      font-size: 12px;
-      color: #6b6b6b;
-      font-style: italic;
-      margin-top: 8px;
-      padding-top: 8px;
-      border-top: 1px solid #f0f0ee;
-      line-height: 1.6;
-    }
-    .cycle-reflect-form {
-      margin-top: 8px;
-      padding-top: 8px;
-      border-top: 1px solid #f0f0ee;
-    }
-    .cycle-reflect-input {
-      display: block;
-      width: 100%;
-      border: 1px solid #e8e8e6;
-      border-radius: 4px;
-      padding: 8px 10px;
-      font-size: 13px;
-      font-family: 'Geist', system-ui, sans-serif;
-      resize: vertical;
-      outline: none;
-      margin-bottom: 8px;
-    }
-    .cycle-meta { font-size: 11px; color: #ccc; margin-top: 8px; }
-
     /* ── schedule drag & drop / inline edit ─────────────────────────────────── */
     .sched-handle {
       color: #ccc;
@@ -1225,39 +1027,48 @@
       height: 18px;
     }
 
-    /* new cycle form */
-    .new-cycle-form-wrap {
-      border: 1px solid #e8e8e6;
+    /* ── planning rooms (personal OKRs / venture Rocks) ─────────────────────── */
+    .plan-card {
+      border: 1px solid #f0f0ee;
       border-radius: 6px;
       padding: 16px;
-      margin-bottom: 20px;
-      background: #fafafa;
+      margin-bottom: 16px;
     }
-    .new-cycle-form-wrap label {
-      display: block;
-      font-size: 11px;
-      color: #999;
-      margin-bottom: 2px;
-      margin-top: 10px;
-    }
-    .new-cycle-form-wrap label:first-child { margin-top: 0; }
-    .cycle-form-input,
-    .cycle-form-select {
-      width: 100%;
-      font-size: 13px;
-      font-family: 'Geist', system-ui, sans-serif;
-      border: none;
-      border-bottom: 1px solid #e8e8e6;
-      outline: none;
-      background: transparent;
-      padding: 4px 0;
-      color: #1a1a1a;
-    }
-    .cycle-form-actions {
+    .plan-card-header {
       display: flex;
-      gap: 12px;
-      margin-top: 14px;
+      align-items: baseline;
+      gap: 8px;
+      margin-bottom: 4px;
     }
+    .plan-card-title { font-size: 14px; color: #1a1a1a; }
+    .plan-card-sub   { font-size: 11px; color: #999; margin-bottom: 10px; }
+    .plan-progress-bar {
+      height: 2px;
+      background: #f0f0ee;
+      border-radius: 1px;
+      margin: 8px 0 4px;
+      overflow: hidden;
+    }
+    .plan-progress-fill {
+      height: 100%;
+      background: #1a1a1a;
+      border-radius: 1px;
+      transition: width 0.3s ease;
+    }
+    .plan-pill {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 3px;
+      cursor: pointer;
+      flex-shrink: 0;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+    .plan-pill-active { background: #edf7f2; color: #1a6646; }
+    .plan-pill-done   { background: #f0effe; color: #4a3fa0; }
+    .plan-pill-warn   { background: #fef8ec; color: #7a4a0a; }
+    .plan-pill-muted  { background: #f0f0ee; color: #999; }
 
     /* ── focus blocks ─────────────────────────────────────────────────────────── */
 
@@ -2807,11 +2618,6 @@
       max-width: 64px !important;
       flex-shrink: 0;
     }
-    .ob-goal-form {
-      margin-top: 12px;
-      padding-top: 12px;
-      border-top: 1px solid #f0f0ee;
-    }
   </style>
 </head>
 
@@ -2886,24 +2692,8 @@
     </div>
 
     <div class="onboarding-step" id="onboarding-step-5" style="display:none">
-      <div class="onboarding-step-title">Goals for the year</div>
-      <div class="onboarding-step-sub">Optional — skip this and add goals later if you'd rather.</div>
-      <div id="ob-goals-list"></div>
-      <div class="ob-goal-form">
-        <select class="settings-select" id="ob-goal-biz" style="max-width:none;width:100%;margin-bottom:6px"></select>
-        <select class="settings-select" id="ob-goal-dim" style="max-width:none;width:100%;margin-bottom:6px">
-          <option value="growth">Growth</option>
-          <option value="finance">Finance</option>
-          <option value="operations">Operations</option>
-        </select>
-        <input class="settings-input" id="ob-goal-title" type="text" placeholder="Goal title" style="max-width:none;width:100%;margin-bottom:6px" />
-        <button class="secondary-btn" type="button" onclick="addOnboardingGoal()">Add goal</button>
-      </div>
-    </div>
-
-    <div class="onboarding-step" id="onboarding-step-6" style="display:none">
       <div class="onboarding-step-title">Notifications</div>
-      <div class="onboarding-step-sub">You can change these anytime in Settings.</div>
+      <div class="onboarding-step-sub">You can change these anytime in Settings. Personal OKRs and venture Rocks are set up afterward from the Planning section.</div>
       <div class="notif-list">
         <div class="notif-row"><span>Morning briefing</span><label class="toggle-switch"><input type="checkbox" id="ob-notif-briefing" checked><span class="toggle-track"></span></label></div>
         <div class="notif-row"><span>Block reminders</span><label class="toggle-switch"><input type="checkbox" id="ob-notif-block" checked><span class="toggle-track"></span></label></div>
@@ -2958,9 +2748,15 @@
 
     <div class="nav-section">
       <div class="nav-label">STRATEGY</div>
-      <a class="nav-item" data-view="goals" data-tooltip="Goals"><i class="ti ti-target"></i><span class="nav-text">Goals</span></a>
-      <a class="nav-item" data-view="month" data-tooltip="This Month"><i class="ti ti-calendar-month"></i><span class="nav-text">This Month</span></a>
       <a class="nav-item" data-view="routines" data-tooltip="Routines"><i class="ti ti-repeat"></i><span class="nav-text">Routines</span></a>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-label">PLANNING</div>
+      <a class="nav-item" data-view="okrs" data-tooltip="Personal OKRs"><i class="ti ti-flag"></i><span class="nav-text">Personal OKRs</span></a>
+      <a class="nav-item" data-view="rocks-blok" data-tooltip="Blok AI"><i class="ti ti-diamond"></i><span class="nav-text">Blok AI</span></a>
+      <a class="nav-item" data-view="rocks-aphl" data-tooltip="APHL Africa"><i class="ti ti-diamond"></i><span class="nav-text">APHL Africa</span></a>
+      <a class="nav-item" data-view="rocks-trade" data-tooltip="TradeSol"><i class="ti ti-diamond"></i><span class="nav-text">TradeSol</span></a>
     </div>
 
     <div class="nav-section">
@@ -3020,9 +2816,14 @@
       </div>
       <div class="more-drawer-section">
         <div class="more-drawer-label">Strategy</div>
-        <a class="more-drawer-item" data-view="goals" onclick="switchTab('goals');closeMoreDrawer()"><i class="ti ti-target"></i>Goals</a>
-        <a class="more-drawer-item" data-view="month" onclick="switchTab('month');closeMoreDrawer()"><i class="ti ti-calendar-month"></i>This Month</a>
         <a class="more-drawer-item" data-view="routines" onclick="switchTab('routines');closeMoreDrawer()"><i class="ti ti-repeat"></i>Routines</a>
+      </div>
+      <div class="more-drawer-section">
+        <div class="more-drawer-label">Planning</div>
+        <a class="more-drawer-item" data-view="okrs" onclick="switchTab('okrs');closeMoreDrawer()"><i class="ti ti-flag"></i>Personal OKRs</a>
+        <a class="more-drawer-item" data-view="rocks-blok" onclick="switchTab('rocks-blok');closeMoreDrawer()"><i class="ti ti-diamond"></i>Blok AI</a>
+        <a class="more-drawer-item" data-view="rocks-aphl" onclick="switchTab('rocks-aphl');closeMoreDrawer()"><i class="ti ti-diamond"></i>APHL Africa</a>
+        <a class="more-drawer-item" data-view="rocks-trade" onclick="switchTab('rocks-trade');closeMoreDrawer()"><i class="ti ti-diamond"></i>TradeSol</a>
       </div>
       <div class="more-drawer-section">
         <div class="more-drawer-label">Review</div>
@@ -3064,6 +2865,22 @@
 
       <div class="progress-bar">
         <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+      </div>
+
+      <div class="plan-week-row">
+        <button class="text-btn" id="plan-week-btn" type="button">Plan my week →</button>
+      </div>
+      <div class="ai-box" id="plan-week-box">
+        <div class="ai-focus" id="plan-week-empty" style="display:none">No open Objectives, Key Results, or Rocks yet — set some in Planning first.</div>
+        <div id="plan-week-list"></div>
+        <div class="pending-rec-row" style="margin-top:4px">
+          <input class="settings-input" id="pw-new-title" type="text" placeholder="Add your own task…" style="flex:1;font-size:12px" />
+          <button class="text-btn" type="button" id="pw-add-own-btn">Add</button>
+        </div>
+        <div class="ai-actions">
+          <button class="text-btn" id="plan-week-confirm-btn" type="button">Add tasks to board</button>
+          <button class="text-btn muted" id="plan-week-dismiss-btn" type="button">Dismiss</button>
+        </div>
       </div>
 
       <div class="focus-section-label">Focus blocks</div>
@@ -3270,68 +3087,20 @@
     </div>
 
     <!-- GOALS ───────────────────────────────────────────────────────────────────── -->
-    <div class="view" id="v-goals">
-
-      <h1 class="page-title">2026 Goals</h1>
-
-      <div id="goals-container">
-        <div class="loading-text">Loading…</div>
-      </div>
-
-      <p class="goal-footer-hint">
-        Goals are reviewed monthly. Use /review &lt;id&gt; in Telegram for AI assessment.
-      </p>
-
+    <!-- PLANNING: PERSONAL OKRs ──────────────────────────────────────────────── -->
+    <div class="view" id="v-okrs">
+      <div id="okrs-room-container"><div class="loading-text">Loading…</div></div>
     </div>
 
-    <!-- THIS MONTH ───────────────────────────────────────────────────────────── -->
-    <div class="view" id="v-month">
-
-      <div class="month-header">
-        <h1 class="page-title" id="month-title">Cycles</h1>
-        <button class="text-btn" id="new-cycle-btn" type="button">+ New cycle</button>
-      </div>
-      <p class="page-sub">Monthly commitments tied to your goals</p>
-
-      <div class="new-cycle-form-wrap" id="new-cycle-form" style="display:none">
-        <label>Business</label>
-        <select class="cycle-form-select biz-select" id="cycle-biz-sel">
-          <option value="blok">Blok AI</option>
-          <option value="aphl">APHL Africa</option>
-          <option value="trade">TradeSol</option>
-          <option value="personal">Personal</option>
-        </select>
-
-        <label>Linked goal</label>
-        <select class="cycle-form-select" id="cycle-goal-sel">
-          <option value="">No linked goal</option>
-        </select>
-
-        <label>Month (YYYY-MM)</label>
-        <input class="cycle-form-input" id="cycle-month-input" type="text" placeholder="2026-06" />
-
-        <label>Cycle title / focus</label>
-        <input class="cycle-form-input" id="cycle-title-input" type="text" placeholder="June fundraise push" />
-
-        <label>Commitment 1 *</label>
-        <input class="cycle-form-input" id="cycle-c1-input" type="text" placeholder="Specific, measurable…" />
-
-        <label>Commitment 2 *</label>
-        <input class="cycle-form-input" id="cycle-c2-input" type="text" placeholder="Specific, measurable…" />
-
-        <label>Commitment 3 (optional)</label>
-        <input class="cycle-form-input" id="cycle-c3-input" type="text" placeholder="Optional third…" />
-
-        <div class="cycle-form-actions">
-          <button class="add-btn" type="button" id="cycle-save-btn">Save cycle</button>
-          <button class="text-btn muted" type="button" id="cycle-cancel-btn">Cancel</button>
-        </div>
-      </div>
-
-      <div id="cycles-container">
-        <div class="loading-text">Loading…</div>
-      </div>
-
+    <!-- PLANNING: VENTURE ROCKS (Blok AI / APHL Africa / TradeSol) ──────────── -->
+    <div class="view" id="v-rocks-blok">
+      <div id="rocks-blok-container"><div class="loading-text">Loading…</div></div>
+    </div>
+    <div class="view" id="v-rocks-aphl">
+      <div id="rocks-aphl-container"><div class="loading-text">Loading…</div></div>
+    </div>
+    <div class="view" id="v-rocks-trade">
+      <div id="rocks-trade-container"><div class="loading-text">Loading…</div></div>
     </div>
 
     <!-- DASHBOARD ─────────────────────────────────────────────────────────────── -->
@@ -4078,8 +3847,10 @@ function switchTab(name) {
   if (name === 'board')     loadBoard();
   if (name === 'ideas')     loadIdeas();
   if (name === 'notes')     loadNotes();
-  if (name === 'goals')     loadGoals();
-  if (name === 'month')     loadMonth();
+  if (name === 'okrs')        loadOkrsRoom();
+  if (name === 'rocks-blok')  loadRocksRoom('blok');
+  if (name === 'rocks-aphl')  loadRocksRoom('aphl');
+  if (name === 'rocks-trade') loadRocksRoom('trade');
   if (name === 'monthly')   loadMonthly();
   if (name === 'settings')  loadSettings();
   if (name === 'routines')  loadRoutines();
@@ -4238,8 +4009,17 @@ function renderStreakSquares() {
 function renderTaskList() {
   const el = document.getElementById('task-list');
 
+  // Recurring tasks vanish from the active list once confirmed done today —
+  // mirrors the anchor chain's confirm-and-clear pattern, but for the
+  // general recurring list. They stay in state.tasks (so stats/progress
+  // still count them) and reappear naturally tomorrow since each day gets
+  // its own fresh task row (see populateRecurring/confirmRecurring in db.js).
+  const doneRecurringCount = state.tasks.filter(t => t.source === 'recurring' && t.done).length;
+
   // Build merged list: tasks + calendar event previews
-  const taskItems = state.tasks.map(t => ({ _type: 'task', _sortTime: t.time || '99:99', ...t }));
+  const taskItems = state.tasks
+    .filter(t => !(t.source === 'recurring' && t.done))
+    .map(t => ({ _type: 'task', _sortTime: t.time || '99:99', ...t }));
 
   // Calendar event previews (not yet tasks)
   const calItems  = state.calEvents.map(e => ({
@@ -4259,8 +4039,12 @@ function renderTaskList() {
     return a._sortTime < b._sortTime ? -1 : 1;
   });
 
+  const doneRecurringNote = doneRecurringCount
+    ? `<div class="empty-text" style="padding:4px 0 0;font-size:11px">${doneRecurringCount} recurring task${doneRecurringCount !== 1 ? 's' : ''} completed today</div>`
+    : '';
+
   if (!merged.length) {
-    el.innerHTML = '<div class="empty-text">No tasks yet — add one below.</div>';
+    el.innerHTML = `<div class="empty-text">No tasks yet — add one below.</div>${doneRecurringNote}`;
     return;
   }
 
@@ -4322,7 +4106,7 @@ function renderTaskList() {
         ${rightCtrl}
       </div>
     `;
-  }).join('');
+  }).join('') + doneRecurringNote;
 }
 
 async function toggleTask(id) {
@@ -5361,6 +5145,107 @@ async function importTasks() {
   } catch (e) { console.error('importTasks:', e); }
 }
 
+// ── PLAN MY WEEK ─────────────────────────────────────────────────────────────
+// Bridges the OKR/Rock planning layer to daily execution. Nothing here is
+// auto-saved — Claude's suggestions land in _planWeekTasks (editable client
+// state only) and only POST to the server when the user explicitly confirms,
+// same "confirmation over automation" pattern as the brain dump review above
+// and the pending-recurring-tasks banner.
+
+const PW_DAY_OPTIONS = [
+  ['this_week', 'This week'], ['monday', 'Mon'], ['tuesday', 'Tue'], ['wednesday', 'Wed'],
+  ['thursday', 'Thu'], ['friday', 'Fri'], ['saturday', 'Sat'], ['sunday', 'Sun'],
+];
+
+let _planWeekTasks = [];
+
+function setPlanWeekLoading(on) {
+  const btn = document.getElementById('plan-week-btn');
+  btn.disabled = on;
+  btn.textContent = on ? 'Planning…' : 'Plan my week →';
+}
+
+async function planMyWeek() {
+  setPlanWeekLoading(true);
+  try {
+    const [res, ventures] = await Promise.all([
+      api('/api/planning/suggest-week', { method: 'POST', body: {} }),
+      getPlanningVentures(),
+    ]);
+    _planWeekTasks = (res.tasks || []).map(t => ({ ...t }));
+    document.getElementById('plan-week-empty').style.display = res.hasContext ? 'none' : 'block';
+    renderPlanWeekList(ventures);
+    document.getElementById('plan-week-box').classList.add('show');
+  } catch (e) {
+    showToast(e.message);
+    console.error('planMyWeek:', e);
+  } finally {
+    setPlanWeekLoading(false);
+  }
+}
+
+function renderPlanWeekList(ventures) {
+  const el = document.getElementById('plan-week-list');
+  const ventureOpts = [{ slug: 'personal', name: 'Personal' }, ...ventures.map(v => ({ slug: v.slug, name: v.name }))];
+
+  el.innerHTML = _planWeekTasks.map((t, i) => `
+    <div class="pending-rec-row">
+      <input class="settings-input" style="flex:1;font-size:13px" value="${esc(t.title)}"
+             oninput="updateWeekTaskField(${i},'title',this.value)" />
+      <select class="settings-select pw-day-select" onchange="updateWeekTaskField(${i},'suggested_day',this.value)">
+        ${PW_DAY_OPTIONS.map(([v, l]) => `<option value="${v}"${t.suggested_day === v ? ' selected' : ''}>${l}</option>`).join('')}
+      </select>
+      <select class="settings-select pw-venture-select" onchange="updateWeekTaskField(${i},'venture',this.value)">
+        ${ventureOpts.map(v => `<option value="${v.slug}"${t.venture === v.slug ? ' selected' : ''}>${esc(v.name)}</option>`).join('')}
+      </select>
+      <button class="task-del" onclick="removeWeekTask(${i})" aria-label="Remove"><i class="ti ti-x"></i></button>
+    </div>
+    ${t.reason ? `<div class="pw-reason">${esc(t.reason)}</div>` : ''}
+  `).join('') || '<div class="empty-text">Nothing suggested — add your own below, or dismiss.</div>';
+
+  document.getElementById('plan-week-confirm-btn').textContent =
+    `Add ${_planWeekTasks.length} task${_planWeekTasks.length !== 1 ? 's' : ''} to board`;
+}
+
+function updateWeekTaskField(i, field, value) {
+  if (!_planWeekTasks[i]) return;
+  _planWeekTasks[i][field] = value;
+}
+
+async function removeWeekTask(i) {
+  _planWeekTasks.splice(i, 1);
+  renderPlanWeekList(await getPlanningVentures());
+}
+
+async function addOwnWeekTask() {
+  const input = document.getElementById('pw-new-title');
+  const title = input.value.trim();
+  if (!title) return;
+  _planWeekTasks.push({ title, suggested_day: 'this_week', venture: 'personal', linked_okr_id: null, linked_rock_id: null, reason: '' });
+  input.value = '';
+  renderPlanWeekList(await getPlanningVentures());
+}
+
+async function confirmPlanWeek() {
+  const tasks = _planWeekTasks.filter(t => t.title && t.title.trim());
+  if (!tasks.length) { showToast('Nothing to add'); return; }
+  try {
+    await api('/api/planning/confirm-week', { method: 'POST', body: { tasks } });
+    document.getElementById('plan-week-box').classList.remove('show');
+    _planWeekTasks = [];
+    showToast(`${tasks.length} task${tasks.length !== 1 ? 's' : ''} added to the board`);
+    await fetchTasks();
+  } catch (e) {
+    showToast(e.message);
+    console.error('confirmPlanWeek:', e);
+  }
+}
+
+function dismissPlanWeek() {
+  document.getElementById('plan-week-box').classList.remove('show');
+  _planWeekTasks = [];
+}
+
 // ── RECURRING TASKS ───────────────────────────────────────────────────────────
 
 let _recOpen = false;
@@ -6347,265 +6232,6 @@ function renderKpis(apiKpis) {
   });
 }
 
-// ── GOALS VIEW ────────────────────────────────────────────────────────────────
-
-const BUSINESSES_ORDER = ['blok', 'aphl', 'trade', 'personal'];
-const DIMENSIONS       = ['growth', 'finance', 'operations'];
-
-let _allGoals = [];
-
-async function loadGoals() {
-  const container = document.getElementById('goals-container');
-  try {
-    const goals = await api('/api/goals');
-    _allGoals = goals;
-    renderGoals(goals);
-  } catch (e) {
-    container.innerHTML = `<div class="empty-text">Error: ${esc(e.message)}</div>`;
-  }
-}
-
-function renderGoals(goals) {
-  const container = document.getElementById('goals-container');
-  const map = {};
-  for (const g of goals) map[`${g.business}__${g.dimension}`] = g;
-
-  container.innerHTML = BUSINESSES_ORDER.map(biz => `
-    <div class="goal-biz-section">
-      <div class="goal-biz-head">${esc(BIZ_LABEL[biz] || biz)}</div>
-      ${DIMENSIONS.map(dim => {
-        const goal     = map[`${biz}__${dim}`];
-        const dimLabel = dim.charAt(0).toUpperCase() + dim.slice(1);
-        const rowHtml  = `
-          <div class="goal-grid-row">
-            <span class="goal-dim-label">${esc(dimLabel)}</span>
-            <div class="goal-title-cell">
-              ${goal
-                ? `<span class="goal-title-text" data-goal-id="${goal.id}" data-biz="${biz}" data-dim="${dim}" onclick="startEditGoal(this)">${esc(goal.title)}</span>`
-                : `<span class="goal-placeholder" data-biz="${biz}" data-dim="${dim}" onclick="startEditGoal(this)">Set a goal…</span>`
-              }
-            </div>
-            ${goal ? `
-              <span class="goal-status-pill status-${esc(goal.status)}" onclick="cycleGoalStatus(${goal.id}, '${esc(goal.status)}')">${esc(goal.status)}</span>
-              <span class="goal-id-hint">#${goal.id}</span>
-            ` : ''}
-          </div>
-        `;
-        const progressHtml = goal ? `
-          <div class="goal-progress-area">
-            ${(goal.progress || []).map(p =>
-              `<div class="goal-progress-note">— ${esc(p.note)} <span class="progress-date">${esc((p.logged_at || '').slice(0, 10))}</span></div>`
-            ).join('')}
-            <span class="goal-log-link" onclick="toggleLogProgress(${goal.id})">+ log progress</span>
-            <div class="goal-log-inline" id="glog-${goal.id}" style="display:none">
-              <input class="goal-log-input" id="glog-input-${goal.id}" type="text" placeholder="What moved today?" />
-              <button class="text-btn" onclick="saveProgress(${goal.id})" style="white-space:nowrap">Save</button>
-            </div>
-          </div>
-        ` : '';
-        return rowHtml + progressHtml;
-      }).join('')}
-    </div>
-  `).join('');
-}
-
-function startEditGoal(el) {
-  const goalId = el.dataset.goalId ? Number(el.dataset.goalId) : 0;
-  const biz    = el.dataset.biz;
-  const dim    = el.dataset.dim;
-  const current = goalId ? el.textContent : '';
-  const input = document.createElement('input');
-  input.type      = 'text';
-  input.value     = current;
-  input.className = 'goal-edit-input';
-  input.placeholder = 'Enter goal title…';
-  el.replaceWith(input);
-  input.focus();
-  if (current) input.select();
-
-  let saved = false;
-  const doSave = async () => {
-    if (saved) return;
-    saved = true;
-    const title = input.value.trim();
-    if (!title) { loadGoals(); return; }
-    try {
-      if (goalId) {
-        await api(`/api/goals/${goalId}`, { method: 'PATCH', body: { title } });
-      } else {
-        await api('/api/goals', { method: 'POST', body: { business: biz, dimension: dim, title, year: 2026 } });
-      }
-    } catch (e) { console.error('startEditGoal save:', e); }
-    loadGoals();
-  };
-  input.addEventListener('blur',    doSave);
-  input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); if (e.key === 'Escape') { saved = true; loadGoals(); } });
-}
-
-const STATUS_CYCLE = { active: 'achieved', achieved: 'paused', paused: 'active' };
-
-async function cycleGoalStatus(goalId, currentStatus) {
-  const next = STATUS_CYCLE[currentStatus] || 'active';
-  try {
-    await api(`/api/goals/${goalId}/status`, { method: 'PATCH', body: { status: next } });
-    loadGoals();
-  } catch (e) { console.error('cycleGoalStatus:', e); }
-}
-
-function toggleLogProgress(goalId) {
-  const el = document.getElementById(`glog-${goalId}`);
-  if (!el) return;
-  const isOpen = el.style.display !== 'none';
-  el.style.display = isOpen ? 'none' : 'flex';
-  if (!isOpen) document.getElementById(`glog-input-${goalId}`)?.focus();
-}
-
-async function saveProgress(goalId) {
-  const input = document.getElementById(`glog-input-${goalId}`);
-  const note  = input?.value.trim();
-  if (!note) return;
-  try {
-    await api(`/api/goals/${goalId}/progress`, { method: 'POST', body: { note } });
-    input.value = '';
-    loadGoals();
-  } catch (e) { console.error('saveProgress:', e); }
-}
-
-// ── THIS MONTH VIEW ───────────────────────────────────────────────────────────
-
-let _currentMonth    = '';
-let _allGoalsForForm = [];
-
-async function loadMonth() {
-  const watNow   = new Date(Date.now() + WAT_MS);
-  _currentMonth  = watNow.toISOString().slice(0, 7);
-  const monthLabel = watNow.toLocaleDateString('en-GB', { month: 'long', timeZone: 'UTC' });
-  document.getElementById('month-title').textContent = `${monthLabel} Cycles`;
-
-  const container = document.getElementById('cycles-container');
-  try {
-    const [cycles, goals] = await Promise.all([
-      api(`/api/cycles/${_currentMonth}`),
-      api('/api/goals'),
-    ]);
-    _allGoalsForForm = goals;
-    renderCycles(cycles);
-  } catch (e) {
-    container.innerHTML = `<div class="empty-text">Error: ${esc(e.message)}</div>`;
-  }
-}
-
-function renderCycles(cycles) {
-  const container = document.getElementById('cycles-container');
-  if (!cycles.length) {
-    container.innerHTML =
-      '<div class="empty-text">No cycles set for this month.<br>' +
-      'Use /suggest &lt;goal_id&gt; in Telegram to get AI-suggested commitments.</div>';
-    return;
-  }
-
-  container.innerHTML = cycles.map(c => {
-    const biz   = BIZ_LABEL[c.business] || c.business;
-    const comms = [
-      { text: c.commitment_1, status: c.status_1 },
-      { text: c.commitment_2, status: c.status_2 },
-      ...(c.commitment_3 ? [{ text: c.commitment_3, status: c.status_3 }] : []),
-    ];
-    const total  = comms.length;
-    const done   = comms.filter(cm => cm.status === 'done').length;
-    const allDone = done === total;
-    const pct    = total ? Math.round(done / total * 100) : 0;
-
-    return `
-      <div class="cycle-card">
-        <div class="cycle-header">
-          <span class="cycle-biz">${esc(biz)}</span>
-          <span class="cycle-title-text">${esc(c.title)}</span>
-        </div>
-        ${c.goal_title ? `<div class="cycle-goal-link">Goal: ${esc(c.goal_title)}</div>` : ''}
-        <div class="cycle-completion-bar">
-          <div class="cycle-completion-fill" style="width:${pct}%"></div>
-        </div>
-        ${comms.map((cm, i) => `
-          <div class="cycle-commitment-row" onclick="toggleCommitment(${c.id}, ${i + 1}, '${cm.status}')">
-            <div class="commitment-check${cm.status === 'done' ? ' checked' : ''}"></div>
-            <span class="commitment-text${cm.status === 'done' ? ' done' : ''}">${esc(cm.text)}</span>
-          </div>
-        `).join('')}
-        ${allDone && !c.reflection ? `<a class="cycle-reflect-link" onclick="openReflection(${c.id})">Write reflection →</a>` : ''}
-        ${c.reflection ? `<div class="cycle-reflection-saved">${esc(c.reflection)}</div>` : ''}
-        <div class="cycle-reflect-form" id="crf-${c.id}" style="display:none">
-          <textarea class="cycle-reflect-input" id="crf-input-${c.id}" placeholder="End of month reflection…" rows="3"></textarea>
-          <button class="text-btn" onclick="saveReflection(${c.id})">Save reflection</button>
-        </div>
-        <div class="cycle-meta">ID: ${c.id} &nbsp;·&nbsp; ${done}/${total} done</div>
-      </div>
-    `;
-  }).join('');
-}
-
-async function toggleCommitment(cycleId, which, currentStatus) {
-  const next = currentStatus === 'done' ? 'pending' : 'done';
-  try {
-    await api(`/api/cycles/${cycleId}/commitment`, { method: 'PATCH', body: { which, status: next } });
-    loadMonth();
-  } catch (e) { console.error('toggleCommitment:', e); }
-}
-
-function openReflection(cycleId) {
-  const el = document.getElementById(`crf-${cycleId}`);
-  if (el) { el.style.display = 'block'; document.getElementById(`crf-input-${cycleId}`)?.focus(); }
-}
-
-async function saveReflection(cycleId) {
-  const input = document.getElementById(`crf-input-${cycleId}`);
-  const text  = input?.value.trim();
-  if (!text) return;
-  try {
-    await api(`/api/cycles/${cycleId}/reflection`, { method: 'PATCH', body: { reflection: text } });
-    loadMonth();
-  } catch (e) { console.error('saveReflection:', e); }
-}
-
-function toggleNewCycleForm() {
-  const form   = document.getElementById('new-cycle-form');
-  const isOpen = form.style.display !== 'none';
-  form.style.display = isOpen ? 'none' : 'block';
-  if (!isOpen) {
-    const sel = document.getElementById('cycle-goal-sel');
-    sel.innerHTML = '<option value="">No linked goal</option>' +
-      _allGoalsForForm.map(g => {
-        const bizShort = (BIZ_LABEL[g.business] || g.business).split(' ')[0];
-        return `<option value="${g.id}">[${esc(bizShort)}] ${esc(g.dimension)} — ${esc(g.title)}</option>`;
-      }).join('');
-    document.getElementById('cycle-month-input').value = _currentMonth;
-  }
-}
-
-async function saveNewCycle() {
-  const body = {
-    business:     document.getElementById('cycle-biz-sel').value,
-    goal_id:      document.getElementById('cycle-goal-sel').value || undefined,
-    month:        document.getElementById('cycle-month-input').value,
-    title:        document.getElementById('cycle-title-input').value.trim(),
-    commitment_1: document.getElementById('cycle-c1-input').value.trim(),
-    commitment_2: document.getElementById('cycle-c2-input').value.trim(),
-    commitment_3: document.getElementById('cycle-c3-input').value.trim() || undefined,
-  };
-  if (!body.business || !body.month || !body.title || !body.commitment_1 || !body.commitment_2) {
-    showToast('Fill in all required fields');
-    return;
-  }
-  try {
-    await api('/api/cycles', { method: 'POST', body });
-    document.getElementById('new-cycle-form').style.display = 'none';
-    loadMonth();
-  } catch (e) {
-    showToast(e.message);
-    console.error('saveNewCycle:', e);
-  }
-}
-
 // ── MONTHLY VIEW ──────────────────────────────────────────────────────────────
 
 const BIZ_COLOR = { blok: '#4a3fa0', aphl: '#1a6646', trade: '#7a4a0a', personal: '#8a2a4a', anchor: '#8a2a4a' };
@@ -7470,12 +7096,380 @@ async function disconnectTelegram() {
   }
 }
 
+// ── PLANNING: personal OKRs + venture Rocks ────────────────────────────────────
+// Two genuinely separate room families sharing the same rendering helpers:
+// the personal room (annual objectives -> quarterly OKRs -> key results) and
+// one room per venture (quarterly Rocks, EOS-style, no annual layer). Each
+// room does its own scoped fetch — no shared cached list gets filtered
+// client-side, so switching rooms is a real re-query, not a view filter.
+
+let _planningVentures = null; // cached founder_profile.ventures — fetched once per session
+
+async function getPlanningVentures() {
+  if (_planningVentures) return _planningVentures;
+  const profile = await api('/api/profile');
+  _planningVentures = profile.ventures || [];
+  return _planningVentures;
+}
+
+const PLANNING_OKR_STATUS_CYCLE  = { active: 'done', done: 'partial', partial: 'dropped', dropped: 'active' };
+const PLANNING_ROCK_STATUS_CYCLE = { on_track: 'at_risk', at_risk: 'done', done: 'dropped', dropped: 'on_track' };
+const PLANNING_STATUS_LABEL = {
+  active: 'Active', done: 'Done', partial: 'Partial', dropped: 'Dropped', achieved: 'Achieved',
+  on_track: 'On track', at_risk: 'At risk',
+};
+const PLANNING_PILL_CLASS = {
+  active: 'plan-pill-active', on_track: 'plan-pill-active',
+  done: 'plan-pill-done', achieved: 'plan-pill-done',
+  partial: 'plan-pill-warn', at_risk: 'plan-pill-warn',
+  dropped: 'plan-pill-muted',
+};
+function planPill(status, onclick) {
+  const cls = PLANNING_PILL_CLASS[status] || 'plan-pill-muted';
+  const label = PLANNING_STATUS_LABEL[status] || status;
+  return `<span class="plan-pill ${cls}" onclick="${onclick}">${esc(label)}</span>`;
+}
+
+function planningRetroBanner(status, roomLabel) {
+  if (!status || !status.due) return '';
+  return `
+    <div class="pending-rec-banner" style="margin-bottom:20px">
+      <div class="pending-rec-head">Q${status.quarter} ${status.year} — new quarter</div>
+      <div class="pending-rec-sub">Review Q${status.priorQuarter} ${status.priorYear} for ${esc(roomLabel)} below, then set this quarter's focus. Mark each old item done/partial/dropped and add new ones — nothing carries over automatically.</div>
+    </div>
+  `;
+}
+
+async function ackPlanningRetro(year, quarter, reloadFn) {
+  try {
+    await api('/api/planning/retro/ack', { method: 'POST', body: { year, quarter } });
+    showToast('Quarter set — see you at the next one');
+    reloadFn();
+  } catch (e) { console.error('ackPlanningRetro:', e); }
+}
+
+// ── linked-tasks widget shared by key results and rocks ──────────────────────
+
+async function renderLinkedTasksInto(containerId, type, parentId) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  try {
+    const tasks = await api(`/api/planning/${type === 'rock' ? 'rocks' : 'key-results'}/${parentId}/tasks`);
+    el.innerHTML = tasks.length
+      ? tasks.map(t => `
+          <div class="pending-rec-row">
+            <span style="flex:1;font-size:12px${t.done ? ';color:#999;text-decoration:line-through' : ''}">${esc(t.name)}</span>
+            <a href="#" style="font-size:11px;color:#999" onclick="event.preventDefault();unlinkPlanningTask(${t.id},'${containerId}','${type}',${parentId})">unlink</a>
+          </div>
+        `).join('')
+      : '<div style="font-size:11px;color:#ccc">No tasks linked yet.</div>';
+  } catch (e) { console.error('renderLinkedTasksInto:', e); }
+}
+
+async function unlinkPlanningTask(taskId, containerId, type, parentId) {
+  try {
+    await api(`/api/tasks/${taskId}/link`, { method: 'PATCH', body: {} });
+    renderLinkedTasksInto(containerId, type, parentId);
+  } catch (e) { console.error('unlinkPlanningTask:', e); }
+}
+
+async function linkPlanningTask(selectId, containerId, type, parentId) {
+  const sel = document.getElementById(selectId);
+  const taskId = sel.value;
+  if (!taskId) return;
+  try {
+    const body = type === 'rock' ? { rock_id: Number(parentId) } : { key_result_id: Number(parentId) };
+    await api(`/api/tasks/${taskId}/link`, { method: 'PATCH', body });
+    sel.value = '';
+    renderLinkedTasksInto(containerId, type, parentId);
+  } catch (e) { console.error('linkPlanningTask:', e); }
+}
+
+async function unlinkedTaskOptions() {
+  try {
+    const tasks = await api('/api/tasks/board');
+    return tasks.filter(t => !t.rock_id && !t.key_result_id);
+  } catch { return []; }
+}
+
+function linkTaskPickerHtml(selectId, containerId, type, parentId, unlinkedTasks) {
+  return `
+    <div style="display:flex;gap:6px;margin-top:6px">
+      <select class="settings-select" id="${selectId}" style="max-width:none;flex:1;font-size:12px">
+        <option value="">Link a task…</option>
+        ${unlinkedTasks.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}
+      </select>
+      <button class="text-btn" onclick="linkPlanningTask('${selectId}','${containerId}','${type}',${parentId})">Link</button>
+    </div>
+  `;
+}
+
+// ── PERSONAL OKRs room ─────────────────────────────────────────────────────────
+
+async function loadOkrsRoom() {
+  const el = document.getElementById('okrs-room-container');
+  el.innerHTML = '<div class="loading-text">Loading…</div>';
+  try {
+    const [ctx, status, unlinked] = await Promise.all([
+      api('/api/planning/context'),
+      api('/api/planning/retro-status'),
+      unlinkedTaskOptions(),
+    ]);
+    const [annualObjectives, okrs] = await Promise.all([
+      api(`/api/planning/annual-objectives?year=${ctx.year}`),
+      api(`/api/planning/quarterly-okrs?year=${ctx.year}&quarter=${ctx.quarter}`),
+    ]);
+    renderOkrsRoom(ctx, status, annualObjectives, okrs, unlinked);
+  } catch (e) {
+    el.innerHTML = `<div class="empty-text">Error: ${esc(e.message)}</div>`;
+  }
+}
+
+function renderOkrsRoom(ctx, status, annualObjectives, okrs, unlinked) {
+  const el = document.getElementById('okrs-room-container');
+  el.innerHTML = `
+    <h1 class="page-title">Personal OKRs</h1>
+    <p class="page-sub">Q${ctx.quarter} ${ctx.year}</p>
+
+    ${planningRetroBanner(status, 'Personal OKRs')}
+    ${status && status.due ? `<button class="text-btn" style="margin-bottom:20px" onclick="ackPlanningRetro(${status.year},${status.quarter},loadOkrsRoom)">Done reviewing — start this quarter clean</button>` : ''}
+
+    <div class="section-head">Annual objectives — ${ctx.year}</div>
+    <div id="ao-list">
+      ${annualObjectives.length ? annualObjectives.map(ao => `
+        <div class="pending-rec-row">
+          <span style="flex:1;font-size:13px">${esc(ao.title)}</span>
+          ${planPill(ao.status, `cycleAnnualObjectiveStatus(${ao.id},'${ao.status}')`)}
+        </div>
+      `).join('') : '<div class="empty-text">No annual objectives yet for ' + ctx.year + '.</div>'}
+    </div>
+    <div style="display:flex;gap:6px;margin:10px 0 28px">
+      <input class="settings-input" id="ao-title-input" type="text" placeholder="New annual objective for ${ctx.year}…" style="flex:1" />
+      <button class="add-btn" onclick="addAnnualObjectiveInline(${ctx.year})">Add</button>
+    </div>
+
+    <div class="section-head">This quarter's OKRs</div>
+    <div id="okr-list">
+      ${okrs.length ? okrs.map(okr => renderOkrCard(okr, annualObjectives)).join('') : '<div class="empty-text">No OKRs set for Q' + ctx.quarter + ' ' + ctx.year + ' yet.</div>'}
+    </div>
+
+    <div style="margin-top:16px">
+      <select class="settings-select" id="okr-annual-sel" style="max-width:none;width:100%;margin-bottom:6px">
+        <option value="">Not linked to an annual objective</option>
+        ${annualObjectives.map(ao => `<option value="${ao.id}">${esc(ao.title)}</option>`).join('')}
+      </select>
+      <input class="settings-input" id="okr-text-input" type="text" placeholder="New quarterly OKR…" style="width:100%;margin-bottom:6px" />
+      <button class="add-btn" onclick="addQuarterlyOkrInline(${ctx.year},${ctx.quarter})">Add OKR</button>
+    </div>
+  `;
+
+  okrs.forEach(okr => renderLinkedKeyResultTasks(okr, unlinked));
+}
+
+function renderOkrCard(okr, annualObjectives) {
+  const parent = annualObjectives.find(a => a.id === okr.annual_objective_id);
+  return `
+    <div class="plan-card">
+      <div class="plan-card-header">
+        <span class="plan-card-title">${esc(okr.objective_text)}</span>
+        <span style="margin-left:auto">${planPill(okr.status, `cycleQuarterlyOkrStatus(${okr.id},'${okr.status}')`)}</span>
+      </div>
+      ${parent ? `<div class="plan-card-sub">Under: ${esc(parent.title)}</div>` : ''}
+      ${(okr.key_results || []).map(kr => renderKeyResultRow(okr, kr)).join('')}
+      <div style="display:flex;gap:6px;margin-top:10px">
+        <input class="settings-input" id="kr-input-${okr.id}" type="text" placeholder="New key result…" style="flex:1;font-size:12px" />
+        <input class="settings-input" id="kr-target-${okr.id}" type="number" placeholder="target" style="max-width:70px;font-size:12px" />
+        <button class="text-btn" onclick="addKeyResultInline(${okr.id})">Add</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderKeyResultRow(okr, kr) {
+  const pct = kr.target_value ? Math.min(100, Math.round((kr.current_value / kr.target_value) * 100)) : 0;
+  const containerId = `kr-tasks-${kr.id}`;
+  const selectId = `kr-pick-${kr.id}`;
+  return `
+    <div style="padding:8px 0;border-top:1px solid #f0f0ee">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="flex:1;font-size:13px">${esc(kr.description)}</span>
+        ${kr.source_anchor_key
+          ? `<span style="font-size:10px;color:#999">from anchor chain</span>`
+          : ''}
+        ${planPill(kr.status, `cycleKeyResultStatus(${kr.id},'${kr.status}')`)}
+      </div>
+      ${kr.target_value ? `
+        <div class="plan-progress-bar"><div class="plan-progress-fill" style="width:${pct}%"></div></div>
+        <div style="font-size:11px;color:#999">${kr.current_value} / ${kr.target_value}${kr.unit ? ' ' + esc(kr.unit) : ''}${kr.taskCount ? ' · ' + kr.taskCount + ' linked task' + (kr.taskCount !== 1 ? 's' : '') : ''}</div>
+      ` : ''}
+      ${!kr.source_anchor_key ? `<input class="settings-input" type="number" placeholder="update current value" style="font-size:11px;margin-top:4px;max-width:160px" onkeydown="if(event.key==='Enter') updateKeyResultValueInline(${kr.id}, this.value)" />` : ''}
+      <div id="${containerId}"></div>
+    </div>
+  `;
+}
+
+async function renderLinkedKeyResultTasks(okr, unlinked) {
+  for (const kr of (okr.key_results || [])) {
+    const containerId = `kr-tasks-${kr.id}`;
+    await renderLinkedTasksInto(containerId, 'key_result', kr.id);
+    const el = document.getElementById(containerId);
+    if (el) el.insertAdjacentHTML('beforeend', linkTaskPickerHtml(`kr-pick-${kr.id}`, containerId, 'key_result', kr.id, unlinked));
+  }
+}
+
+async function addAnnualObjectiveInline(year) {
+  const input = document.getElementById('ao-title-input');
+  const title = input.value.trim();
+  if (!title) return;
+  try {
+    await api('/api/planning/annual-objectives', { method: 'POST', body: { year, title } });
+    loadOkrsRoom();
+  } catch (e) { showToast(e.message); }
+}
+
+async function cycleAnnualObjectiveStatus(id, current) {
+  const CYCLE = { active: 'achieved', achieved: 'dropped', dropped: 'active' };
+  try {
+    await api(`/api/planning/annual-objectives/${id}/status`, { method: 'PATCH', body: { status: CYCLE[current] || 'active' } });
+    loadOkrsRoom();
+  } catch (e) { console.error('cycleAnnualObjectiveStatus:', e); }
+}
+
+async function addQuarterlyOkrInline(year, quarter) {
+  const text = document.getElementById('okr-text-input').value.trim();
+  const annualId = document.getElementById('okr-annual-sel').value || undefined;
+  if (!text) return;
+  try {
+    await api('/api/planning/quarterly-okrs', { method: 'POST', body: { annual_objective_id: annualId, year, quarter, objective_text: text } });
+    loadOkrsRoom();
+  } catch (e) { showToast(e.message); }
+}
+
+async function cycleQuarterlyOkrStatus(id, current) {
+  try {
+    await api(`/api/planning/quarterly-okrs/${id}/status`, { method: 'PATCH', body: { status: PLANNING_OKR_STATUS_CYCLE[current] || 'active' } });
+    loadOkrsRoom();
+  } catch (e) { console.error('cycleQuarterlyOkrStatus:', e); }
+}
+
+async function addKeyResultInline(okrId) {
+  const desc   = document.getElementById(`kr-input-${okrId}`).value.trim();
+  const target = document.getElementById(`kr-target-${okrId}`).value;
+  if (!desc) return;
+  try {
+    await api('/api/planning/key-results', { method: 'POST', body: { quarterly_okr_id: okrId, description: desc, target_value: target || undefined } });
+    loadOkrsRoom();
+  } catch (e) { showToast(e.message); }
+}
+
+async function updateKeyResultValueInline(id, value) {
+  try {
+    await api(`/api/planning/key-results/${id}`, { method: 'PATCH', body: { current_value: Number(value) } });
+    loadOkrsRoom();
+  } catch (e) { showToast(e.message); }
+}
+
+async function cycleKeyResultStatus(id, current) {
+  const CYCLE = { active: 'done', done: 'dropped', dropped: 'active' };
+  try {
+    await api(`/api/planning/key-results/${id}`, { method: 'PATCH', body: { status: CYCLE[current] || 'active' } });
+    loadOkrsRoom();
+  } catch (e) { console.error('cycleKeyResultStatus:', e); }
+}
+
+// ── VENTURE ROCKS rooms ─────────────────────────────────────────────────────────
+
+const VENTURE_ROOM_LABEL = { blok: 'Blok AI', aphl: 'APHL Africa', trade: 'TradeSol' };
+
+async function loadRocksRoom(venture) {
+  const el = document.getElementById(`rocks-${venture}-container`);
+  el.innerHTML = '<div class="loading-text">Loading…</div>';
+  try {
+    const [ctx, status, unlinked, ventures] = await Promise.all([
+      api('/api/planning/context'),
+      api('/api/planning/retro-status'),
+      unlinkedTaskOptions(),
+      getPlanningVentures(),
+    ]);
+    const rocks = await api(`/api/planning/rocks?venture=${venture}&year=${ctx.year}&quarter=${ctx.quarter}`);
+    const ventureInfo = ventures.find(v => v.slug === venture);
+    renderRocksRoom(venture, ctx, status, rocks, unlinked, ventureInfo);
+  } catch (e) {
+    el.innerHTML = `<div class="empty-text">Error: ${esc(e.message)}</div>`;
+  }
+}
+
+function renderRocksRoom(venture, ctx, status, rocks, unlinked, ventureInfo) {
+  const el = document.getElementById(`rocks-${venture}-container`);
+  const isDormant = ventureInfo && ventureInfo.status === 'dormant';
+  el.innerHTML = `
+    <h1 class="page-title">${esc(VENTURE_ROOM_LABEL[venture] || venture)}</h1>
+    <p class="page-sub">Q${ctx.quarter} ${ctx.year} Rocks${ventureInfo && ventureInfo.lead ? ' · ' + esc(ventureInfo.lead) : ''}</p>
+    ${isDormant ? `<div class="pending-rec-banner" style="margin-bottom:20px"><div class="pending-rec-head">Inactive venture</div><div class="pending-rec-sub">${esc(ventureInfo.description || 'Not an active focus right now.')} Rocks can still be tracked here if needed.</div></div>` : ''}
+
+    ${planningRetroBanner(status, VENTURE_ROOM_LABEL[venture] || venture)}
+    ${status && status.due ? `<button class="text-btn" style="margin-bottom:20px" onclick="ackPlanningRetro(${status.year},${status.quarter},function(){loadRocksRoom('${venture}')})">Done reviewing — start this quarter clean</button>` : ''}
+
+    <div class="section-head">Rocks (1–3 for the quarter)</div>
+    <div id="rock-list">
+      ${rocks.length ? rocks.map(r => renderRockCard(r)).join('') : '<div class="empty-text">No Rocks set for this quarter yet.</div>'}
+    </div>
+
+    ${rocks.length >= 3 ? '<div style="font-size:11px;color:#ccc;margin-top:10px">3 Rocks already set — EOS keeps it to 1–3 per quarter.</div>' : `
+    <div style="margin-top:16px">
+      <input class="settings-input" id="rock-title-${venture}" type="text" placeholder="New Rock title…" style="width:100%;margin-bottom:6px" />
+      <input class="settings-input" id="rock-owner-${venture}" type="text" placeholder="Owner (optional, defaults to you)" style="width:100%;margin-bottom:6px" />
+      <button class="add-btn" onclick="addRockInline('${venture}',${ctx.year},${ctx.quarter})">Add Rock</button>
+    </div>`}
+  `;
+
+  rocks.forEach(async r => {
+    const containerId = `rock-tasks-${r.id}`;
+    await renderLinkedTasksInto(containerId, 'rock', r.id);
+    const c = document.getElementById(containerId);
+    if (c) c.insertAdjacentHTML('beforeend', linkTaskPickerHtml(`rock-pick-${r.id}`, containerId, 'rock', r.id, unlinked));
+  });
+}
+
+function renderRockCard(r) {
+  return `
+    <div class="plan-card">
+      <div class="plan-card-header">
+        <span class="plan-card-title">${esc(r.title)}</span>
+        <span style="margin-left:auto">${planPill(r.status, `cycleRockStatus(${r.id},'${r.status}')`)}</span>
+      </div>
+      ${r.owner ? `<div class="plan-card-sub">Owner: ${esc(r.owner)}</div>` : ''}
+      ${r.description ? `<div style="font-size:12px;color:#999;margin-bottom:6px">${esc(r.description)}</div>` : ''}
+      <div id="rock-tasks-${r.id}"></div>
+    </div>
+  `;
+}
+
+async function addRockInline(venture, year, quarter) {
+  const title = document.getElementById(`rock-title-${venture}`).value.trim();
+  const owner = document.getElementById(`rock-owner-${venture}`).value.trim();
+  if (!title) return;
+  try {
+    await api('/api/planning/rocks', { method: 'POST', body: { venture, year, quarter, title, owner: owner || undefined } });
+    loadRocksRoom(venture);
+  } catch (e) { showToast(e.message); }
+}
+
+async function cycleRockStatus(id, current) {
+  try {
+    await api(`/api/planning/rocks/${id}`, { method: 'PATCH', body: { status: PLANNING_ROCK_STATUS_CYCLE[current] || 'on_track' } });
+    const activeView = document.querySelector('.view.active');
+    const venture = activeView ? activeView.id.replace('v-rocks-', '') : null;
+    if (venture) loadRocksRoom(venture);
+  } catch (e) { console.error('cycleRockStatus:', e); }
+}
+
 // ── onboarding wizard ─────────────────────────────────────────────────────────
 // Shown once, right after signup, in place of the normal app shell. Nothing
 // is written to the server until "Finish" — going back and forth just edits
 // local state — so an abandoned wizard leaves nothing behind.
 
-const ONBOARDING_TOTAL_STEPS = 6;
+const ONBOARDING_TOTAL_STEPS = 5;
 const ONBOARDING_ICONS = ['ti-rocket', 'ti-truck', 'ti-building-store', 'ti-briefcase', 'ti-chart-line', 'ti-currency-dollar', 'ti-home', 'ti-heart', 'ti-book', 'ti-palette', 'ti-code', 'ti-user'];
 const ONBOARDING_COLOR_PALETTE = [
   { bg: '#f0effe', text: '#4a3fa0' },
@@ -7499,7 +7493,6 @@ let onboardingData = {
     { time: '17:30', end: '18:00', name: 'Family time',          biz: 'anchor' },
     { time: '20:30', end: '21:00', name: 'Evening wind-down',    biz: 'anchor' },
   ],
-  goals: [],
 };
 
 function slugifyBizName(name) {
@@ -7534,7 +7527,6 @@ function renderOnboardingStep() {
   if (onboardingStep === 2) renderOnboardingBusinesses();
   if (onboardingStep === 3) renderOnboardingPillars();
   if (onboardingStep === 4) renderOnboardingAnchors();
-  if (onboardingStep === 5) renderOnboardingGoals();
 }
 
 function onboardingNext() {
@@ -7662,35 +7654,6 @@ function removeOnboardingAnchor(i) {
   renderOnboardingAnchors();
 }
 
-// ── step 5: goals (optional) ──────────────────────────────────────────────────
-
-function renderOnboardingGoals() {
-  document.getElementById('ob-goal-biz').innerHTML = onboardingData.businesses
-    .map(b => `<option value="${esc(b.slug)}">${esc(b.name)}</option>`).join('');
-  const el = document.getElementById('ob-goals-list');
-  el.innerHTML = onboardingData.goals.map((g, i) => `
-    <div class="fp-list-row">
-      <span style="flex:1;font-size:13px">[${esc(g.business)}] ${esc(g.dimension)}: ${esc(g.title)}</span>
-      <button class="fp-remove-btn" onclick="removeOnboardingGoal(${i})">&times;</button>
-    </div>
-  `).join('') || '<div style="font-size:12px;color:#aaa">No goals yet — optional, add these later if you\'d rather.</div>';
-}
-
-function addOnboardingGoal() {
-  const business  = document.getElementById('ob-goal-biz').value;
-  const dimension = document.getElementById('ob-goal-dim').value;
-  const title     = document.getElementById('ob-goal-title').value.trim();
-  if (!business || !title) { showToast('Pick a venture and enter a goal title.'); return; }
-  onboardingData.goals.push({ business, dimension, title });
-  document.getElementById('ob-goal-title').value = '';
-  renderOnboardingGoals();
-}
-
-function removeOnboardingGoal(i) {
-  onboardingData.goals.splice(i, 1);
-  renderOnboardingGoals();
-}
-
 // ── finish ────────────────────────────────────────────────────────────────────
 
 async function finishOnboarding() {
@@ -7715,13 +7678,6 @@ async function finishOnboarding() {
       await api('/api/businesses', {
         method: 'POST',
         body: { name: b.name, color_bg: b.color_bg, color_text: b.color_text, icon: b.icon },
-      });
-    }
-
-    for (const g of onboardingData.goals) {
-      await api('/api/goals', {
-        method: 'POST',
-        body: { business: g.business, dimension: g.dimension, title: g.title, year: new Date().getFullYear() },
       });
     }
 
@@ -7824,6 +7780,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.aiTasks = [];
   });
 
+  // Plan my week
+  document.getElementById('plan-week-btn').addEventListener('click', planMyWeek);
+  document.getElementById('pw-add-own-btn').addEventListener('click', addOwnWeekTask);
+  document.getElementById('plan-week-confirm-btn').addEventListener('click', confirmPlanWeek);
+  document.getElementById('plan-week-dismiss-btn').addEventListener('click', dismissPlanWeek);
+
   // Ideas
   document.getElementById('idea-save').addEventListener('click', saveIdea);
   document.getElementById('idea-input').addEventListener('keydown', e => {
@@ -7835,14 +7797,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('note-input').addEventListener('keydown', e => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) saveNote();
   });
-
-  // New cycle form
-  document.getElementById('new-cycle-btn').addEventListener('click', toggleNewCycleForm);
-  document.getElementById('cycle-save-btn').addEventListener('click', saveNewCycle);
-  document.getElementById('cycle-cancel-btn').addEventListener('click', () => {
-    document.getElementById('new-cycle-form').style.display = 'none';
-  });
-
 
   // Load saved schedule order from server, then render
   api('/api/schedule').then(blocks => {

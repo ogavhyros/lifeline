@@ -6,7 +6,7 @@ const path  = require('path');
 const {
   transcribeAudio, structureDump,
   generateMorningBriefing, generateEODReview,
-  analyzeVoiceReport, suggestMonthlyCommitments, reviewGoalProgress,
+  analyzeVoiceReport,
   parseStrategicDocument, conversationalResponse, findTaskToDelete,
 } = require('./ai');
 const { parseDocument, cleanDocumentText } = require('./document-parser');
@@ -16,9 +16,7 @@ const {
   getTasksByDate, getTaskById, insertTask, toggleTask, markTaskDone, updatePriority, deleteTask,
   carryTask, addIdea, getIdeas, addNote, getNotes, syncDayLog,
   upsertNudge, snoozeTask,
-  getAllGoals, addGoal, updateGoalStatus,
-  getCycles, getCyclesByGoal, addCycle, updateCycleCommitment,
-  addGoalProgress, getGoalProgress,
+  getAllGoals,
   getSetting, saveDocumentAnalysis,
   saveUploadedDocument, getAllUploadedDocuments, linkDocumentToAnalysis, updateUploadedDocumentStatus,
   getPendingRecurring, confirmRecurring, confirmAllRecurring, rejectRecurring, rejectAllPendingRecurring,
@@ -55,9 +53,6 @@ function getBrand(userId) {
 
 // chatId → array of tasks awaiting confirmation (YES/ADD to save, NO to discard)
 const pendingTasks = new Map();
-
-// chatId → { goal_id, suggested_title, commitments } — pending /suggest result for /newcycle
-const pendingSuggestions = new Map();
 
 // chatId → array of document-sourced tasks awaiting ADD/NO confirmation
 const pendingDocTasks = new Map();
@@ -380,7 +375,7 @@ function extractDocPrefix(userId, text) {
 async function runDocAnalysis(userId, biz, docText) {
   const goals   = getAllGoals(userId);
   const tasks   = getTodayTasks(userId);
-  const analysis = await parseStrategicDocument(docText, biz, goals, tasks);
+  const analysis = await parseStrategicDocument(userId, docText, biz, goals, tasks);
   saveDocumentAnalysis(
     userId, biz, docText.slice(0, 200),
     analysis.summary, analysis.key_insight, analysis.risk,
@@ -524,7 +519,7 @@ async function handleUpdate(update) {
       try {
         const goals    = getAllGoals(userId);
         const tasks    = getTodayTasks(userId);
-        const analysis = await parseStrategicDocument(parsedText, biz, goals, tasks);
+        const analysis = await parseStrategicDocument(userId, parsedText, biz, goals, tasks);
         const anaInfo  = saveDocumentAnalysis(
           userId, biz, parsedText.slice(0, 200),
           analysis.summary, analysis.key_insight, analysis.risk,
@@ -667,7 +662,7 @@ async function handleUpdate(update) {
       // Everything else: conversational
       const ctx = buildContext(userId);
       try {
-        const reply = await conversationalResponse(text, ctx);
+        const reply = await conversationalResponse(userId, text, ctx);
         if (reply) {
           await sendMessage(userId, reply);
         } else {
@@ -725,7 +720,7 @@ async function handleCasualCompletion(userId, text) {
     syncDayLog(userId, today);
     try {
       const ctx = buildContext(userId);
-      const reply = await conversationalResponse(`Just marked done: ${matched.name}`, ctx);
+      const reply = await conversationalResponse(userId, `Just marked done: ${matched.name}`, ctx);
       await sendMessage(userId, reply);
     } catch (err) {
       await handleBotError(userId, err, 'conversational response');
@@ -776,17 +771,11 @@ async function handleCommand(userId, text, chatId) {
         '/docs — your uploaded document library\n' +
         'blok: [text] or aphl: [text] — analyze a business document\n' +
         'Send a PDF, Word, or text file to upload and analyze it.\n\n' +
-        'GOALS & CYCLES:\n' +
-        '/goals — view 2026 goals\n' +
-        '/addgoal <biz> <dimension> <title> — add a goal\n' +
-        '/cycle — this month\'s cycles\n' +
-        '/commitdone <cycle_id> <1|2|3> — mark commitment done\n' +
-        '/suggest <goal_id> — AI-suggest monthly commitments\n' +
-        '/newcycle <goal_id> — create cycle from suggestion\n' +
-        '/review <goal_id> — AI review of goal progress\n' +
-        '/logprogress <goal_id> <note> — log progress note\n\n' +
         'PERSONAL:\n' +
         '/family — family time reminder\n\n' +
+        'PLANNING:\n' +
+        'Personal OKRs and venture Rocks live in the app — see the Planning section in the sidebar.\n' +
+        'You\'ll get a message here at the start of each quarter to review and set new ones.\n\n' +
         `Businesses: ${getValidBusinesses(userId).join(', ')}\n` +
         'Send voice to report completions or dump new tasks.'
       );
@@ -898,7 +887,7 @@ async function handleCommand(userId, text, chatId) {
         return;
       }
       try {
-        const briefing = await generateMorningBriefing(tasks, watToday());
+        const briefing = await generateMorningBriefing(userId, tasks, watToday());
         await sendMessage(userId, briefing);
       } catch (err) {
         await handleBotError(userId, err, 'morning briefing');
@@ -913,7 +902,7 @@ async function handleCommand(userId, text, chatId) {
         return;
       }
       try {
-        const review = await generateEODReview(tasks, watToday());
+        const review = await generateEODReview(userId, tasks, watToday());
         await sendMessage(userId, review);
       } catch (err) {
         await handleBotError(userId, err, 'EOD review');
@@ -1033,206 +1022,6 @@ async function handleCommand(userId, text, chatId) {
       break;
     }
 
-    // ── GOALS & CYCLES ────────────────────────────────────────────────────────
-
-    case '/goals': {
-      const goals = getAllGoals(userId);
-      if (!goals.length) {
-        await sendMessage(userId, 'No goals set. Use /addgoal <biz> <growth|finance|operations> <title>');
-        return;
-      }
-
-      const BIZ_ORDER = getValidBusinesses(userId);
-      const grouped   = {};
-      for (const g of goals) {
-        if (!grouped[g.business]) grouped[g.business] = [];
-        grouped[g.business].push(g);
-      }
-
-      const sections = BIZ_ORDER
-        .filter(b => grouped[b])
-        .map(b => {
-          const header = getBizLabel(userId, b);
-          const rows   = grouped[b]
-            .map(g => `${g.dimension.charAt(0).toUpperCase() + g.dimension.slice(1)}: ${g.title} (${g.status})`)
-            .join('\n');
-          return `${header}\n${rows}`;
-        });
-
-      await sendMessage(userId, `YOUR 2026 GOALS\n\n${sections.join('\n\n')}`);
-      break;
-    }
-
-    case '/addgoal': {
-      const biz  = (args[0] || '').toLowerCase();
-      const dim  = (args[1] || '').toLowerCase();
-      const title = args.slice(2).join(' ').trim();
-
-      const VALID_DIMS = ['growth', 'finance', 'operations'];
-      if (!getValidBusinesses(userId).includes(biz)) {
-        await sendMessage(userId, `Business must be one of: ${getValidBusinesses(userId).join(', ')}`);
-        return;
-      }
-      if (!VALID_DIMS.includes(dim)) {
-        await sendMessage(userId, 'Dimension must be growth, finance, or operations.');
-        return;
-      }
-      if (!title) {
-        await sendMessage(userId, 'Usage: /addgoal <business> <dimension> <title>');
-        return;
-      }
-      addGoal(userId, biz, dim, title, null, null, 2026);
-      await sendMessage(userId, `Goal set for ${getBizLabel(userId, biz)} [${dim.charAt(0).toUpperCase() + dim.slice(1)}]: ${title}`);
-      break;
-    }
-
-    case '/cycle': {
-      const watNow   = new Date(Date.now() + 60 * 60 * 1000);
-      const monthStr = watNow.toISOString().slice(0, 7);
-      const monthLabel = watNow.toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
-      const cycles   = getCycles(userId, monthStr);
-
-      if (!cycles.length) {
-        await sendMessage(userId,
-          `No cycles set for ${monthLabel}.\n` +
-          'Use /suggest <goal_id> to get AI-suggested commitments.'
-        );
-        return;
-      }
-
-      const sections = cycles.map(c => {
-        const biz  = getBizLabel(userId, c.business);
-        const fmt  = (s, text) =>
-          s === 'done' ? `[DONE] ${text}` : `[    ] ${text}`;
-
-        let lines = [`${biz} — ${c.title}`];
-        if (c.goal_title) lines.push(`Goal: ${c.goal_title}`);
-        lines.push(`1. ${fmt(c.status_1, c.commitment_1)}`);
-        lines.push(`2. ${fmt(c.status_2, c.commitment_2)}`);
-        if (c.commitment_3) lines.push(`3. ${fmt(c.status_3, c.commitment_3)}`);
-        lines.push(`(ID: ${c.id})`);
-        return lines.join('\n');
-      });
-
-      await sendMessage(userId, `${monthLabel.toUpperCase()} CYCLES\n\n${sections.join('\n\n')}`);
-      break;
-    }
-
-    case '/commitdone': {
-      const cycleId = parseInt(args[0], 10);
-      const which   = parseInt(args[1], 10);
-      if (!cycleId || ![1, 2, 3].includes(which)) {
-        await sendMessage(userId, 'Usage: /commitdone <cycle_id> <1|2|3>');
-        return;
-      }
-      try {
-        const updated = updateCycleCommitment(userId, cycleId, which, 'done');
-        if (!updated) { await sendMessage(userId, `Cycle ${cycleId} not found.`); return; }
-        const commitmentText = updated[`commitment_${which}`];
-        await sendMessage(userId, `Done: ${commitmentText}`);
-      } catch (e) {
-        await handleBotError(userId, e, 'cycle commitment update');
-      }
-      break;
-    }
-
-    case '/suggest': {
-      const goalId = parseInt(args[0], 10);
-      if (!goalId) { await sendMessage(userId, 'Usage: /suggest <goal_id>'); return; }
-      const goal = getAllGoals(userId).find(g => g.id === goalId);
-      if (!goal) { await sendMessage(userId, `Goal ${goalId} not found.`); return; }
-
-      await sendMessage(userId, 'Thinking…');
-      try {
-        const existingCycles = getCyclesByGoal(userId, goalId);
-        const suggestion     = await suggestMonthlyCommitments(goal, existingCycles);
-        pendingSuggestions.set(chatId, { goal_id: goalId, ...suggestion });
-        const list = suggestion.commitments.map((c, i) => `${i + 1}. ${c}`).join('\n');
-        await sendMessage(userId,
-          `Suggested focus: ${suggestion.suggested_title}\n\n${list}\n\n` +
-          `Reply /newcycle ${goalId} to set this as your cycle for the month.`
-        );
-      } catch (err) {
-        await handleBotError(userId, err, 'goal suggestion');
-      }
-      break;
-    }
-
-    case '/newcycle': {
-      const goalId = parseInt(args[0], 10);
-      if (!goalId) { await sendMessage(userId, 'Usage: /newcycle <goal_id>'); return; }
-      const goal = getAllGoals(userId).find(g => g.id === goalId);
-      if (!goal) { await sendMessage(userId, `Goal ${goalId} not found.`); return; }
-
-      let suggestion;
-      const pending = pendingSuggestions.get(chatId);
-      if (pending && pending.goal_id === goalId) {
-        suggestion = pending;
-        pendingSuggestions.delete(chatId);
-      } else {
-        await sendMessage(userId, 'Generating suggestions…');
-        try {
-          const existingCycles = getCyclesByGoal(userId, goalId);
-          suggestion = await suggestMonthlyCommitments(goal, existingCycles);
-        } catch (err) {
-          await handleBotError(userId, err, 'cycle generation');
-          return;
-        }
-      }
-
-      const month = new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 7);
-      const { suggested_title, commitments } = suggestion;
-
-      try {
-        addCycle(
-          userId, goal.business, goalId, month, suggested_title,
-          commitments[0], commitments[1], commitments[2] || null
-        );
-      } catch (e) {
-        if (e.message.includes('UNIQUE')) {
-          await sendMessage(userId, `A cycle for ${goal.business} / goal ${goalId} already exists this month.`);
-          return;
-        }
-        throw e;
-      }
-
-      const list = commitments.map((c, i) => `${i + 1}. ${c}`).join('\n');
-      await sendMessage(userId, `Cycle set for ${month}:\n${suggested_title}\n${list}`);
-      break;
-    }
-
-    case '/review': {
-      const goalId = parseInt(args[0], 10);
-      if (!goalId) { await sendMessage(userId, 'Usage: /review <goal_id>'); return; }
-      const goal = getAllGoals(userId).find(g => g.id === goalId);
-      if (!goal) { await sendMessage(userId, `Goal ${goalId} not found.`); return; }
-
-      await sendMessage(userId, 'Reviewing…');
-      try {
-        const cycles     = getCyclesByGoal(userId, goalId);
-        const progress   = getGoalProgress(goalId);
-        const assessment = await reviewGoalProgress(goal, cycles, progress);
-        await sendMessage(userId, assessment);
-      } catch (err) {
-        await handleBotError(userId, err, 'goal review');
-      }
-      break;
-    }
-
-    case '/logprogress': {
-      const goalId = parseInt(args[0], 10);
-      const note   = args.slice(1).join(' ').trim();
-      if (!goalId || !note) {
-        await sendMessage(userId, 'Usage: /logprogress <goal_id> <note>');
-        return;
-      }
-      const goal = getAllGoals(userId).find(g => g.id === goalId);
-      if (!goal) { await sendMessage(userId, `Goal ${goalId} not found.`); return; }
-      addGoalProgress(goalId, note);
-      await sendMessage(userId, `Progress logged for ${goal.title}`);
-      break;
-    }
-
     case '/pm': {
       const now    = new Date(Date.now() + 60 * 60 * 1000);
       const months = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -1330,7 +1119,7 @@ async function handleCommand(userId, text, chatId) {
         try {
           const goals    = getAllGoals(userId);
           const tasks    = getTodayTasks(userId);
-          const analysis = await parseStrategicDocument(doc.parsed_text, doc.business || 'blok', goals, tasks);
+          const analysis = await parseStrategicDocument(userId, doc.parsed_text, doc.business || 'blok', goals, tasks);
           const biz      = doc.business || 'blok';
           const anaInfo  = saveDocumentAnalysis(
             userId, biz, doc.parsed_text.slice(0, 200),
@@ -1505,7 +1294,7 @@ async function handleVoice(userId, voice, chatId) {
   }
 
   const tasks      = getTodayTasks(userId);
-  const analysis   = await analyzeVoiceReport(transcript, tasks);
+  const analysis   = await analyzeVoiceReport(userId, transcript, tasks);
 
   const { completed = [], new_tasks = [], summary = '', type = 'dump' } = analysis;
 
@@ -1513,7 +1302,7 @@ async function handleVoice(userId, voice, chatId) {
   if (type === 'dump') {
     if (!new_tasks.length) {
       const ctx = buildContext(userId);
-      const reply = await conversationalResponse(`Voice note received but no tasks were found in it: "${transcript}"`, ctx);
+      const reply = await conversationalResponse(userId, `Voice note received but no tasks were found in it: "${transcript}"`, ctx);
       await sendMessage(userId, reply);
       return;
     }
@@ -1523,7 +1312,7 @@ async function handleVoice(userId, voice, chatId) {
       .join('\n');
     const ctx = buildContext(userId);
     const convMsg = `Voice brain dump captured ${new_tasks.length} tasks. Focus: ${summary}. Tasks: ${new_tasks.map(t => t.name).join(', ')}`;
-    const intro = await conversationalResponse(convMsg, ctx);
+    const intro = await conversationalResponse(userId, convMsg, ctx);
     await sendMessage(userId, `${intro}\n\nTasks captured:\n${preview}\n\nReply YES to add these, or NO to discard.`);
     return;
   }
@@ -1553,7 +1342,7 @@ async function handleVoice(userId, voice, chatId) {
     convMsg = `Voice note received: "${transcript}". ${summary}. No tasks matched for completion.`;
   }
 
-  const reply = await conversationalResponse(convMsg, ctx);
+  const reply = await conversationalResponse(userId, convMsg, ctx);
 
   if (new_tasks.length) {
     const preview = new_tasks

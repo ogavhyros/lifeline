@@ -25,7 +25,7 @@ function ventureBizList(profile) {
   return [...profile.ventures.map(v => v.slug), 'personal'].join('|');
 }
 
-async function claudeMessage(system, userContent, model = CLAUDE_MODEL) {
+async function claudeMessage(system, userContent, model = CLAUDE_MODEL, maxTokens = 1024) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -35,7 +35,7 @@ async function claudeMessage(system, userContent, model = CLAUDE_MODEL) {
     },
     body: JSON.stringify({
       model,
-      max_tokens: 1024,
+      max_tokens: maxTokens,
       system,
       messages: [{ role: 'user', content: userContent }],
     }),
@@ -95,8 +95,8 @@ Do not include any explanation or markdown — only the raw JSON object.`;
   }
 }
 
-async function generateMorningBriefing(tasks, date) {
-  const profile   = getFounderProfile();
+async function generateMorningBriefing(userId, tasks, date) {
+  const profile   = getFounderProfile(userId);
   const brand     = profile.brandName;
   const ventures  = activeVentures(profile);
   const INVESTOR_FOCUS = profile.investorCadence;
@@ -164,8 +164,8 @@ Use exactly this structure. Replace placeholders with real data. No extra sectio
   return claudeMessage(system, userContent);
 }
 
-async function generateEODReview(tasks, date) {
-  const profile  = getFounderProfile();
+async function generateEODReview(userId, tasks, date) {
+  const profile  = getFounderProfile(userId);
   const brand    = profile.brandName;
   const ventures = activeVentures(profile);
 
@@ -224,8 +224,8 @@ Use exactly this structure. Be direct. Do not add extra sections or padding.`;
   return claudeMessage(system, userContent);
 }
 
-async function analyzeVoiceReport(transcript, tasks) {
-  const profile = getFounderProfile();
+async function analyzeVoiceReport(userId, transcript, tasks) {
+  const profile = getFounderProfile(userId);
   const bizList = ventureBizList(profile);
 
   const system = `You are ${profile.brandName}, ${profile.name}'s day tracking system. ${profile.name} will send voice reports \
@@ -273,40 +273,77 @@ Return ONLY the JSON. No markdown.`;
   }
 }
 
-async function suggestMonthlyCommitments(goal, existingCycles) {
-  const profile = getFounderProfile();
-  const currentMonth = new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 7);
-  const ventureSummary = profile.ventures
-    .map(v => `${v.name} (${v.description})`)
-    .join(', ');
+// "Plan my week" — suggests daily/weekly tasks grounded in the user's open
+// planning-layer items (annual objectives, this quarter's OKRs/key results,
+// venture Rocks).
+async function suggestWeeklyTasks(userId, { objectives, okrs, rocksByVenture, existingTaskNames, today, weekday }) {
+  const profile = getFounderProfile(userId);
+  const ventureSlugs = [...profile.ventures.map(v => v.slug), 'personal'];
 
-  const system = `You are ${profile.name}'s strategic advisor. ${profile.name} runs ${ventureSummary}, and Personal (${(profile.personalPillars || []).join(', ')}). Be direct and specific. No filler.
-Given a one-year goal and the history of past monthly cycles for that goal, suggest exactly 2 to 3 monthly commitments that move concretely toward the goal. Each commitment must be specific, measurable, and completable in one month.
-Return JSON only:
+  const okrLines = okrs.map(o => {
+    const krLines = (o.key_results || []).map(kr =>
+      `    - KR: ${kr.description} (${kr.current_value}/${kr.target_value ?? '?'}${kr.unit ? ' ' + kr.unit : ''}, ${kr.status})`
+    ).join('\n');
+    return `  [okr_id=${o.id}] ${o.objective_text} (${o.status})\n${krLines}`;
+  }).join('\n');
+
+  const rockLines = Object.entries(rocksByVenture).map(([slug, rocks]) => {
+    if (!rocks.length) return `  ${slug}: (no open Rocks)`;
+    return `  ${slug}:\n` + rocks.map(r =>
+      `    [rock_id=${r.id}] ${r.title}${r.description ? ' — ' + r.description : ''} (${r.status}${r.owner ? ', owner: ' + r.owner : ''})`
+    ).join('\n');
+  }).join('\n');
+
+  const system = `You are ${profile.brandName || 'LIFELINE'} — ${profile.name}'s weekly planning partner. Direct, human, no corporate fluff, no flattery, no filler.
+${profile.name} has an OKR/EOS-style planning layer above their daily task list: annual Objectives, this quarter's OKRs and Key Results (personal), and per-venture Rocks. Your job is to suggest a concrete, grounded set of tasks that would actually move the OPEN items forward this week — not restate the OKRs/Rocks as tasks.
+
+Rules:
+- Every suggestion must trace back to something in OPEN ITEMS below via its okr_id or rock_id — do not invent goals that aren't there.
+- Prioritize whichever Key Results are furthest from target, and Rocks marked at_risk, over ones already on track or with no signal either way.
+- Do not repeat anything listed under ALREADY SCHEDULED THIS WEEK.
+- Each task must be specific and completable in a day or two — not a copy of the OKR/Rock title.
+- 5 to 10 suggestions total. Spread them across the week; don't dump everything on one day. Use "this_week" for anything flexible that doesn't need a specific day.
+- The "reason" field is one short sentence in your own direct voice — why this matters right now, not a generic restatement.
+
+Return ONLY valid JSON, no markdown, no explanation, exactly this shape:
 {
-  "suggested_title": "one phrase describing this month's focus",
-  "commitments": ["commitment 1", "commitment 2", "commitment 3"]
+  "tasks": [
+    {
+      "title": "specific, actionable task",
+      "suggested_day": "monday|tuesday|wednesday|thursday|friday|saturday|sunday|this_week",
+      "venture": "one of: ${ventureSlugs.join('|')}",
+      "linked_okr_id": <integer okr_id from OPEN ITEMS, or null>,
+      "linked_rock_id": <integer rock_id from OPEN ITEMS, or null>,
+      "reason": "one short sentence"
+    }
+  ]
 }`;
 
   const userContent =
-    `Goal: ${goal.dimension} — ${goal.title}\n` +
-    `Business: ${goal.business}\n` +
-    `Past cycles: ${JSON.stringify(existingCycles)}\n` +
-    `Current month: ${currentMonth}\n` +
-    `Suggest commitments for this month.`;
+    `Today: ${weekday}, ${today}\n\n` +
+    `OPEN ITEMS\n\n` +
+    `Annual objectives (active):\n${objectives.map(o => `  [id=${o.id}] ${o.title}`).join('\n') || '  (none)'}\n\n` +
+    `This quarter's OKRs (active):\n${okrLines || '  (none)'}\n\n` +
+    `Venture Rocks (open):\n${rockLines || '  (none)'}\n\n` +
+    `ALREADY SCHEDULED THIS WEEK:\n${existingTaskNames.join('\n') || '(nothing yet)'}`;
 
-  const reply = await claudeMessage(system, userContent, 'claude-sonnet-4-6');
+  // 2048 tokens, not the claudeMessage default of 1024 — 5-10 suggestions
+  // each with a title/day/venture/reason routinely runs past 1024 and gets
+  // cut off mid-JSON, which then fails to parse below.
+  const reply = await claudeMessage(system, userContent, 'claude-sonnet-4-6', 2048);
   try {
     const match = reply.match(/\{[\s\S]*\}/);
     if (!match) throw new Error('No JSON found in response');
-    return JSON.parse(match[0]);
+    const parsed = JSON.parse(match[0]);
+    if (!Array.isArray(parsed.tasks)) throw new Error('Response missing tasks array');
+    return parsed.tasks;
   } catch (e) {
-    throw new Error(`Could not parse monthly commitments: ${e.message}`);
+    throw new Error(`Could not parse weekly plan suggestions: ${e.message}`);
   }
 }
 
-async function parseStrategicDocument(documentText, business, existingGoals, currentTasks) {
-  const profile = getFounderProfile();
+async function parseStrategicDocument(userId, documentText, business, existingGoals, currentTasks) {
+  const profile = getFounderProfile(userId);
   const bizList = ventureBizList(profile).split('|').join(' or ');
 
   const system = `You are ${profile.name}'s strategic execution advisor.
@@ -366,21 +403,8 @@ Return ONLY the JSON. No markdown. No explanation.`;
   }
 }
 
-async function reviewGoalProgress(goal, cycles, progressNotes) {
-  const profile = getFounderProfile();
-  const system = `You are ${profile.name}'s strategic advisor. Direct strategic review voice. No flattery.
-Given a goal, all its monthly cycles, and progress notes, write a short honest assessment: what has moved, what has not, what needs to change. 3-5 sentences. Plain text.`;
-
-  const userContent =
-    `Goal: ${goal.dimension} — ${goal.title} (${goal.business})\n` +
-    `Cycles: ${JSON.stringify(cycles)}\n` +
-    `Progress notes: ${JSON.stringify(progressNotes)}`;
-
-  return claudeMessage(system, userContent, 'claude-sonnet-4-6');
-}
-
-async function conversationalResponse(message, context) {
-  const profile = getFounderProfile();
+async function conversationalResponse(userId, message, context) {
+  const profile = getFounderProfile(userId);
   const ventureLines = describeVentures(profile);
   const goalLines = (profile.currentGoals || []).map(g => `- ${g}`).join('\n');
 
@@ -482,9 +506,8 @@ module.exports = {
   generateMorningBriefing,
   generateEODReview,
   analyzeVoiceReport,
-  suggestMonthlyCommitments,
-  reviewGoalProgress,
   parseStrategicDocument,
   conversationalResponse,
   findTaskToDelete,
+  suggestWeeklyTasks,
 };

@@ -244,6 +244,86 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_board_members_owner  ON board_members(board_owner_id);
   CREATE INDEX IF NOT EXISTS idx_board_members_member ON board_members(member_id);
+
+  -- Cross-process idempotency guard for the scheduler (scheduler.js). The
+  -- in-memory 'fired' Set there only prevents a job re-firing within a
+  -- single Node process — it does nothing if two process instances are
+  -- briefly alive at once (deploy overlap, stray local instance), which is
+  -- the confirmed cause of duplicate "day-close" etc. Telegram messages
+  -- (see the 409 conflict noted in commit 4e06869). Since every process
+  -- shares the same SQLite file, INSERT OR IGNORE against this UNIQUE key
+  -- lets only one process's claim win even when two are running.
+  CREATE TABLE IF NOT EXISTS scheduler_runs (
+    date  TEXT NOT NULL,
+    hhmm  TEXT NOT NULL,
+    label TEXT NOT NULL,
+    claimed_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(date, hhmm, label)
+  );
+
+  -- ── planning layer: personal OKRs + venture Rocks ──────────────────────────
+  -- Personal domain gets the full annual -> quarterly -> key-result ladder.
+  -- Ventures use EOS-style quarterly Rocks directly (no annual layer) — this
+  -- mirrors how the rest of the schema (recurring_tasks.business, tasks.business)
+  -- already represents a venture as a TEXT slug ('blok'/'aphl'/'trade'/'personal')
+  -- matching businesses.slug / founder_profile.ventures[].slug, not a numeric FK,
+  -- so quarterly_rocks.venture follows that same convention.
+  CREATE TABLE IF NOT EXISTS annual_objectives (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    year        INTEGER NOT NULL,
+    title       TEXT NOT NULL,
+    description TEXT,
+    status      TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','achieved','dropped')),
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_annual_objectives_user ON annual_objectives(user_id);
+
+  CREATE TABLE IF NOT EXISTS quarterly_okrs (
+    id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id              INTEGER NOT NULL,
+    annual_objective_id  INTEGER REFERENCES annual_objectives(id),
+    year                 INTEGER NOT NULL,
+    quarter              INTEGER NOT NULL CHECK(quarter IN (1,2,3,4)),
+    objective_text       TEXT NOT NULL,
+    status               TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','done','partial','dropped')),
+    created_at           TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_quarterly_okrs_user ON quarterly_okrs(user_id);
+  CREATE INDEX IF NOT EXISTS idx_quarterly_okrs_annual ON quarterly_okrs(annual_objective_id);
+
+  -- source_anchor_key: when set, current_value is derived live from anchor_log
+  -- (COUNT of done=1 rows for that key within the OKR's quarter) instead of
+  -- being manually updated — e.g. a KR like "pray 5x/week for the quarter"
+  -- pulls its progress straight from the existing daily anchor chain.
+  CREATE TABLE IF NOT EXISTS key_results (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id            INTEGER NOT NULL,
+    quarterly_okr_id   INTEGER NOT NULL REFERENCES quarterly_okrs(id),
+    description        TEXT NOT NULL,
+    target_value       REAL,
+    current_value      REAL NOT NULL DEFAULT 0,
+    unit               TEXT,
+    source_anchor_key  TEXT,
+    status             TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','done','dropped')),
+    created_at         TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_key_results_user ON key_results(user_id);
+  CREATE INDEX IF NOT EXISTS idx_key_results_okr  ON key_results(quarterly_okr_id);
+
+  CREATE TABLE IF NOT EXISTS quarterly_rocks (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL,
+    venture     TEXT NOT NULL,
+    year        INTEGER NOT NULL,
+    quarter     INTEGER NOT NULL CHECK(quarter IN (1,2,3,4)),
+    title       TEXT NOT NULL,
+    description TEXT,
+    owner       TEXT,
+    status      TEXT NOT NULL DEFAULT 'on_track' CHECK(status IN ('on_track','at_risk','done','dropped')),
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_quarterly_rocks_user ON quarterly_rocks(user_id);
 `);
 
 // Add columns that may not exist yet (safe to run every startup)
@@ -259,6 +339,14 @@ try { db.exec(`ALTER TABLE recurring_tasks ADD COLUMN notes TEXT`); } catch {}
 try { db.exec(`ALTER TABLE tasks ADD COLUMN status TEXT`); } catch {}
 try { db.exec(`ALTER TABLE businesses ADD COLUMN icon TEXT`); } catch {}
 try { db.exec(`ALTER TABLE tasks ADD COLUMN assignee_id INTEGER`); } catch {}
+// A task can belong to at most one planning parent (Rock, KR, or — added for
+// OKR-level "Plan my week" suggestions that aren't tied to a specific KR —
+// a quarterly OKR directly), or neither (stays a freestanding task — current
+// behavior preserved). Enforced at the application layer (linkTaskToRock/
+// linkTaskToKeyResult/linkTaskToQuarterlyOkr below clear the other two).
+try { db.exec(`ALTER TABLE tasks ADD COLUMN rock_id INTEGER REFERENCES quarterly_rocks(id)`); } catch {}
+try { db.exec(`ALTER TABLE tasks ADD COLUMN key_result_id INTEGER REFERENCES key_results(id)`); } catch {}
+try { db.exec(`ALTER TABLE tasks ADD COLUMN quarterly_okr_id INTEGER REFERENCES quarterly_okrs(id)`); } catch {}
 
 // ── multi-tenancy: user_id column on every previously-global table ───────────
 // Nullable on add (existing rows get backfilled to user 1 in the one-time
@@ -339,6 +427,37 @@ function watTomorrow() {
 
 function watCutoff(days) {
   return new Date(Date.now() + 60 * 60 * 1000 - days * 86400000).toISOString().slice(0, 10);
+}
+
+// { year, quarter (1-4) } for a given WAT date string ('YYYY-MM-DD'), or today.
+function watQuarterInfo(dateStr) {
+  const [y, m] = (dateStr || watToday()).split('-').map(Number);
+  return { year: y, quarter: Math.floor((m - 1) / 3) + 1 };
+}
+function watCurrentQuarter() {
+  return watQuarterInfo(watToday());
+}
+// First calendar day of a given {year, quarter} as 'YYYY-MM-DD'.
+function quarterStartDate(year, quarter) {
+  const month = (quarter - 1) * 3 + 1;
+  return `${year}-${String(month).padStart(2, '0')}-01`;
+}
+// The {year, quarter} immediately before the given one (Q1 wraps to prior year's Q4).
+function priorQuarter(year, quarter) {
+  return quarter === 1 ? { year: year - 1, quarter: 4 } : { year, quarter: quarter - 1 };
+}
+
+// ── scheduler job idempotency (cross-process) ─────────────────────────────────
+
+const claimSchedulerRunStmt = db.prepare(
+  `INSERT OR IGNORE INTO scheduler_runs (date, hhmm, label) VALUES (?, ?, ?)`
+);
+// Returns true if this call is the one that claimed the run (i.e. it should
+// execute the job); false if some process (this one or another) already
+// claimed date+hhmm+label — including an earlier claim from a different pid
+// sharing the same SQLite file, which the old in-memory Set couldn't see.
+function claimSchedulerRun(date, hhmm, label) {
+  return claimSchedulerRunStmt.run(date, hhmm, label).changes === 1;
 }
 
 function weekStart() {
@@ -665,27 +784,229 @@ function getInvestorTouchesThisWeek(userId) {
   return getInvestorTouchesStmt.get(userId, weekStart(), watToday()).cnt;
 }
 
-// % of goals with a target_date inside the current calendar quarter that are
-// marked 'achieved'. Returns null (not 0) when no goals fall in this quarter,
-// so the frontend can show "—" instead of a misleading 0%.
-const getGoalsInRangeStmt = db.prepare(
-  'SELECT status FROM goals WHERE user_id = ? AND target_date IS NOT NULL AND target_date BETWEEN ? AND ?'
-);
-
-function quarterRange() {
-  const today       = new Date(watToday() + 'T00:00:00Z');
-  const startMonth  = Math.floor(today.getUTCMonth() / 3) * 3;
-  const start       = new Date(Date.UTC(today.getUTCFullYear(), startMonth, 1));
-  const end         = new Date(Date.UTC(today.getUTCFullYear(), startMonth + 3, 0));
+// Calendar-quarter date range, as 'YYYY-MM-DD' strings. Defaults to the
+// current WAT quarter; pass year/quarter explicitly for a past one (e.g.
+// anchor-derived key-result progress, or the retro flow reviewing last
+// quarter). Used for both getQuarterlyGoalPct below and anchor-log lookups.
+function quarterRange(year, quarter) {
+  const q = (year && quarter) ? { year, quarter } : watCurrentQuarter();
+  const startMonth = (q.quarter - 1) * 3;
+  const start = new Date(Date.UTC(q.year, startMonth, 1));
+  const end   = new Date(Date.UTC(q.year, startMonth + 3, 0));
   return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) };
 }
 
+// % of this quarter's personal quarterly OKRs + all ventures' quarterly Rocks
+// (excluding dropped ones) marked 'done'. Returns null (not 0) when nothing's
+// been set for the quarter yet, so the frontend can show "—" instead of a
+// misleading 0%. Supersedes the old goals-table-based version — the planning
+// layer (annual_objectives/quarterly_okrs/quarterly_rocks) is the quarterly
+// goal-tracking mechanism now.
+const getQuarterlyOkrStatusesStmt  = db.prepare(
+  `SELECT status FROM quarterly_okrs WHERE user_id = ? AND year = ? AND quarter = ? AND status != 'dropped'`
+);
+const getQuarterlyRockStatusesStmt = db.prepare(
+  `SELECT status FROM quarterly_rocks WHERE user_id = ? AND year = ? AND quarter = ? AND status != 'dropped'`
+);
 function getQuarterlyGoalPct(userId) {
-  const { start, end } = quarterRange();
-  const rows = getGoalsInRangeStmt.all(userId, start, end);
+  const { year, quarter } = watCurrentQuarter();
+  const rows = [
+    ...getQuarterlyOkrStatusesStmt.all(userId, year, quarter),
+    ...getQuarterlyRockStatusesStmt.all(userId, year, quarter),
+  ];
   if (rows.length === 0) return null;
-  const achieved = rows.filter(r => r.status === 'achieved').length;
-  return Math.round((achieved / rows.length) * 100);
+  const done = rows.filter(r => r.status === 'done').length;
+  return Math.round((done / rows.length) * 100);
+}
+
+// ── planning layer: annual objectives (personal) ──────────────────────────────
+
+const getAnnualObjectivesStmt = db.prepare(
+  'SELECT * FROM annual_objectives WHERE user_id = ? AND year = ? ORDER BY created_at'
+);
+const getAnnualObjectiveByIdStmt = db.prepare(
+  'SELECT * FROM annual_objectives WHERE user_id = ? AND id = ?'
+);
+const addAnnualObjectiveStmt = db.prepare(
+  `INSERT INTO annual_objectives (user_id, year, title, description) VALUES (?, ?, ?, ?)`
+);
+const updateAnnualObjectiveStatusStmt = db.prepare(
+  `UPDATE annual_objectives SET status = ? WHERE user_id = ? AND id = ?`
+);
+
+function getAnnualObjectives(userId, year) { return getAnnualObjectivesStmt.all(userId, year); }
+function getAnnualObjectiveById(userId, id) { return getAnnualObjectiveByIdStmt.get(userId, id); }
+function addAnnualObjective(userId, year, title, description) {
+  return addAnnualObjectiveStmt.run(userId, year, title, description || null);
+}
+function updateAnnualObjectiveStatus(userId, id, status) {
+  return updateAnnualObjectiveStatusStmt.run(status, userId, id);
+}
+
+// ── planning layer: quarterly OKRs (personal) ──────────────────────────────────
+
+const getQuarterlyOkrsStmt = db.prepare(`
+  SELECT qo.*, ao.title AS annual_objective_title
+  FROM quarterly_okrs qo
+  LEFT JOIN annual_objectives ao ON ao.id = qo.annual_objective_id
+  WHERE qo.user_id = ? AND qo.year = ? AND qo.quarter = ?
+  ORDER BY qo.created_at
+`);
+const getQuarterlyOkrByIdStmt = db.prepare('SELECT * FROM quarterly_okrs WHERE user_id = ? AND id = ?');
+const addQuarterlyOkrStmt = db.prepare(`
+  INSERT INTO quarterly_okrs (user_id, annual_objective_id, year, quarter, objective_text)
+  VALUES (?, ?, ?, ?, ?)
+`);
+const updateQuarterlyOkrStatusStmt = db.prepare(
+  `UPDATE quarterly_okrs SET status = ? WHERE user_id = ? AND id = ?`
+);
+
+function getQuarterlyOkrs(userId, year, quarter) { return getQuarterlyOkrsStmt.all(userId, year, quarter); }
+function getQuarterlyOkrById(userId, id) { return getQuarterlyOkrByIdStmt.get(userId, id); }
+function addQuarterlyOkr(userId, annualObjectiveId, year, quarter, objectiveText) {
+  return addQuarterlyOkrStmt.run(userId, annualObjectiveId || null, year, quarter, objectiveText);
+}
+function updateQuarterlyOkrStatus(userId, id, status) {
+  return updateQuarterlyOkrStatusStmt.run(status, userId, id);
+}
+
+// ── planning layer: key results ─────────────────────────────────────────────────
+
+const getKeyResultsForOkrStmt = db.prepare(
+  'SELECT * FROM key_results WHERE quarterly_okr_id = ? ORDER BY created_at'
+);
+const getKeyResultByIdStmt = db.prepare('SELECT * FROM key_results WHERE user_id = ? AND id = ?');
+const addKeyResultStmt = db.prepare(`
+  INSERT INTO key_results (user_id, quarterly_okr_id, description, target_value, unit, source_anchor_key)
+  VALUES (?, ?, ?, ?, ?, ?)
+`);
+const updateKeyResultValueStmt  = db.prepare('UPDATE key_results SET current_value = ? WHERE user_id = ? AND id = ?');
+const updateKeyResultStatusStmt = db.prepare('UPDATE key_results SET status = ? WHERE user_id = ? AND id = ?');
+const countAnchorDoneInRangeStmt = db.prepare(
+  'SELECT COUNT(*) AS cnt FROM anchor_log WHERE user_id = ? AND key = ? AND done = 1 AND date BETWEEN ? AND ?'
+);
+
+function getKeyResultsForOkr(okrId) { return getKeyResultsForOkrStmt.all(okrId); }
+function getKeyResultById(userId, id) { return getKeyResultByIdStmt.get(userId, id); }
+function addKeyResult(userId, quarterlyOkrId, description, targetValue, unit, sourceAnchorKey) {
+  return addKeyResultStmt.run(
+    userId, quarterlyOkrId, description,
+    targetValue === undefined || targetValue === null || targetValue === '' ? null : Number(targetValue),
+    unit || null, sourceAnchorKey || null
+  );
+}
+function updateKeyResultValue(userId, id, currentValue) {
+  return updateKeyResultValueStmt.run(Number(currentValue) || 0, userId, id);
+}
+function updateKeyResultStatus(userId, id, status) {
+  return updateKeyResultStatusStmt.run(status, userId, id);
+}
+// For a KR with source_anchor_key set: count of done anchor_log entries for
+// that key within the given quarter (defaults to the KR's own OKR quarter).
+function computeAnchorDerivedValue(userId, anchorKey, year, quarter) {
+  const { start, end } = quarterRange(year, quarter);
+  return countAnchorDoneInRangeStmt.get(userId, anchorKey, start, end).cnt;
+}
+// Recomputes and persists current_value for every anchor-derived KR under an
+// OKR — called whenever that OKR's key results are read, so progress bars
+// stay live without a separate polling job.
+function refreshAnchorDerivedKeyResults(userId, okr) {
+  const krs = getKeyResultsForOkr(okr.id);
+  for (const kr of krs) {
+    if (!kr.source_anchor_key) continue;
+    const value = computeAnchorDerivedValue(userId, kr.source_anchor_key, okr.year, okr.quarter);
+    if (value !== kr.current_value) {
+      updateKeyResultValueStmt.run(value, userId, kr.id);
+      kr.current_value = value;
+    }
+  }
+  return krs;
+}
+
+// ── planning layer: quarterly Rocks (ventures) ──────────────────────────────────
+
+const getRocksStmt = db.prepare(
+  'SELECT * FROM quarterly_rocks WHERE user_id = ? AND venture = ? AND year = ? AND quarter = ? ORDER BY created_at'
+);
+const getRockByIdStmt = db.prepare('SELECT * FROM quarterly_rocks WHERE user_id = ? AND id = ?');
+const addRockStmt = db.prepare(`
+  INSERT INTO quarterly_rocks (user_id, venture, year, quarter, title, description, owner)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
+`);
+const updateRockStmt = db.prepare(
+  `UPDATE quarterly_rocks SET title = ?, description = ?, owner = ? WHERE user_id = ? AND id = ?`
+);
+const updateRockStatusStmt = db.prepare(
+  `UPDATE quarterly_rocks SET status = ? WHERE user_id = ? AND id = ?`
+);
+
+function getRocks(userId, venture, year, quarter) { return getRocksStmt.all(userId, venture, year, quarter); }
+function getRockById(userId, id) { return getRockByIdStmt.get(userId, id); }
+function addRock(userId, venture, year, quarter, title, description, owner) {
+  return addRockStmt.run(userId, venture, year, quarter, title, description || null, owner || null);
+}
+function updateRock(userId, id, title, description, owner) {
+  return updateRockStmt.run(title, description || null, owner || null, userId, id);
+}
+function updateRockStatus(userId, id, status) {
+  return updateRockStatusStmt.run(status, userId, id);
+}
+
+// ── planning layer: linking kanban tasks to a Rock, Key Result, or OKR ──────────
+// A task belongs to at most one parent — linking to one clears the other two —
+// or neither, which is the pre-existing default (freestanding task).
+
+const linkTaskToRockStmt = db.prepare(
+  `UPDATE tasks SET rock_id = ?, key_result_id = NULL, quarterly_okr_id = NULL WHERE user_id = ? AND id = ?`
+);
+const linkTaskToKeyResultStmt = db.prepare(
+  `UPDATE tasks SET key_result_id = ?, rock_id = NULL, quarterly_okr_id = NULL WHERE user_id = ? AND id = ?`
+);
+const linkTaskToQuarterlyOkrStmt = db.prepare(
+  `UPDATE tasks SET quarterly_okr_id = ?, rock_id = NULL, key_result_id = NULL WHERE user_id = ? AND id = ?`
+);
+const unlinkTaskStmt = db.prepare(
+  `UPDATE tasks SET rock_id = NULL, key_result_id = NULL, quarterly_okr_id = NULL WHERE user_id = ? AND id = ?`
+);
+const getTasksForRockStmt = db.prepare('SELECT * FROM tasks WHERE user_id = ? AND rock_id = ? ORDER BY date, time, id');
+const getTasksForKeyResultStmt = db.prepare('SELECT * FROM tasks WHERE user_id = ? AND key_result_id = ? ORDER BY date, time, id');
+const getTasksForQuarterlyOkrStmt = db.prepare('SELECT * FROM tasks WHERE user_id = ? AND quarterly_okr_id = ? ORDER BY date, time, id');
+
+function linkTaskToRock(userId, taskId, rockId) { return linkTaskToRockStmt.run(rockId, userId, taskId); }
+function linkTaskToKeyResult(userId, taskId, keyResultId) { return linkTaskToKeyResultStmt.run(keyResultId, userId, taskId); }
+function linkTaskToQuarterlyOkr(userId, taskId, okrId) { return linkTaskToQuarterlyOkrStmt.run(okrId, userId, taskId); }
+function unlinkTask(userId, taskId) { return unlinkTaskStmt.run(userId, taskId); }
+function getTasksForRock(userId, rockId) { return getTasksForRockStmt.all(userId, rockId); }
+function getTasksForKeyResult(userId, keyResultId) { return getTasksForKeyResultStmt.all(userId, keyResultId); }
+function getTasksForQuarterlyOkr(userId, okrId) { return getTasksForQuarterlyOkrStmt.all(userId, okrId); }
+
+// { year, quarter } week helper for "Plan my week": resolves a weekday name
+// ('monday'..'sunday') or 'this_week' (flexible/no specific day) to an actual
+// calendar date within the current WAT week. Centralized here rather than in
+// frontend JS so suggest-week/confirm-week agree on exactly the same dates.
+const WEEKDAY_OFFSET = { monday: 0, tuesday: 1, wednesday: 2, thursday: 3, friday: 4, saturday: 5, sunday: 6 };
+function resolveWeekdayDate(dayName) {
+  if (dayName === 'this_week' || !WEEKDAY_OFFSET.hasOwnProperty(dayName)) return watToday();
+  const monday = new Date(weekStart() + 'T00:00:00Z');
+  return new Date(monday.getTime() + WEEKDAY_OFFSET[dayName] * 86400000).toISOString().slice(0, 10);
+}
+
+// ── planning layer: quarterly retro / reset prompt ──────────────────────────────
+// "Due" means the current quarter has no ack yet for this user — checked via
+// the settings table (same key/value pattern used for notification_prefs
+// etc.), not a dedicated table. Mirrors the anchor/pending-recurring
+// confirmation pattern: nothing auto-populates, the user explicitly acks
+// once they've reviewed last quarter and set up the new one.
+function quarterAckKey(year, quarter) { return `quarter_ack_${year}_${quarter}`; }
+
+function getRetroStatus(userId) {
+  const { year, quarter } = watCurrentQuarter();
+  const acked = !!getSetting(userId, quarterAckKey(year, quarter));
+  const prior = priorQuarter(year, quarter);
+  return { due: !acked, year, quarter, priorYear: prior.year, priorQuarter: prior.quarter };
+}
+function ackQuarterRetro(userId, year, quarter) {
+  return upsertSetting(userId, quarterAckKey(year, quarter), '1');
 }
 
 // ── prepared statements — tasks ───────────────────────────────────────────────
@@ -1728,6 +2049,41 @@ module.exports = {
   watTomorrow,
   watCutoff,
   weekStart,
+  claimSchedulerRun,
+  watCurrentQuarter,
+  watQuarterInfo,
+  quarterStartDate,
+
+  // planning layer: OKRs & Rocks
+  getAnnualObjectives,
+  getAnnualObjectiveById,
+  addAnnualObjective,
+  updateAnnualObjectiveStatus,
+  getQuarterlyOkrs,
+  getQuarterlyOkrById,
+  addQuarterlyOkr,
+  updateQuarterlyOkrStatus,
+  getKeyResultsForOkr,
+  getKeyResultById,
+  addKeyResult,
+  updateKeyResultValue,
+  updateKeyResultStatus,
+  refreshAnchorDerivedKeyResults,
+  getRocks,
+  getRockById,
+  addRock,
+  updateRock,
+  updateRockStatus,
+  linkTaskToRock,
+  linkTaskToKeyResult,
+  linkTaskToQuarterlyOkr,
+  unlinkTask,
+  getTasksForRock,
+  getTasksForKeyResult,
+  getTasksForQuarterlyOkr,
+  resolveWeekdayDate,
+  getRetroStatus,
+  ackQuarterRetro,
 
   // users / auth
   SYSTEM_USER_ID,

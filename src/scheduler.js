@@ -8,6 +8,10 @@ const {
   getTaskByEventId, updateTaskFromCalendar,
   getTodayTasksIncludingPending, getPendingRecurring,
   insertCarriedTask, deduplicateTasks,
+  claimSchedulerRun,
+  watCurrentQuarter, quarterStartDate, getRetroStatus,
+  getQuarterlyOkrs, getRocks, getFounderProfile,
+  upsertSetting,
   db,
 } = require('./db');
 
@@ -119,7 +123,7 @@ const morningBriefing = forEachTelegramUser(async (userId) => {
   if (!notifEnabled(userId, 'briefing')) return;
   const today    = watToday();
   const tasks    = getTodayTasksIncludingPending(userId, today);
-  const briefing = await generateMorningBriefing(tasks, today);
+  const briefing = await generateMorningBriefing(userId, tasks, today);
   await sendMessage(userId, briefing);
   // Follow-up: send recurring tasks confirmation prompt
   const pending = getPendingRecurring(userId, today);
@@ -132,8 +136,44 @@ const eodReview = forEachTelegramUser(async (userId) => {
   if (!notifEnabled(userId, 'eod')) return;
   const tasks  = getTodayTasks(userId);
   if (!tasks.length) return;
-  const review = await generateEODReview(tasks, watToday());
+  const review = await generateEODReview(userId, tasks, watToday());
   await sendMessage(userId, review);
+});
+
+// ── quarterly retro / new-quarter prompt ──────────────────────────────────────
+// Checked daily (via the same JOBS table + claimSchedulerRun cross-process
+// guard every other job uses — deliberately not a second scheduler) but only
+// ever *does* anything on the calendar day a new quarter starts, and only
+// once per quarter per user (a separate "notified" flag from the "acked"
+// flag getRetroStatus uses — sending the nudge isn't the same as the user
+// having actually done the retro; the dashboard banner stays up via
+// getRetroStatus().due regardless of whether this fired, which is what
+// keeps prompting the user if they miss the one Telegram ping).
+function quarterNotifiedKey(year, quarter) { return `quarter_notified_${year}_${quarter}`; }
+
+const quarterlyRetroPrompt = forEachTelegramUser(async (userId) => {
+  const today = watToday();
+  const { year, quarter } = watCurrentQuarter();
+  if (today !== quarterStartDate(year, quarter)) return; // not a quarter boundary today
+  if (getSetting(userId, quarterNotifiedKey(year, quarter))) return; // already pinged this quarter
+
+  const status = getRetroStatus(userId);
+  const priorOkrs  = getQuarterlyOkrs(userId, status.priorYear, status.priorQuarter)
+    .filter(o => o.status === 'active');
+  const ventures   = getFounderProfile(userId).ventures.filter(v => v.status !== 'dormant');
+  const priorRocks = ventures.flatMap(v => getRocks(userId, v.slug, status.priorYear, status.priorQuarter))
+    .filter(r => r.status === 'on_track' || r.status === 'at_risk');
+
+  const openCount = priorOkrs.length + priorRocks.length;
+  const lines = [
+    `New quarter — Q${quarter} ${year}.`,
+    openCount
+      ? `${openCount} OKR${priorOkrs.length !== 1 ? 's' : ''}/Rock${priorRocks.length !== 1 ? 's' : ''} from last quarter still open — worth a quick retro.`
+      : `Last quarter's OKRs and Rocks are all settled.`,
+    `Open Personal OKRs or a venture room in the app to review last quarter and set this quarter's OKRs and Rocks.`,
+  ];
+  await sendMessage(userId, lines.join('\n\n'));
+  upsertSetting(userId, quarterNotifiedKey(year, quarter), '1');
 });
 
 async function midnightCarry() {
@@ -322,6 +362,8 @@ const JOBS = [
 
   // daily briefing
   { time: '06:30', label: 'briefing',       action: morningBriefing },
+  // quarterly retro / new-quarter prompt — no-ops except on a quarter boundary
+  { time: '06:35', label: 'quarterly-retro', action: quarterlyRetroPrompt },
   { time: '06:50', label: 'morning-cmd',    action: forEachTelegramUser(userId => sendMessage(userId, buildBlockMessage(userId, '07:00', 'Morning command', 'aphl'))) },
 
   // work blocks
@@ -344,13 +386,24 @@ const JOBS = [
 
 // ── scheduler loop ────────────────────────────────────────────────────────────
 
-const fired = new Set(); // "YYYY-MM-DD HH:MM label" — prevents double-fire within same minute
+const fired = new Set(); // "YYYY-MM-DD HH:MM label" — cheap same-process fast path only
 
 async function runJob(job, date, hhmm) {
   const key = `${date} ${hhmm} ${job.label}`;
   console.log(`[scheduler] JOB FIRING label=${job.label} key="${key}" alreadyFiredInThisProcess=${fired.has(key)} pid=${process.pid} time=${new Date().toISOString()}`);
   if (fired.has(key)) return;
   fired.add(key);
+
+  // Cross-process guard: the check above only stops a re-fire within *this*
+  // process. If a second process (deploy overlap, stray local instance) is
+  // alive at the same minute, it has its own empty 'fired' Set and would
+  // fire the job again. claimSchedulerRun() is a SQLite INSERT OR IGNORE
+  // against a UNIQUE(date,hhmm,label) row shared by every process on the
+  // same DB file, so only the first process to reach it actually proceeds.
+  if (!claimSchedulerRun(date, hhmm, job.label)) {
+    console.log(`[scheduler] ${job.label} skipped — already claimed by another process this minute`);
+    return;
+  }
 
   if (!job.noQuiet && isQuietHours()) {
     console.log(`[scheduler] ${job.label} skipped (quiet hours)`);

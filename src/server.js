@@ -12,9 +12,7 @@ const {
   toggleRecurringActive, updateRecurringTime,
   getPendingRecurring, confirmRecurring, confirmAllRecurring, rejectRecurring, rejectAllPendingRecurring,
   carryTask, addIdea, getIdeas, addNote, getNotes, syncDayLog,
-  getGoals, getAllGoals, getGoalById, addGoal, updateGoalStatus, updateGoalTitle,
-  getCycles, getCyclesByGoal, getCycleById, addCycle, updateCycleCommitment, updateCycleReflection,
-  addGoalProgress, getGoalProgress,
+  getAllGoals,
   getSetting, upsertSetting, deleteSetting,
   saveDocumentAnalysis, getDocumentAnalyses,
   saveUploadedDocument, getUploadedDocument, getAllUploadedDocuments, getUploadedDocumentsByBusiness,
@@ -30,10 +28,19 @@ const {
   addBoardMember, removeBoardMember, getBoardMembers, isBoardMember, canAssignTo, canAccessTask,
   getVisibleTasksByDate, getVisibleBoardTasks, getVisibleTaskById,
   toggleTaskById, updatePriorityById, updateTaskTimeById, updateTaskStatusById, updateTaskDateById, setTaskAssignee,
+  watCurrentQuarter,
+  getAnnualObjectives, getAnnualObjectiveById, addAnnualObjective, updateAnnualObjectiveStatus,
+  getQuarterlyOkrs, getQuarterlyOkrById, addQuarterlyOkr, updateQuarterlyOkrStatus,
+  getKeyResultsForOkr, getKeyResultById, addKeyResult, updateKeyResultValue, updateKeyResultStatus,
+  refreshAnchorDerivedKeyResults,
+  getRocks, getRockById, addRock, updateRock, updateRockStatus,
+  linkTaskToRock, linkTaskToKeyResult, linkTaskToQuarterlyOkr, unlinkTask,
+  getTasksForRock, getTasksForKeyResult, getTasksForQuarterlyOkr, resolveWeekdayDate,
+  getRetroStatus, ackQuarterRetro,
 } = require('./db');
 const { parseDocument, cleanDocumentText } = require('./document-parser');
 const gcal = require('./google-calendar');
-const { structureDump, transcribeAudio, parseStrategicDocument } = require('./ai');
+const { structureDump, transcribeAudio, parseStrategicDocument, suggestWeeklyTasks } = require('./ai');
 const { initBot, handleUpdate, registerWebhook, POLLING, sendMessage } = require('./telegram');
 const { initScheduler } = require('./scheduler');
 const { sessionMiddleware, requireAuth, registerAuthRoutes } = require('./auth');
@@ -526,7 +533,7 @@ app.post('/api/documents/analyze', requireAuth, async (req, res) => {
   try {
     const goals    = getAllGoals(req.user.id);
     const tasks    = getTasksByDate(req.user.id, watToday());
-    const analysis = await parseStrategicDocument(text, business || 'blok', goals, tasks);
+    const analysis = await parseStrategicDocument(req.user.id, text, business || 'blok', goals, tasks);
     const info     = saveDocumentAnalysis(
       req.user.id,
       business || 'blok',
@@ -645,7 +652,7 @@ app.post('/api/documents/upload/analyze', requireAuth, docUpload.single('documen
 
     const goals    = getAllGoals(req.user.id);
     const tasks    = getTasksByDate(req.user.id, watToday());
-    const analysis = await parseStrategicDocument(cleaned, biz, goals, tasks);
+    const analysis = await parseStrategicDocument(req.user.id, cleaned, biz, goals, tasks);
     const anaInfo  = saveDocumentAnalysis(
       req.user.id, biz, cleaned.slice(0, 200),
       analysis.summary, analysis.key_insight, analysis.risk,
@@ -674,7 +681,7 @@ app.post('/api/documents/library/:id/analyze', requireAuth, async (req, res) => 
   try {
     const goals    = getAllGoals(req.user.id);
     const tasks    = getTasksByDate(req.user.id, watToday());
-    const analysis = await parseStrategicDocument(doc.parsed_text, doc.business || 'blok', goals, tasks);
+    const analysis = await parseStrategicDocument(req.user.id, doc.parsed_text, doc.business || 'blok', goals, tasks);
     const anaInfo  = saveDocumentAnalysis(
       req.user.id, doc.business || 'blok', doc.parsed_text.slice(0, 200),
       analysis.summary, analysis.key_insight, analysis.risk,
@@ -907,134 +914,322 @@ app.patch('/api/anchors/:key/toggle', requireAuth, (req, res) => {
   res.json({ key: req.params.key, done });
 });
 
-// ── goals ─────────────────────────────────────────────────────────────────────
+// ── planning: OKRs & Rocks ───────────────────────────────────────────────────
+// Personal domain: annual_objectives -> quarterly_okrs -> key_results.
+// Ventures: quarterly_rocks directly (EOS-style, no annual layer). "venture"
+// is validated against founder_profile.ventures (the richer existing
+// representation, with lead/status) rather than a new parallel concept.
 
-app.get('/api/goals', requireAuth, (req, res) => {
-  const goals = getAllGoals(req.user.id);
-  for (const goal of goals) {
-    goal.progress = getGoalProgress(goal.id).slice(0, 3);
-  }
-  res.json(goals);
+function validVentureSlugs(userId) {
+  return getFounderProfile(userId).ventures.map(v => v.slug);
+}
+
+app.get('/api/planning/context', requireAuth, (req, res) => {
+  res.json(watCurrentQuarter());
 });
 
-app.get('/api/goals/:business', requireAuth, (req, res) => {
-  const goals = getGoals(req.user.id, req.params.business);
-  for (const goal of goals) {
-    goal.progress = getGoalProgress(goal.id).slice(0, 3);
-  }
-  res.json(goals);
+// ── annual objectives (personal) ──
+app.get('/api/planning/annual-objectives', requireAuth, (req, res) => {
+  const year = parseInt(req.query.year, 10) || watCurrentQuarter().year;
+  res.json(getAnnualObjectives(req.user.id, year));
 });
 
-app.post('/api/goals', requireAuth, (req, res) => {
-  const { business, dimension, title, description, target_date, year } = req.body;
-  if (!business || !dimension || !title) {
-    return res.status(400).json({ error: 'business, dimension, and title are required' });
-  }
-  if (!['growth', 'finance', 'operations'].includes(dimension)) {
-    return res.status(400).json({ error: 'dimension must be growth, finance, or operations' });
-  }
-  addGoal(req.user.id, business, dimension, title, description || null, target_date || null, year || 2026);
-  const goals = getAllGoals(req.user.id);
-  for (const g of goals) g.progress = getGoalProgress(g.id).slice(0, 3);
-  res.status(201).json(goals);
+app.post('/api/planning/annual-objectives', requireAuth, (req, res) => {
+  const { year, title, description } = req.body;
+  if (!year || !title) return res.status(400).json({ error: 'year and title are required' });
+  const info = addAnnualObjective(req.user.id, year, title, description || null);
+  res.status(201).json(getAnnualObjectiveById(req.user.id, info.lastInsertRowid));
 });
 
-app.patch('/api/goals/:id', requireAuth, (req, res) => {
-  const { title } = req.body;
-  if (!title) return res.status(400).json({ error: 'title is required' });
-  const info = updateGoalTitle(req.user.id, title, req.params.id);
-  if (!info.changes) return res.status(404).json({ error: 'not found' });
-  const goals = getAllGoals(req.user.id);
-  for (const g of goals) g.progress = getGoalProgress(g.id).slice(0, 3);
-  res.json(goals);
-});
-
-app.patch('/api/goals/:id/status', requireAuth, (req, res) => {
+app.patch('/api/planning/annual-objectives/:id/status', requireAuth, (req, res) => {
   const { status } = req.body;
-  if (!['active', 'achieved', 'paused'].includes(status)) {
-    return res.status(400).json({ error: 'status must be active, achieved, or paused' });
+  if (!['active', 'achieved', 'dropped'].includes(status)) {
+    return res.status(400).json({ error: 'status must be active, achieved, or dropped' });
   }
-  const info = updateGoalStatus(req.user.id, status, req.params.id);
-  if (!info.changes) return res.status(404).json({ error: 'not found' });
-  const goals = getAllGoals(req.user.id);
-  for (const g of goals) g.progress = getGoalProgress(g.id).slice(0, 3);
-  res.json(goals);
+  const obj = getAnnualObjectiveById(req.user.id, req.params.id);
+  if (!obj) return res.status(404).json({ error: 'not found' });
+  updateAnnualObjectiveStatus(req.user.id, req.params.id, status);
+  res.json(getAnnualObjectiveById(req.user.id, req.params.id));
 });
 
-app.post('/api/goals/:id/progress', requireAuth, (req, res) => {
-  const { note } = req.body;
-  if (!note) return res.status(400).json({ error: 'note is required' });
-  // goal_progress carries no user_id of its own — ownership is enforced here,
-  // by checking the referenced goal actually belongs to the caller, before
-  // ever touching goal_progress. See getGoalById's doc comment in db.js.
-  const goal = getGoalById(req.user.id, req.params.id);
-  if (!goal) return res.status(404).json({ error: 'not found' });
-  addGoalProgress(req.params.id, note);
+// ── quarterly OKRs (personal) ──
+app.get('/api/planning/quarterly-okrs', requireAuth, (req, res) => {
+  const { year, quarter } = watCurrentQuarter();
+  const y = parseInt(req.query.year, 10) || year;
+  const q = parseInt(req.query.quarter, 10) || quarter;
+  const okrs = getQuarterlyOkrs(req.user.id, y, q);
+  for (const okr of okrs) {
+    const krs = refreshAnchorDerivedKeyResults(req.user.id, okr);
+    okr.key_results = krs.map(kr => ({ ...kr, taskCount: getTasksForKeyResult(req.user.id, kr.id).length }));
+  }
+  res.json(okrs);
+});
+
+app.post('/api/planning/quarterly-okrs', requireAuth, (req, res) => {
+  const { annual_objective_id, year, quarter, objective_text } = req.body;
+  if (!year || !quarter || !objective_text) {
+    return res.status(400).json({ error: 'year, quarter, and objective_text are required' });
+  }
+  if (![1, 2, 3, 4].includes(Number(quarter))) return res.status(400).json({ error: 'quarter must be 1-4' });
+  if (annual_objective_id && !getAnnualObjectiveById(req.user.id, annual_objective_id)) {
+    return res.status(404).json({ error: 'annual objective not found' });
+  }
+  const info = addQuarterlyOkr(req.user.id, annual_objective_id || null, year, quarter, objective_text);
+  res.status(201).json(getQuarterlyOkrById(req.user.id, info.lastInsertRowid));
+});
+
+app.patch('/api/planning/quarterly-okrs/:id/status', requireAuth, (req, res) => {
+  const { status } = req.body;
+  if (!['active', 'done', 'partial', 'dropped'].includes(status)) {
+    return res.status(400).json({ error: 'status must be active, done, partial, or dropped' });
+  }
+  const okr = getQuarterlyOkrById(req.user.id, req.params.id);
+  if (!okr) return res.status(404).json({ error: 'not found' });
+  updateQuarterlyOkrStatus(req.user.id, req.params.id, status);
+  res.json(getQuarterlyOkrById(req.user.id, req.params.id));
+});
+
+// ── key results ──
+app.post('/api/planning/key-results', requireAuth, (req, res) => {
+  const { quarterly_okr_id, description, target_value, unit, source_anchor_key } = req.body;
+  if (!quarterly_okr_id || !description) {
+    return res.status(400).json({ error: 'quarterly_okr_id and description are required' });
+  }
+  const okr = getQuarterlyOkrById(req.user.id, quarterly_okr_id);
+  if (!okr) return res.status(404).json({ error: 'quarterly OKR not found' });
+  const info = addKeyResult(req.user.id, quarterly_okr_id, description, target_value, unit, source_anchor_key);
+  res.status(201).json(getKeyResultById(req.user.id, info.lastInsertRowid));
+});
+
+app.patch('/api/planning/key-results/:id', requireAuth, (req, res) => {
+  const kr = getKeyResultById(req.user.id, req.params.id);
+  if (!kr) return res.status(404).json({ error: 'not found' });
+  if (kr.source_anchor_key) {
+    return res.status(400).json({ error: 'this key result tracks progress automatically from the anchor chain and cannot be set manually' });
+  }
+  const { current_value, status } = req.body;
+  if (current_value !== undefined) updateKeyResultValue(req.user.id, req.params.id, current_value);
+  if (status !== undefined) {
+    if (!['active', 'done', 'dropped'].includes(status)) {
+      return res.status(400).json({ error: 'status must be active, done, or dropped' });
+    }
+    updateKeyResultStatus(req.user.id, req.params.id, status);
+  }
+  res.json(getKeyResultById(req.user.id, req.params.id));
+});
+
+app.get('/api/planning/key-results/:id/tasks', requireAuth, (req, res) => {
+  const kr = getKeyResultById(req.user.id, req.params.id);
+  if (!kr) return res.status(404).json({ error: 'not found' });
+  res.json(getTasksForKeyResult(req.user.id, req.params.id));
+});
+
+// ── quarterly Rocks (ventures) ──
+app.get('/api/planning/rocks', requireAuth, (req, res) => {
+  const { venture } = req.query;
+  const { year, quarter } = watCurrentQuarter();
+  const y = parseInt(req.query.year, 10) || year;
+  const q = parseInt(req.query.quarter, 10) || quarter;
+  if (!venture || !validVentureSlugs(req.user.id).includes(venture)) {
+    return res.status(400).json({ error: 'venture must be one of: ' + validVentureSlugs(req.user.id).join(', ') });
+  }
+  const rocks = getRocks(req.user.id, venture, y, q);
+  for (const rock of rocks) rock.taskCount = getTasksForRock(req.user.id, rock.id).length;
+  res.json(rocks);
+});
+
+app.post('/api/planning/rocks', requireAuth, (req, res) => {
+  const { venture, year, quarter, title, description, owner } = req.body;
+  if (!venture || !year || !quarter || !title) {
+    return res.status(400).json({ error: 'venture, year, quarter, and title are required' });
+  }
+  if (!validVentureSlugs(req.user.id).includes(venture)) {
+    return res.status(400).json({ error: 'venture must be one of: ' + validVentureSlugs(req.user.id).join(', ') });
+  }
+  if (![1, 2, 3, 4].includes(Number(quarter))) return res.status(400).json({ error: 'quarter must be 1-4' });
+  const info = addRock(req.user.id, venture, year, quarter, title, description || null, owner || null);
+  res.status(201).json(getRockById(req.user.id, info.lastInsertRowid));
+});
+
+app.patch('/api/planning/rocks/:id', requireAuth, (req, res) => {
+  const rock = getRockById(req.user.id, req.params.id);
+  if (!rock) return res.status(404).json({ error: 'not found' });
+  const { title, description, owner, status } = req.body;
+  if (title !== undefined) {
+    updateRock(req.user.id, req.params.id, title, description ?? rock.description, owner ?? rock.owner);
+  }
+  if (status !== undefined) {
+    if (!['on_track', 'at_risk', 'done', 'dropped'].includes(status)) {
+      return res.status(400).json({ error: 'status must be on_track, at_risk, done, or dropped' });
+    }
+    updateRockStatus(req.user.id, req.params.id, status);
+  }
+  res.json(getRockById(req.user.id, req.params.id));
+});
+
+app.get('/api/planning/rocks/:id/tasks', requireAuth, (req, res) => {
+  const rock = getRockById(req.user.id, req.params.id);
+  if (!rock) return res.status(404).json({ error: 'not found' });
+  res.json(getTasksForRock(req.user.id, req.params.id));
+});
+
+// ── linking kanban tasks to a Rock, Key Result, or OKR ──
+app.patch('/api/tasks/:id/link', requireAuth, (req, res) => {
+  const task = getVisibleTaskById(req.user.id, req.params.id);
+  if (!task || !canAccessTask(req.user.id, task)) return res.status(404).json({ error: 'not found' });
+  const { rock_id, key_result_id, quarterly_okr_id } = req.body;
+  if (rock_id) {
+    if (!getRockById(req.user.id, rock_id)) return res.status(404).json({ error: 'rock not found' });
+    linkTaskToRock(req.user.id, task.id, rock_id);
+  } else if (key_result_id) {
+    if (!getKeyResultById(req.user.id, key_result_id)) return res.status(404).json({ error: 'key result not found' });
+    linkTaskToKeyResult(req.user.id, task.id, key_result_id);
+  } else if (quarterly_okr_id) {
+    if (!getQuarterlyOkrById(req.user.id, quarterly_okr_id)) return res.status(404).json({ error: 'quarterly OKR not found' });
+    linkTaskToQuarterlyOkr(req.user.id, task.id, quarterly_okr_id);
+  } else {
+    unlinkTask(req.user.id, task.id);
+  }
+  res.json(getVisibleTaskById(req.user.id, task.id));
+});
+
+// ── quarterly retro / reset prompt ──
+app.get('/api/planning/retro-status', requireAuth, (req, res) => {
+  res.json(getRetroStatus(req.user.id));
+});
+
+app.post('/api/planning/retro/ack', requireAuth, (req, res) => {
+  const { year, quarter } = req.body;
+  if (!year || !quarter) return res.status(400).json({ error: 'year and quarter are required' });
+  ackQuarterRetro(req.user.id, year, quarter);
   res.json({ ok: true });
 });
 
-// ── monthly cycles ────────────────────────────────────────────────────────────
+// ── "Plan my week": bridges the planning layer (OKRs/Rocks) to daily execution ──
+// suggest-week is read-only — it never writes to the tasks table. confirm-week
+// is the only step that does, and only for whatever the user actually approves
+// (mirrors the brain-dump review/confirm flow already in this file).
 
-// must come before /api/cycles/:month to avoid routing conflict
-app.get('/api/cycles/:month/summary', requireAuth, (req, res) => {
-  const { month } = req.params;
-  const cycles = getCycles(req.user.id, month);
-  const summary = cycles.map(c => {
-    const total = c.commitment_3 ? 3 : 2;
-    const done  = (c.status_1 === 'done' ? 1 : 0) +
-                  (c.status_2 === 'done' ? 1 : 0) +
-                  (c.commitment_3 && c.status_3 === 'done' ? 1 : 0);
-    return {
-      business:   c.business,
-      title:      c.title,
-      goal_title: c.goal_title,
-      done,
-      total,
-      pct:        Math.round(done / total * 100),
-      reflection: c.reflection || null,
-    };
-  });
-  res.json(summary);
-});
+const PLANNING_WEEKDAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+const WEEKDAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-app.get('/api/cycles/:month', requireAuth, (req, res) => {
-  res.json(getCycles(req.user.id, req.params.month));
-});
-
-app.post('/api/cycles', requireAuth, (req, res) => {
-  const { business, goal_id, month, title, commitment_1, commitment_2, commitment_3 } = req.body;
-  if (!business || !month || !title || !commitment_1 || !commitment_2) {
-    return res.status(400).json({ error: 'business, month, title, commitment_1, and commitment_2 are required' });
+function thisWeekTaskNames(userId) {
+  const monday = new Date(weekStart() + 'T00:00:00Z');
+  const names = new Set();
+  for (let i = 0; i < 7; i++) {
+    const date = new Date(monday.getTime() + i * 86400000).toISOString().slice(0, 10);
+    for (const t of getTasksByDate(userId, date)) names.add(t.name);
   }
+  return [...names];
+}
+
+app.post('/api/planning/suggest-week', requireAuth, async (req, res) => {
+  const userId = req.user.id;
+  const { includeInactiveVentures } = req.body || {};
+  const { year, quarter } = watCurrentQuarter();
+
+  const objectives = getAnnualObjectives(userId, year).filter(o => o.status === 'active');
+  const okrs = getQuarterlyOkrs(userId, year, quarter).filter(o => o.status === 'active');
+  for (const okr of okrs) okr.key_results = refreshAnchorDerivedKeyResults(userId, okr);
+
+  const allVentures = getFounderProfile(userId).ventures;
+  const ventures = includeInactiveVentures ? allVentures : allVentures.filter(v => v.status !== 'dormant');
+  const rocksByVenture = {};
+  for (const v of ventures) {
+    rocksByVenture[v.slug] = getRocks(userId, v.slug, year, quarter).filter(r => r.status === 'on_track' || r.status === 'at_risk');
+  }
+
+  const hasContext = objectives.length > 0 || okrs.length > 0 || Object.values(rocksByVenture).some(r => r.length > 0);
+  if (!hasContext) {
+    return res.json({ tasks: [], hasContext: false });
+  }
+
+  const today = watToday();
+  const weekday = WEEKDAY_LABELS[new Date(today + 'T12:00:00Z').getUTCDay()];
+
+  let suggestions;
   try {
-    addCycle(req.user.id, business, goal_id || null, month, title, commitment_1, commitment_2, commitment_3 || null);
-    res.status(201).json(getCycles(req.user.id, month));
+    suggestions = await suggestWeeklyTasks(userId, {
+      objectives, okrs, rocksByVenture,
+      existingTaskNames: thisWeekTaskNames(userId),
+      today, weekday,
+    });
   } catch (e) {
-    if (e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Cycle already exists for this business/goal/month' });
-    res.status(500).json({ error: e.message });
+    return res.status(502).json({ error: e.message });
   }
+
+  // Sanitize against Claude's output before it ever reaches the frontend —
+  // don't trust ids/venture/day it returns without checking them against
+  // what we actually sent it (could hallucinate an id, or drift format).
+  const validOkrIds  = new Set(okrs.map(o => o.id));
+  const validRockIds = new Set(Object.values(rocksByVenture).flat().map(r => r.id));
+  const validVentures = new Set([...ventures.map(v => v.slug), 'personal']);
+  const todayIdx = PLANNING_WEEKDAYS.indexOf(WEEKDAY_LABELS[new Date(today + 'T12:00:00Z').getUTCDay()].toLowerCase());
+
+  const tasks = suggestions
+    .filter(t => t && typeof t.title === 'string' && t.title.trim() && validVentures.has(t.venture))
+    .map(t => {
+      let day = PLANNING_WEEKDAYS.includes(t.suggested_day) ? t.suggested_day : 'this_week';
+      // Don't suggest a day that's already passed this week.
+      if (day !== 'this_week' && PLANNING_WEEKDAYS.indexOf(day) < todayIdx) day = 'this_week';
+      const linked_okr_id  = validOkrIds.has(Number(t.linked_okr_id)) ? Number(t.linked_okr_id) : null;
+      const linked_rock_id = !linked_okr_id && validRockIds.has(Number(t.linked_rock_id)) ? Number(t.linked_rock_id) : null;
+      return {
+        title: t.title.trim().slice(0, 200),
+        suggested_day: day,
+        venture: t.venture,
+        linked_okr_id,
+        linked_rock_id,
+        reason: typeof t.reason === 'string' ? t.reason.trim().slice(0, 300) : '',
+      };
+    });
+
+  res.json({ tasks, hasContext: true });
 });
 
-app.patch('/api/cycles/:id/commitment', requireAuth, (req, res) => {
-  const { which, status } = req.body;
-  if (!['pending', 'done'].includes(status)) {
-    return res.status(400).json({ error: 'status must be pending or done' });
-  }
-  try {
-    const updated = updateCycleCommitment(req.user.id, req.params.id, which, status);
-    if (!updated) return res.status(404).json({ error: 'not found' });
-    res.json(updated);
-  } catch (e) {
-    res.status(400).json({ error: e.message });
-  }
-});
+app.post('/api/planning/confirm-week', requireAuth, (req, res) => {
+  const userId = req.user.id;
+  const { tasks } = req.body;
+  if (!Array.isArray(tasks) || !tasks.length) return res.status(400).json({ error: 'tasks array required' });
 
-app.patch('/api/cycles/:id/reflection', requireAuth, (req, res) => {
-  const { reflection } = req.body;
-  if (!reflection) return res.status(400).json({ error: 'reflection is required' });
-  const info = updateCycleReflection(req.user.id, reflection, req.params.id);
-  if (!info.changes) return res.status(404).json({ error: 'not found' });
-  res.json({ ok: true });
+  const prepared = [];
+  for (const t of tasks) {
+    if (!t.title || !t.venture) return res.status(400).json({ error: 'each task needs a title and venture' });
+    if (t.linked_okr_id && !getQuarterlyOkrById(userId, t.linked_okr_id)) {
+      return res.status(404).json({ error: `quarterly OKR ${t.linked_okr_id} not found` });
+    }
+    if (t.linked_rock_id && !getRockById(userId, t.linked_rock_id)) {
+      return res.status(404).json({ error: `rock ${t.linked_rock_id} not found` });
+    }
+    prepared.push({
+      name: t.title,
+      business: t.venture,
+      date: resolveWeekdayDate(t.suggested_day || 'this_week'),
+      priority: t.priority === 'high' || t.priority === 'low' ? t.priority : 'normal',
+      linked_okr_id: t.linked_okr_id || null,
+      linked_rock_id: t.linked_rock_id || null,
+    });
+  }
+
+  const newIds = [];
+  db.transaction((list) => {
+    for (const t of list) {
+      const info = insertTask(userId, t.date, t.name, t.business, null, t.priority);
+      newIds.push({ id: info.lastInsertRowid, okr: t.linked_okr_id, rock: t.linked_rock_id });
+      logTaskInsert('plan-my-week', t.name, { date: t.date, business: t.business, taskId: info.lastInsertRowid, userId });
+    }
+  })(prepared);
+
+  for (const { id, okr, rock } of newIds) {
+    if (rock) linkTaskToRock(userId, id, rock);
+    else if (okr) linkTaskToQuarterlyOkr(userId, id, okr);
+  }
+
+  const created = newIds.map(({ id }) => getTaskById(userId, id));
+  for (const task of created) {
+    gcal.syncTaskToCalendar(userId, task).catch(err => console.error('[calendar] sync failed:', err.message));
+  }
+  res.status(201).json(created);
 });
 
 // ── schedule ──────────────────────────────────────────────────────────────────
