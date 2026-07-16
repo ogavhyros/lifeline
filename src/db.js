@@ -338,6 +338,21 @@ try { db.exec(`ALTER TABLE recurring_tasks ADD COLUMN category TEXT DEFAULT 'wor
 try { db.exec(`ALTER TABLE recurring_tasks ADD COLUMN notes TEXT`); } catch {}
 try { db.exec(`ALTER TABLE tasks ADD COLUMN status TEXT`); } catch {}
 try { db.exec(`ALTER TABLE businesses ADD COLUMN icon TEXT`); } catch {}
+// Consolidates what used to be two disconnected venture representations
+// (this table, used by the Telegram bot/kanban/task dropdowns; and a
+// separate founder_profile.ventures JSON blob, used only for AI-prompt
+// personalization and the Planning rooms) into this one table. is_personal
+// distinguishes the "Personal OKRs" track from a real venture (immutable
+// after creation — never settable via PATCH); active_days/investor_focus/
+// description/lead/lead_role are the AI-context fields that used to live
+// only in founder_profile.ventures. sort_order controls display order.
+try { db.exec(`ALTER TABLE businesses ADD COLUMN is_personal INTEGER NOT NULL DEFAULT 0`); } catch {}
+try { db.exec(`ALTER TABLE businesses ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`); } catch {}
+try { db.exec(`ALTER TABLE businesses ADD COLUMN description TEXT`); } catch {}
+try { db.exec(`ALTER TABLE businesses ADD COLUMN lead TEXT`); } catch {}
+try { db.exec(`ALTER TABLE businesses ADD COLUMN lead_role TEXT`); } catch {}
+try { db.exec(`ALTER TABLE businesses ADD COLUMN investor_focus INTEGER NOT NULL DEFAULT 0`); } catch {}
+try { db.exec(`ALTER TABLE businesses ADD COLUMN active_days TEXT NOT NULL DEFAULT 'daily'`); } catch {}
 try { db.exec(`ALTER TABLE tasks ADD COLUMN assignee_id INTEGER`); } catch {}
 // A task can belong to at most one planning parent (Rock, KR, or — added for
 // OKR-level "Plan my week" suggestions that aren't tied to a specific KR —
@@ -1388,9 +1403,15 @@ function getTodayTasksIncludingPending(userId, date) {
 
 function getRecurringGrouped(userId) {
   const all    = getRecurring(userId);
-  const groups = { blok: [], aphl: [], trade: [], personal: [] };
+  // Grouped by the user's own business slugs, not a hardcoded set — a
+  // recurring task tagged with a custom venture used to be silently dropped
+  // here (groups[t.business] was undefined for anything but blok/aphl/trade/
+  // personal, so the push never ran) even though the row existed in the DB.
+  const groups = {};
+  for (const b of getAllBusinessesStmt.all(userId)) groups[b.slug] = [];
   for (const t of all) {
-    if (groups[t.business]) groups[t.business].push(t);
+    if (!groups[t.business]) groups[t.business] = [];
+    groups[t.business].push(t);
   }
   return groups;
 }
@@ -1588,18 +1609,53 @@ const updateRecurringTime = (userId, time, id) => updateRecurringTimeStmt.run(ti
 
 // ── prepared statements — businesses ─────────────────────────────────────────
 
-const getBusinessesStmt    = db.prepare('SELECT * FROM businesses WHERE user_id = ? AND active = 1 ORDER BY id');
+const getBusinessesStmt    = db.prepare('SELECT * FROM businesses WHERE user_id = ? AND active = 1 ORDER BY sort_order, id');
+const getAllBusinessesStmt = db.prepare('SELECT * FROM businesses WHERE user_id = ? ORDER BY sort_order, id');
+const getBusinessByIdStmt  = db.prepare('SELECT * FROM businesses WHERE user_id = ? AND id = ?');
 const addBusinessStmt      = db.prepare(
-  `INSERT INTO businesses (user_id, name, slug, color_bg, color_text, icon) VALUES (?, ?, ?, ?, ?, ?)`
+  `INSERT INTO businesses (user_id, name, slug, color_bg, color_text, icon, is_personal, description, lead, lead_role, investor_focus, active_days, sort_order)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 );
 const deactivateBusinessStmt = db.prepare('UPDATE businesses SET active = 0 WHERE user_id = ? AND id = ?');
+const activateBusinessStmt   = db.prepare('UPDATE businesses SET active = 1 WHERE user_id = ? AND id = ?');
 const getBusinessBySlugStmt  = db.prepare('SELECT * FROM businesses WHERE user_id = ? AND slug = ?');
+// Rename + AI-context fields only — slug and is_personal are immutable after
+// creation (slug is the stable key every task/rock/recurring-task row already
+// references; is_personal changing mid-use would strand whichever Rocks/OKRs
+// assumed the old classification).
+const updateBusinessStmt = db.prepare(`
+  UPDATE businesses SET name = ?, description = ?, lead = ?, lead_role = ?, investor_focus = ?, active_days = ?
+  WHERE user_id = ? AND id = ?
+`);
 
 const getBusinesses = (userId) => getBusinessesStmt.all(userId);
-const addBusiness    = (userId, name, slug, color_bg, color_text, icon) =>
-  addBusinessStmt.run(userId, name, slug, color_bg, color_text, icon || null);
+const getAllBusinesses = (userId) => getAllBusinessesStmt.all(userId);
+const getBusinessById  = (userId, id) => getBusinessByIdStmt.get(userId, id);
+const addBusiness = (userId, name, slug, color_bg, color_text, icon, extra = {}) => {
+  const sortOrder = extra.sort_order ?? getAllBusinessesStmt.all(userId).length;
+  return addBusinessStmt.run(
+    userId, name, slug, color_bg, color_text, icon || null,
+    extra.is_personal ? 1 : 0, extra.description || null, extra.lead || null,
+    extra.lead_role || null, extra.investor_focus ? 1 : 0, extra.active_days || 'daily',
+    sortOrder
+  );
+};
 const deactivateBusiness = (userId, id) => deactivateBusinessStmt.run(userId, id);
+const activateBusiness   = (userId, id) => activateBusinessStmt.run(userId, id);
 const getBusinessBySlug  = (userId, slug) => getBusinessBySlugStmt.get(userId, slug);
+const updateBusiness = (userId, id, { name, description, lead, lead_role, investor_focus, active_days }) => {
+  const current = getBusinessById(userId, id);
+  if (!current) return { changes: 0 };
+  return updateBusinessStmt.run(
+    name ?? current.name,
+    description !== undefined ? description : current.description,
+    lead !== undefined ? lead : current.lead,
+    lead_role !== undefined ? lead_role : current.lead_role,
+    (investor_focus !== undefined ? investor_focus : current.investor_focus) ? 1 : 0,
+    active_days || current.active_days,
+    userId, id
+  );
+};
 
 // ── prepared statements — toggle recurring active ─────────────────────────────
 
@@ -1730,22 +1786,49 @@ const BLANK_FOUNDER_PROFILE = {
   ],
 };
 
+// ventures is always computed live from the businesses table (the single
+// source of truth as of the ventures-consolidation migration above), never
+// read from the stored JSON blob — even if an old client sent one. This is
+// what keeps AI-prompt personalization, the Planning rooms, and the Settings
+// venture list from ever drifting apart again the way founder_profile.
+// ventures and businesses.active used to (TradeSol dormant vs. active=1).
+function computeVenturesFromBusinesses(userId) {
+  return getAllBusinessesStmt.all(userId)
+    .filter(b => !b.is_personal)
+    .map(b => ({
+      slug: b.slug,
+      name: b.name,
+      description: b.description || '',
+      lead: b.lead || null,
+      leadRole: b.lead_role || null,
+      investorFocus: !!b.investor_focus,
+      activeDays: b.active_days || 'daily',
+      status: b.active ? 'active' : 'dormant',
+    }));
+}
+
 function getFounderProfile(userId) {
   const row = getSetting(userId, 'founder_profile');
   const fallback = userId === 1 ? DEFAULT_FOUNDER_PROFILE : BLANK_FOUNDER_PROFILE;
-  if (!row) return fallback;
-  try {
-    const stored = JSON.parse(row.value);
-    return { ...fallback, ...stored };
-  } catch {
-    return fallback;
+  let profile = fallback;
+  if (row) {
+    try {
+      const stored = JSON.parse(row.value);
+      profile = { ...fallback, ...stored };
+    } catch { /* keep fallback */ }
   }
+  return { ...profile, ventures: computeVenturesFromBusinesses(userId) };
 }
 
 function saveFounderProfile(userId, partial) {
-  const updated = { ...getFounderProfile(userId), ...partial };
-  upsertSetting(userId, 'founder_profile', JSON.stringify(updated));
-  return updated;
+  // ventures is derived, not stored — strip it both from the incoming
+  // partial and from what actually gets written, so the JSON blob never
+  // accumulates a stale snapshot that only the write path would ever see.
+  const { ventures: _incoming, ...rest } = partial;
+  const { ventures: _current, ...currentRest } = getFounderProfile(userId);
+  const merged = { ...currentRest, ...rest };
+  upsertSetting(userId, 'founder_profile', JSON.stringify(merged));
+  return { ...merged, ventures: computeVenturesFromBusinesses(userId) };
 }
 
 // ── prepared statements — document analyses ───────────────────────────────────
@@ -1914,6 +1997,76 @@ function seedDefaultsForUser(userId) {
 // ── team members seed (legacy path, now routed through seedDefaultsForUser) ──
 
 seedDefaultsForUser(1);
+
+// ── ventures consolidation (v1) — businesses table becomes the single source
+// of truth for venture data, replacing the old parallel founder_profile.
+// ventures JSON list (which had drifted out of sync with businesses — e.g.
+// TradeSol was 'dormant' in founder_profile but active=1 in businesses,
+// simultaneously). Runs once. ─────────────────────────────────────────────
+{
+  const alreadyMigrated = getSystemFlag('ventures_consolidation_v1');
+  if (!alreadyMigrated) {
+    const setVentureFieldsStmt = db.prepare(`
+      UPDATE businesses SET description = ?, lead = ?, lead_role = ?, investor_focus = ?, active_days = ?
+      WHERE user_id = ? AND slug = ?
+    `);
+    const setActiveStmt = db.prepare('UPDATE businesses SET active = ? WHERE user_id = ? AND slug = ?');
+    const setPersonalStmt = db.prepare(`UPDATE businesses SET is_personal = 1 WHERE slug = 'personal'`);
+    const setSortStmt = db.prepare('UPDATE businesses SET sort_order = ? WHERE id = ?');
+
+    db.transaction(() => {
+      // 1. Every user's "personal" business row (seeded for OGV, created by
+      // every other user's onboarding wizard) is the personal track.
+      setPersonalStmt.run();
+
+      // 2. OGV (user 1) has no stored founder_profile row — he's always run
+      // on the in-code DEFAULT_FOUNDER_PROFILE fallback — so his ventures'
+      // rich fields (description/lead/investor focus/etc.) live only in that
+      // constant. Backfill them onto the matching businesses rows, and mark
+      // TradeSol inactive to match its long-standing 'dormant' status
+      // (preserves the row and any Rocks/tasks linked to it — not a delete).
+      for (const v of DEFAULT_FOUNDER_PROFILE.ventures) {
+        setVentureFieldsStmt.run(
+          v.description || null, v.lead || null, v.leadRole || null,
+          v.investorFocus ? 1 : 0, v.activeDays || 'daily', 1, v.slug
+        );
+        if (v.status === 'dormant') setActiveStmt.run(0, 1, v.slug);
+      }
+
+      // 3. Defensive general-case backfill: any user (not just OGV) who has
+      // a stored founder_profile.ventures entry with no matching businesses
+      // row gets one created now, so nothing set up through the old Founder
+      // Profile ventures editor is silently lost when it stops being read.
+      const storedProfiles = db.prepare(`SELECT user_id, value FROM settings WHERE key = 'founder_profile'`).all();
+      for (const row of storedProfiles) {
+        let parsed;
+        try { parsed = JSON.parse(row.value); } catch { continue; }
+        if (!Array.isArray(parsed.ventures)) continue;
+        const existingSlugs = new Set(getAllBusinessesStmt.all(row.user_id).map(b => b.slug));
+        for (const v of parsed.ventures) {
+          if (!v.slug || existingSlugs.has(v.slug)) continue;
+          addBusiness(row.user_id, v.name || v.slug, v.slug, '#f0f0ee', '#333333', null, {
+            description: v.description, lead: v.lead, lead_role: v.leadRole,
+            investor_focus: v.investorFocus, active_days: v.activeDays,
+          });
+          if (v.status === 'dormant') setActiveStmt.run(0, row.user_id, v.slug);
+        }
+      }
+
+      // 4. sort_order: preserve each user's existing display order (id order)
+      // as a stable starting point now that it's a real column.
+      const counters = {};
+      for (const b of db.prepare('SELECT id, user_id FROM businesses ORDER BY user_id, id').all()) {
+        counters[b.user_id] = counters[b.user_id] || 0;
+        setSortStmt.run(counters[b.user_id], b.id);
+        counters[b.user_id]++;
+      }
+    })();
+
+    setSystemFlag('ventures_consolidation_v1', '1');
+    console.log('[db] ventures consolidation migration complete — businesses is now the single source of truth for venture data');
+  }
+}
 
 // ── startup seeds (v4 — runs once, resets previous seeds) ────────────────────
 // Recurring-task seed data is OGV-specific (his actual daily routine) — only
@@ -2209,8 +2362,12 @@ module.exports = {
 
   // businesses
   getBusinesses,
+  getAllBusinesses,
+  getBusinessById,
   addBusiness,
   deactivateBusiness,
+  activateBusiness,
+  updateBusiness,
   getBusinessBySlug,
 
   // calendar import

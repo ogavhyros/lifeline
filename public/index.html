@@ -2608,6 +2608,18 @@
       font-size: 13px;
       color: #1a1a1a;
     }
+    .ob-biz-name-input {
+      flex: 1;
+      font-size: 13px;
+      color: #1a1a1a;
+      font-family: 'Geist', system-ui, sans-serif;
+      border: none;
+      border-bottom: 1px solid transparent;
+      outline: none;
+      background: transparent;
+      padding: 2px 0;
+    }
+    .ob-biz-name-input:focus { border-bottom-color: #1a1a1a; }
     .ob-anchor-row {
       display: flex;
       align-items: center;
@@ -2663,10 +2675,10 @@
 
     <div class="onboarding-step" id="onboarding-step-2" style="display:none">
       <div class="onboarding-step-title">Your ventures</div>
-      <div class="onboarding-step-sub">Add at least one — your businesses, projects, or areas of focus. Pick an icon and it's yours everywhere in the app.</div>
+      <div class="onboarding-step-sub">"Personal" is added for you — rename it if you'd rather. Add up to 2 more businesses, projects, or areas of focus. Pick an icon and it's yours everywhere in the app.</div>
       <div class="ob-icon-picker" id="ob-icon-picker"></div>
       <div style="display:flex;gap:8px;margin-top:10px">
-        <input class="settings-input" id="ob-biz-name" type="text" placeholder="e.g. Blok AI" style="max-width:none;flex:1" />
+        <input class="settings-input" id="ob-biz-name" type="text" placeholder="e.g. My Startup" style="max-width:none;flex:1" />
         <button class="secondary-btn" type="button" onclick="addOnboardingBusiness()">Add</button>
       </div>
       <div class="ob-biz-list" id="ob-biz-list" style="margin-top:14px"></div>
@@ -2754,9 +2766,7 @@
     <div class="nav-section">
       <div class="nav-label">PLANNING</div>
       <a class="nav-item" data-view="okrs" data-tooltip="Personal OKRs"><i class="ti ti-flag"></i><span class="nav-text">Personal OKRs</span></a>
-      <a class="nav-item" data-view="rocks-blok" data-tooltip="Blok AI"><i class="ti ti-diamond"></i><span class="nav-text">Blok AI</span></a>
-      <a class="nav-item" data-view="rocks-aphl" data-tooltip="APHL Africa"><i class="ti ti-diamond"></i><span class="nav-text">APHL Africa</span></a>
-      <a class="nav-item" data-view="rocks-trade" data-tooltip="TradeSol"><i class="ti ti-diamond"></i><span class="nav-text">TradeSol</span></a>
+      <div id="planning-ventures-nav"></div>
     </div>
 
     <div class="nav-section">
@@ -2821,9 +2831,7 @@
       <div class="more-drawer-section">
         <div class="more-drawer-label">Planning</div>
         <a class="more-drawer-item" data-view="okrs" onclick="switchTab('okrs');closeMoreDrawer()"><i class="ti ti-flag"></i>Personal OKRs</a>
-        <a class="more-drawer-item" data-view="rocks-blok" onclick="switchTab('rocks-blok');closeMoreDrawer()"><i class="ti ti-diamond"></i>Blok AI</a>
-        <a class="more-drawer-item" data-view="rocks-aphl" onclick="switchTab('rocks-aphl');closeMoreDrawer()"><i class="ti ti-diamond"></i>APHL Africa</a>
-        <a class="more-drawer-item" data-view="rocks-trade" onclick="switchTab('rocks-trade');closeMoreDrawer()"><i class="ti ti-diamond"></i>TradeSol</a>
+        <div id="planning-ventures-drawer"></div>
       </div>
       <div class="more-drawer-section">
         <div class="more-drawer-label">Review</div>
@@ -2901,12 +2909,7 @@
           placeholder="+ Add a task"
           autocomplete="off"
         />
-        <select class="add-select biz-select" id="add-biz">
-          <option value="blok">Blok AI</option>
-          <option value="aphl">APHL Africa</option>
-          <option value="trade">TradeSol</option>
-          <option value="personal">Personal</option>
-        </select>
+        <select class="add-select biz-select" id="add-biz"></select>
         <input class="add-time" id="add-time" type="text" placeholder="time" />
         <select class="add-select" id="add-priority">
           <option value="normal">Normal</option>
@@ -2925,12 +2928,7 @@
           <div id="rec-list"></div>
           <div class="rec-add-row">
             <input class="rec-add-input" id="rec-name" type="text" placeholder="Task name" autocomplete="off" />
-            <select class="rec-add-select biz-select" id="rec-biz">
-              <option value="blok">blok</option>
-              <option value="aphl">aphl</option>
-              <option value="trade">trade</option>
-              <option value="personal">personal</option>
-            </select>
+            <select class="rec-add-select biz-select" id="rec-biz"></select>
             <input class="rec-add-time" id="rec-time" type="text" placeholder="time" />
             <select class="rec-add-select-sm" id="rec-days" title="Which days">
               <option value="daily">Daily</option>
@@ -3058,7 +3056,7 @@
           class="capture-textarea"
           id="idea-input"
           rows="2"
-          placeholder="New idea… prefix with blok/ aphl/ trade/ personal/"
+          placeholder="New idea… prefix with a business slug, e.g. personal/"
         ></textarea>
         <button class="capture-save" type="button" id="idea-save">Save</button>
       </div>
@@ -3077,7 +3075,7 @@
           class="capture-textarea"
           id="note-input"
           rows="2"
-          placeholder="New note… prefix with blok/ aphl/ trade/ personal/"
+          placeholder="New note… prefix with a business slug, e.g. personal/"
         ></textarea>
         <button class="capture-save" type="button" id="note-save">Save</button>
       </div>
@@ -3086,21 +3084,14 @@
 
     </div>
 
-    <!-- GOALS ───────────────────────────────────────────────────────────────────── -->
     <!-- PLANNING: PERSONAL OKRs ──────────────────────────────────────────────── -->
     <div class="view" id="v-okrs">
       <div id="okrs-room-container"><div class="loading-text">Loading…</div></div>
     </div>
 
-    <!-- PLANNING: VENTURE ROCKS (Blok AI / APHL Africa / TradeSol) ──────────── -->
-    <div class="view" id="v-rocks-blok">
-      <div id="rocks-blok-container"><div class="loading-text">Loading…</div></div>
-    </div>
-    <div class="view" id="v-rocks-aphl">
-      <div id="rocks-aphl-container"><div class="loading-text">Loading…</div></div>
-    </div>
-    <div class="view" id="v-rocks-trade">
-      <div id="rocks-trade-container"><div class="loading-text">Loading…</div></div>
+    <!-- PLANNING: VENTURE ROCKS — one shared view, rendered per the user's own ventures -->
+    <div class="view" id="v-rocks">
+      <div id="rocks-room-container"><div class="loading-text">Loading…</div></div>
     </div>
 
     <!-- DASHBOARD ─────────────────────────────────────────────────────────────── -->
@@ -3235,16 +3226,11 @@
           <div id="fp-cadence-list"></div>
         </div>
 
-        <div style="margin-top:16px">
-          <div style="font-size:12px;color:#888;margin-bottom:8px">Ventures</div>
-          <div id="fp-ventures-list"></div>
-          <button class="secondary-btn" style="margin-top:4px" onclick="addFpVenture()">Add venture</button>
-        </div>
-
         <div style="margin-top:18px;display:flex;align-items:center;gap:12px">
           <button class="primary-btn" onclick="saveFounderProfile()">Save profile</button>
           <span id="fp-save-status" style="font-size:12px;color:#1a6646"></span>
         </div>
+        <p class="settings-hint" style="margin-top:10px">Ventures — descriptions, leads, and archiving — are managed in "Businesses and categories" below.</p>
       </div>
 
       <!-- Google Calendar -->
@@ -3316,14 +3302,15 @@
         </div>
       </div>
 
-      <!-- Businesses and categories -->
+      <!-- Businesses and categories (ventures — the single place to add, rename, and archive them) -->
       <div class="settings-section">
         <div class="settings-section-head">Businesses and categories</div>
+        <p class="settings-hint">Your ventures and Personal track — these appear everywhere: task tags, the Planning sidebar, and AI-generated briefings.</p>
         <div id="businesses-list"></div>
 
         <div style="margin-top:16px">
           <div style="font-size:12px;color:#888;margin-bottom:8px">Add business</div>
-          <input id="biz-add-name" type="text" placeholder="e.g. Real Estate"
+          <input id="biz-add-name" type="text" placeholder="e.g. My Startup"
                  style="border:none;border-bottom:1px solid #e8e8e6;outline:none;font-size:13px;font-family:inherit;padding:2px 0;width:100%;max-width:200px;margin-bottom:10px"
                  oninput="updateBizPreview()" />
           <div style="font-size:11px;color:#aaa;margin-bottom:6px">Background color</div>
@@ -3333,6 +3320,11 @@
           <div style="margin-top:10px">
             <button class="secondary-btn" onclick="addNewBusiness()">Add business</button>
           </div>
+        </div>
+
+        <div style="margin-top:20px">
+          <a href="#" style="font-size:12px;color:#999" onclick="event.preventDefault();toggleArchivedBusinesses()" id="biz-archived-toggle">Show archived</a>
+          <div id="businesses-archived-list" style="display:none;margin-top:8px"></div>
         </div>
       </div>
 
@@ -3425,7 +3417,7 @@
         <div id="doc-tasks"></div>
 
         <div class="doc-assign-row">
-          <input class="doc-assign-input" id="doc-assignee" type="text" value="OGV" placeholder="Assignee">
+          <input class="doc-assign-input" id="doc-assignee" type="text" placeholder="Assignee">
           <select class="doc-assign-select" id="doc-assign-date">
             <option value="today">Today</option>
             <option value="tomorrow">Tomorrow</option>
@@ -3576,32 +3568,9 @@
       <div class="rec-add-row" style="margin-top:8px">
         <input class="rec-add-input" id="rt-future-name" type="text" placeholder="Future routine name" autocomplete="off" />
         <input class="rec-add-time" id="rt-future-time" type="text" placeholder="time" />
-        <select class="rec-add-select biz-select" id="rt-future-biz">
-          <option value="blok">blok</option>
-          <option value="aphl">aphl</option>
-          <option value="personal" selected>personal</option>
-        </select>
+        <select class="rec-add-select biz-select" id="rt-future-biz"></select>
         <button class="add-btn" type="button" onclick="addFutureRoutine()">Save for later</button>
       </div>
-
-      <!-- Goal linkage -->
-      <div class="section-head" style="margin-top:28px">2026 Goals</div>
-      <table class="goal-link-table">
-        <thead><tr><th>Routine</th><th>Linked goal</th></tr></thead>
-        <tbody>
-          <tr><td>Morning prayer</td><td style="color:#999">Spiritual connection and clarity</td></tr>
-          <tr><td>Evening gratitude and reflection</td><td style="color:#999">Spiritual connection and clarity</td></tr>
-          <tr><td>Morning journaling</td><td style="color:#999">Mental clarity, emotional health</td></tr>
-          <tr><td>Midday mindfulness check-in</td><td style="color:#999">Mental clarity, emotional health</td></tr>
-          <tr><td>Physical training session</td><td style="color:#999">Physical health and fitness</td></tr>
-          <tr><td>Read for 20 minutes</td><td style="color:#999">Personal growth and knowledge</td></tr>
-          <tr><td>Investor relationship touchpoint</td><td style="color:#999">Blok AI: Raise $500k pre-seed — build genuine relationships</td></tr>
-          <tr><td>Family check-in call</td><td style="color:#999">Personal: family connection</td></tr>
-          <tr><td>Review product progress</td><td style="color:#999">Blok AI: product milestones</td></tr>
-          <tr><td>Get daily depot price from Yinusi</td><td style="color:#999">APHL: Daily ops execution</td></tr>
-          <tr><td>Log daily revenue and close ops</td><td style="color:#999">APHL: Revenue tracking and growth</td></tr>
-        </tbody>
-      </table>
 
     </div>
 
@@ -3788,6 +3757,7 @@ async function loadBusinesses() {
     for (const b of BUSINESSES) BIZ_LABEL[b.slug] = b.name;
     updateAllBizSelects();
     renderDocBizPills();
+    renderPlanningNav();
   } catch {}
 }
 
@@ -3847,10 +3817,7 @@ function switchTab(name) {
   if (name === 'board')     loadBoard();
   if (name === 'ideas')     loadIdeas();
   if (name === 'notes')     loadNotes();
-  if (name === 'okrs')        loadOkrsRoom();
-  if (name === 'rocks-blok')  loadRocksRoom('blok');
-  if (name === 'rocks-aphl')  loadRocksRoom('aphl');
-  if (name === 'rocks-trade') loadRocksRoom('trade');
+  if (name === 'okrs')      loadOkrsRoom();
   if (name === 'monthly')   loadMonthly();
   if (name === 'settings')  loadSettings();
   if (name === 'routines')  loadRoutines();
@@ -3859,6 +3826,48 @@ function switchTab(name) {
 
 function openMoreDrawer()  { document.getElementById('more-drawer-overlay').classList.add('open'); }
 function closeMoreDrawer() { document.getElementById('more-drawer-overlay').classList.remove('open'); }
+
+// ── planning sidebar — dynamic per-user venture rooms ─────────────────────────
+// One "Personal OKRs" nav item is static (ties to annual objectives/quarterly
+// OKRs, which have no venture column — always applicable). Every other room
+// is rendered from the logged-in user's own active, non-personal businesses —
+// no hardcoded venture names/count. All venture rooms share one view
+// container (v-rocks) instead of a static div per venture, since the set of
+// ventures is unbounded and user-defined.
+
+function renderPlanningNav() {
+  const navEl    = document.getElementById('planning-ventures-nav');
+  const drawerEl = document.getElementById('planning-ventures-drawer');
+  if (!navEl || !drawerEl) return;
+  _planningVentures = null; // businesses changed — Planning rooms must re-fetch, not use a stale cache
+  const ventures = BUSINESSES.filter(b => !b.is_personal);
+
+  navEl.innerHTML = ventures.map(v => `
+    <a class="nav-item" data-venture-slug="${esc(v.slug)}" data-tooltip="${esc(v.name)}"
+       onclick="switchToRocksRoom('${esc(v.slug)}')">
+      <i class="ti ti-diamond"></i><span class="nav-text">${esc(v.name)}</span>
+    </a>
+  `).join('');
+
+  drawerEl.innerHTML = ventures.map(v => `
+    <a class="more-drawer-item" data-venture-slug="${esc(v.slug)}"
+       onclick="switchToRocksRoom('${esc(v.slug)}');closeMoreDrawer()">
+      <i class="ti ti-diamond"></i>${esc(v.name)}
+    </a>
+  `).join('');
+}
+
+function switchToRocksRoom(slug) {
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.bnav-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.more-drawer-item').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll(`.nav-item[data-venture-slug="${slug}"]`).forEach(el => el.classList.add('active'));
+  document.querySelectorAll(`.more-drawer-item[data-venture-slug="${slug}"]`).forEach(el => el.classList.add('active'));
+  document.getElementById('bnav-more')?.classList.add('active');
+  document.getElementById('v-rocks')?.classList.add('active');
+  loadRocksRoom(slug);
+}
 
 // ── TODAY VIEW ────────────────────────────────────────────────────────────────
 
@@ -4507,7 +4516,9 @@ function editSchedCell(e, idx, field) {
   } else if (field === 'biz') {
     input = document.createElement('select');
     input.className = 'sched-edit-select';
-    ['blok', 'aphl', 'trade', 'personal', 'anchor'].forEach(opt => {
+    // 'anchor' is a pseudo-business (daily habit blocks), not a real venture —
+    // kept alongside the user's own businesses, not in place of them.
+    [...BUSINESSES.map(b => b.slug), 'anchor'].forEach(opt => {
       const o = document.createElement('option');
       o.value = opt; o.textContent = BIZ_LABEL[opt] || opt;
       if (opt === original) o.selected = true;
@@ -5264,9 +5275,8 @@ async function loadRecurring() {
   const el = document.getElementById('rec-list');
   try {
     const grouped = await api('/api/recurring');
-    const BIZ_ORDER = ['blok', 'aphl', 'trade', 'personal'];
     let html = '';
-    for (const key of BIZ_ORDER) {
+    for (const key of BUSINESSES.map(b => b.slug)) {
       const tasks = grouped[key] || [];
       if (!tasks.length) continue;
       html += `<div class="rec-biz-group">
@@ -5334,12 +5344,13 @@ async function removeRecurring(id) {
 // ── IDEAS ─────────────────────────────────────────────────────────────────────
 
 function parseBizPrefix(text) {
-  for (const biz of ['blok', 'aphl', 'trade', 'personal']) {
+  for (const biz of BUSINESSES.map(b => b.slug)) {
     if (text.toLowerCase().startsWith(`${biz}/`)) {
       return { biz, content: text.slice(biz.length + 1).trim() };
     }
   }
-  return { biz: 'blok', content: text.trim() };
+  const fallback = (BUSINESSES.find(b => b.is_personal) || BUSINESSES[0] || {}).slug || 'personal';
+  return { biz: fallback, content: text.trim() };
 }
 
 function renderCaptureList(el, items) {
@@ -5730,11 +5741,11 @@ function renderDocAnalysis(analysis, meta) {
       </div>`).join('');
   }
 
-  // Pre-fill assignee based on business
+  // Pre-fill assignee: the venture's own lead if one's set, else the current user
   const assigneeEl = document.getElementById('doc-assignee');
   if (assigneeEl) {
-    const bizAssignee = { aphl: 'Candy Opusunju', blok: 'Product Manager' };
-    assigneeEl.value = bizAssignee[_docSelectedBiz] || 'OGV';
+    const biz = BUSINESSES.find(b => b.slug === _docSelectedBiz);
+    assigneeEl.value = (biz && biz.lead) || (CURRENT_USER && CURRENT_USER.name) || '';
   }
 
   if (resultEl) {
@@ -5750,7 +5761,7 @@ function toggleDocTaskCheck(idx) {
 
 async function assignDocTasks() {
   if (!_docCurrentAnalysis || !_docCurrentId) return;
-  const assignee = (document.getElementById('doc-assignee') || {}).value || 'OGV';
+  const assignee = (document.getElementById('doc-assignee') || {}).value || (CURRENT_USER && CURRENT_USER.name) || '';
   const dateVal  = (document.getElementById('doc-assign-date') || {}).value || 'today';
   const tasks    = (_docCurrentAnalysis.tasks || []).filter((_, i) => {
     const el = document.getElementById(`doc-tc-${i}`);
@@ -6500,15 +6511,15 @@ async function renderMonthlyBiz(year, month) {
   const biz = await api(`/api/analytics/by-business?month=${year}-${mm}`).catch(() => []);
   if (!biz.length) { document.getElementById('monthly-biz').innerHTML = ''; return; }
 
-  const BIZ_ORDER = ['blok', 'aphl', 'trade', 'personal'];
-  const BIZ_LABEL = { blok: 'Blok AI', aphl: 'APHL Africa', trade: 'TradeSol', personal: 'Personal' };
-
-  document.getElementById('monthly-biz').innerHTML = BIZ_ORDER.map(b => {
+  // Order/labels come from the user's own businesses, not a hardcoded list —
+  // otherwise this silently rendered nothing for anyone whose ventures
+  // weren't literally blok/aphl/trade/personal.
+  document.getElementById('monthly-biz').innerHTML = BUSINESSES.map(({ slug: b }) => {
     const row = biz.find(r => r.business === b);
     if (!row) return '';
     const color = BIZ_COLOR[b] || '#888';
     return `<div class="mbiz-row">
-      <span class="tag-pill" style="background:${color}22;color:${color};font-size:10px;padding:1px 7px;border-radius:3px;width:90px;text-align:center;flex-shrink:0">${BIZ_LABEL[b]}</span>
+      <span class="tag-pill" style="background:${color}22;color:${color};font-size:10px;padding:1px 7px;border-radius:3px;width:90px;text-align:center;flex-shrink:0">${esc(BIZ_LABEL[b] || b)}</span>
       <div class="mbiz-bar-wrap"><div class="mbiz-bar" style="width:${row.rate}%;background:${color}"></div></div>
       <span class="mbiz-pct">${row.rate}%</span>
       <span class="mbiz-count">${row.completed}/${row.total}</span>
@@ -6605,7 +6616,6 @@ async function loadFounderProfile() {
 
   if (!Array.isArray(FOUNDER_PROFILE.personalPillars)) FOUNDER_PROFILE.personalPillars = [];
   if (!Array.isArray(FOUNDER_PROFILE.currentGoals))    FOUNDER_PROFILE.currentGoals    = [];
-  if (!Array.isArray(FOUNDER_PROFILE.ventures))        FOUNDER_PROFILE.ventures        = [];
   if (!Array.isArray(FOUNDER_PROFILE.investorCadence) || FOUNDER_PROFILE.investorCadence.length !== 7) {
     FOUNDER_PROFILE.investorCadence = CADENCE_DAYS.map(() => '');
   }
@@ -6613,7 +6623,6 @@ async function loadFounderProfile() {
   renderFpPillars();
   renderFpGoals();
   renderFpCadence();
-  renderFpVentures();
 }
 
 function renderFpPillars() {
@@ -6675,67 +6684,6 @@ function renderFpCadence() {
   `).join('');
 }
 
-function renderFpVentures() {
-  const el = document.getElementById('fp-ventures-list');
-  el.innerHTML = FOUNDER_PROFILE.ventures.map((v, i) => `
-    <div class="fp-venture-card">
-      <div class="fp-row">
-        <span class="settings-label">Name</span>
-        <input type="text" class="settings-input" value="${esc(v.name)}" oninput="FOUNDER_PROFILE.ventures[${i}].name = this.value" />
-      </div>
-      <div class="fp-row" style="align-items:flex-start">
-        <span class="settings-label">Description</span>
-        <textarea class="settings-textarea" rows="2" oninput="FOUNDER_PROFILE.ventures[${i}].description = this.value">${esc(v.description)}</textarea>
-      </div>
-      <div class="fp-row">
-        <span class="settings-label">Lead</span>
-        <input type="text" class="settings-input" value="${esc(v.lead || '')}" oninput="FOUNDER_PROFILE.ventures[${i}].lead = this.value" />
-      </div>
-      <div class="fp-row">
-        <span class="settings-label">Lead role</span>
-        <input type="text" class="settings-input" value="${esc(v.leadRole || '')}" oninput="FOUNDER_PROFILE.ventures[${i}].leadRole = this.value" />
-      </div>
-      <div class="fp-row">
-        <span class="settings-label">Active days</span>
-        <select class="settings-select" onchange="FOUNDER_PROFILE.ventures[${i}].activeDays = this.value">
-          <option value="daily" ${v.activeDays === 'daily' ? 'selected' : ''}>Daily</option>
-          <option value="weekdays" ${v.activeDays === 'weekdays' ? 'selected' : ''}>Weekdays only</option>
-        </select>
-      </div>
-      <div class="fp-row">
-        <span class="settings-label">Status</span>
-        <select class="settings-select" onchange="FOUNDER_PROFILE.ventures[${i}].status = this.value">
-          <option value="active" ${v.status === 'active' ? 'selected' : ''}>Active</option>
-          <option value="dormant" ${v.status === 'dormant' ? 'selected' : ''}>Dormant</option>
-        </select>
-      </div>
-      <div class="fp-row">
-        <span class="settings-label">Investor-focused venture</span>
-        <label class="toggle-switch">
-          <input type="checkbox" ${v.investorFocus ? 'checked' : ''} onchange="FOUNDER_PROFILE.ventures[${i}].investorFocus = this.checked">
-          <span class="toggle-track"></span>
-        </label>
-      </div>
-      <div style="margin-top:8px;text-align:right">
-        <button class="secondary-btn danger-btn" onclick="removeFpVenture(${i})">Remove venture</button>
-      </div>
-    </div>
-  `).join('') || '<div style="font-size:12px;color:#aaa">No ventures yet.</div>';
-}
-
-function addFpVenture() {
-  FOUNDER_PROFILE.ventures.push({
-    slug: `venture-${Date.now()}`, name: 'New venture', description: '',
-    lead: '', leadRole: '', investorFocus: false, activeDays: 'daily', status: 'active',
-  });
-  renderFpVentures();
-}
-
-function removeFpVenture(i) {
-  FOUNDER_PROFILE.ventures.splice(i, 1);
-  renderFpVentures();
-}
-
 async function saveFounderProfile() {
   FOUNDER_PROFILE.name           = document.getElementById('fp-name').value.trim();
   FOUNDER_PROFILE.brandName      = document.getElementById('fp-brand').value.trim();
@@ -6770,17 +6718,73 @@ function darkenBizColor(hex) {
   return `rgb(${Math.floor(r * 0.35)},${Math.floor(g * 0.35)},${Math.floor(b * 0.35)})`;
 }
 
+let _bizExpanded = new Set();
+
+function toggleBizExpanded(id) {
+  if (_bizExpanded.has(id)) _bizExpanded.delete(id); else _bizExpanded.add(id);
+  renderBusinessesList();
+}
+
+function businessCardHtml(b, { archived } = {}) {
+  const expanded = _bizExpanded.has(b.id);
+  return `
+    <div class="fp-venture-card">
+      <div class="settings-row" style="gap:8px;cursor:pointer" onclick="toggleBizExpanded(${b.id})">
+        <span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${b.color_bg};border:1.5px solid ${b.color_text};flex-shrink:0"></span>
+        <span style="flex:1;font-size:13px">${esc(b.name)}${b.is_personal ? ' <span style="color:#aaa;font-size:10px">· personal</span>' : ''}</span>
+        <span style="font-size:10px;color:#aaa;font-family:monospace">${esc(b.slug)}</span>
+        <i class="ti ${expanded ? 'ti-chevron-up' : 'ti-chevron-down'}" style="color:#ccc"></i>
+      </div>
+      ${expanded ? `
+        <div class="fp-row">
+          <span class="settings-label">Name</span>
+          <input type="text" class="settings-input" id="biz-name-${b.id}" value="${esc(b.name)}" />
+        </div>
+        ${!b.is_personal ? `
+        <div class="fp-row" style="align-items:flex-start">
+          <span class="settings-label">Description</span>
+          <textarea class="settings-textarea" rows="2" id="biz-desc-${b.id}">${esc(b.description || '')}</textarea>
+        </div>
+        <div class="fp-row">
+          <span class="settings-label">Lead</span>
+          <input type="text" class="settings-input" id="biz-lead-${b.id}" value="${esc(b.lead || '')}" />
+        </div>
+        <div class="fp-row">
+          <span class="settings-label">Lead role</span>
+          <input type="text" class="settings-input" id="biz-lead-role-${b.id}" value="${esc(b.lead_role || '')}" />
+        </div>
+        <div class="fp-row">
+          <span class="settings-label">Active days</span>
+          <select class="settings-select" id="biz-active-days-${b.id}">
+            <option value="daily" ${b.active_days === 'daily' ? 'selected' : ''}>Daily</option>
+            <option value="weekdays" ${b.active_days === 'weekdays' ? 'selected' : ''}>Weekdays only</option>
+          </select>
+        </div>
+        <div class="fp-row">
+          <span class="settings-label">Investor-focused venture</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="biz-investor-${b.id}" ${b.investor_focus ? 'checked' : ''}>
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+        ` : ''}
+        <div style="margin-top:10px;display:flex;gap:10px;align-items:center">
+          <button class="secondary-btn" onclick="saveBusinessSetting(${b.id})">Save</button>
+          ${archived
+            ? `<button class="secondary-btn" onclick="reactivateBusinessSetting(${b.id})">Reactivate</button>`
+            : `<button class="secondary-btn danger-btn" onclick="deactivateBusinessSetting(${b.id})">Archive</button>`
+          }
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
 function renderBusinessesList() {
   const el = document.getElementById('businesses-list');
   if (!el) return;
-  el.innerHTML = BUSINESSES.map(b => `
-    <div class="settings-row" style="gap:8px">
-      <span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${b.color_bg};border:1.5px solid ${b.color_text};flex-shrink:0"></span>
-      <span style="flex:1;font-size:13px">${esc(b.name)}</span>
-      <span style="font-size:10px;color:#aaa;font-family:monospace">${esc(b.slug)}</span>
-      <button class="secondary-btn" style="padding:2px 8px;font-size:11px;color:#c0392b;border-color:#f0d0d0" onclick="deactivateBusinessSetting(${b.id})">Deactivate</button>
-    </div>
-  `).join('') || '<div style="font-size:12px;color:#aaa;padding:4px 0">No businesses yet.</div>';
+  el.innerHTML = BUSINESSES.map(b => businessCardHtml(b)).join('')
+    || '<div style="font-size:12px;color:#aaa;padding:4px 0">No businesses yet.</div>';
 
   // Color swatches
   const swatchEl = document.getElementById('biz-color-swatches');
@@ -6821,17 +6825,75 @@ async function addNewBusiness() {
     if (nameEl) nameEl.value = '';
     renderBusinessesList();
     updateAllBizSelects();
+    renderPlanningNav();
     showToast(`${name} added`);
   } catch (e) { showToast(e.message); }
 }
 
+async function saveBusinessSetting(id) {
+  const body = {
+    name: (document.getElementById(`biz-name-${id}`) || {}).value,
+  };
+  const descEl = document.getElementById(`biz-desc-${id}`);
+  if (descEl) {
+    body.description    = descEl.value;
+    body.lead            = document.getElementById(`biz-lead-${id}`).value;
+    body.lead_role        = document.getElementById(`biz-lead-role-${id}`).value;
+    body.active_days      = document.getElementById(`biz-active-days-${id}`).value;
+    body.investor_focus   = document.getElementById(`biz-investor-${id}`).checked;
+  }
+  try {
+    await api(`/api/businesses/${id}`, { method: 'PATCH', body });
+    BUSINESSES = await api('/api/businesses');
+    for (const b of BUSINESSES) BIZ_LABEL[b.slug] = b.name;
+    renderBusinessesList();
+    updateAllBizSelects();
+    renderPlanningNav();
+    showToast('Saved');
+  } catch (e) { showToast(e.message); }
+}
+
 async function deactivateBusinessSetting(id) {
-  if (!confirm('Deactivate this business? It will be removed from selects.')) return;
+  if (!confirm('Archive this business? It stays queryable but disappears from task tags and the Planning sidebar until reactivated.')) return;
   try {
     BUSINESSES = await api(`/api/businesses/${id}`, { method: 'DELETE' });
     for (const b of BUSINESSES) BIZ_LABEL[b.slug] = b.name;
     renderBusinessesList();
     updateAllBizSelects();
+    renderPlanningNav();
+    if (document.getElementById('businesses-archived-list').style.display !== 'none') loadArchivedBusinesses();
+  } catch (e) { showToast(e.message); }
+}
+
+async function reactivateBusinessSetting(id) {
+  try {
+    await api(`/api/businesses/${id}`, { method: 'PATCH', body: { active: true } });
+    BUSINESSES = await api('/api/businesses');
+    for (const b of BUSINESSES) BIZ_LABEL[b.slug] = b.name;
+    renderBusinessesList();
+    updateAllBizSelects();
+    renderPlanningNav();
+    loadArchivedBusinesses();
+    showToast('Reactivated');
+  } catch (e) { showToast(e.message); }
+}
+
+async function toggleArchivedBusinesses() {
+  const el     = document.getElementById('businesses-archived-list');
+  const link   = document.getElementById('biz-archived-toggle');
+  const isOpen = el.style.display !== 'none';
+  el.style.display = isOpen ? 'none' : 'block';
+  link.textContent = isOpen ? 'Show archived' : 'Hide archived';
+  if (!isOpen) loadArchivedBusinesses();
+}
+
+async function loadArchivedBusinesses() {
+  const el = document.getElementById('businesses-archived-list');
+  try {
+    const all = await api('/api/businesses?includeInactive=1');
+    const archived = all.filter(b => !b.active);
+    el.innerHTML = archived.map(b => businessCardHtml(b, { archived: true })).join('')
+      || '<div style="font-size:12px;color:#aaa;padding:4px 0">No archived businesses.</div>';
   } catch (e) { showToast(e.message); }
 }
 
@@ -7379,10 +7441,11 @@ async function cycleKeyResultStatus(id, current) {
 
 // ── VENTURE ROCKS rooms ─────────────────────────────────────────────────────────
 
-const VENTURE_ROOM_LABEL = { blok: 'Blok AI', aphl: 'APHL Africa', trade: 'TradeSol' };
+let _currentRocksVenture = null;
 
 async function loadRocksRoom(venture) {
-  const el = document.getElementById(`rocks-${venture}-container`);
+  _currentRocksVenture = venture;
+  const el = document.getElementById('rocks-room-container');
   el.innerHTML = '<div class="loading-text">Loading…</div>';
   try {
     const [ctx, status, unlinked, ventures] = await Promise.all([
@@ -7391,8 +7454,12 @@ async function loadRocksRoom(venture) {
       unlinkedTaskOptions(),
       getPlanningVentures(),
     ]);
-    const rocks = await api(`/api/planning/rocks?venture=${venture}&year=${ctx.year}&quarter=${ctx.quarter}`);
     const ventureInfo = ventures.find(v => v.slug === venture);
+    if (!ventureInfo) {
+      el.innerHTML = '<div class="empty-text">This venture no longer exists or is archived.</div>';
+      return;
+    }
+    const rocks = await api(`/api/planning/rocks?venture=${venture}&year=${ctx.year}&quarter=${ctx.quarter}`);
     renderRocksRoom(venture, ctx, status, rocks, unlinked, ventureInfo);
   } catch (e) {
     el.innerHTML = `<div class="empty-text">Error: ${esc(e.message)}</div>`;
@@ -7400,14 +7467,15 @@ async function loadRocksRoom(venture) {
 }
 
 function renderRocksRoom(venture, ctx, status, rocks, unlinked, ventureInfo) {
-  const el = document.getElementById(`rocks-${venture}-container`);
+  const el = document.getElementById('rocks-room-container');
   const isDormant = ventureInfo && ventureInfo.status === 'dormant';
+  const label = ventureInfo ? ventureInfo.name : venture;
   el.innerHTML = `
-    <h1 class="page-title">${esc(VENTURE_ROOM_LABEL[venture] || venture)}</h1>
+    <h1 class="page-title">${esc(label)}</h1>
     <p class="page-sub">Q${ctx.quarter} ${ctx.year} Rocks${ventureInfo && ventureInfo.lead ? ' · ' + esc(ventureInfo.lead) : ''}</p>
     ${isDormant ? `<div class="pending-rec-banner" style="margin-bottom:20px"><div class="pending-rec-head">Inactive venture</div><div class="pending-rec-sub">${esc(ventureInfo.description || 'Not an active focus right now.')} Rocks can still be tracked here if needed.</div></div>` : ''}
 
-    ${planningRetroBanner(status, VENTURE_ROOM_LABEL[venture] || venture)}
+    ${planningRetroBanner(status, label)}
     ${status && status.due ? `<button class="text-btn" style="margin-bottom:20px" onclick="ackPlanningRetro(${status.year},${status.quarter},function(){loadRocksRoom('${venture}')})">Done reviewing — start this quarter clean</button>` : ''}
 
     <div class="section-head">Rocks (1–3 for the quarter)</div>
@@ -7458,9 +7526,7 @@ async function addRockInline(venture, year, quarter) {
 async function cycleRockStatus(id, current) {
   try {
     await api(`/api/planning/rocks/${id}`, { method: 'PATCH', body: { status: PLANNING_ROCK_STATUS_CYCLE[current] || 'on_track' } });
-    const activeView = document.querySelector('.view.active');
-    const venture = activeView ? activeView.id.replace('v-rocks-', '') : null;
-    if (venture) loadRocksRoom(venture);
+    if (_currentRocksVenture) loadRocksRoom(_currentRocksVenture);
   } catch (e) { console.error('cycleRockStatus:', e); }
 }
 
@@ -7484,7 +7550,9 @@ let onboardingStep = 1;
 let _obPickedIcon  = ONBOARDING_ICONS[0];
 let onboardingData = {
   name: '', brandName: '', identity: '',
-  businesses: [],
+  businesses: [
+    { name: 'Personal', slug: 'personal', icon: 'ti-user', color_bg: '#fdf0f4', color_text: '#8a2a4a', is_personal: true },
+  ],
   personalPillars: ['Spiritual', 'Mental', 'Physical', 'Family'],
   nonNegotiables: '',
   anchors: [
@@ -7573,7 +7641,13 @@ function pickOnboardingIcon(icon) {
   renderOnboardingIconPicker();
 }
 
+const ONBOARDING_MAX_VENTURES = 3;
+
 function addOnboardingBusiness() {
+  if (onboardingData.businesses.length >= ONBOARDING_MAX_VENTURES) {
+    showToast(`Up to ${ONBOARDING_MAX_VENTURES} to start — you can add more later in Settings.`);
+    return;
+  }
   const input = document.getElementById('ob-biz-name');
   const name  = input.value.trim();
   if (!name) return;
@@ -7581,10 +7655,14 @@ function addOnboardingBusiness() {
   if (!slug) { showToast('Enter a valid name.'); return; }
   if (onboardingData.businesses.some(b => b.slug === slug)) { showToast('You already added that.'); return; }
   const palette = ONBOARDING_COLOR_PALETTE[onboardingData.businesses.length % ONBOARDING_COLOR_PALETTE.length];
-  onboardingData.businesses.push({ name, slug, icon: _obPickedIcon, color_bg: palette.bg, color_text: palette.text });
+  onboardingData.businesses.push({ name, slug, icon: _obPickedIcon, color_bg: palette.bg, color_text: palette.text, is_personal: false });
   input.value = '';
   _obPickedIcon = ONBOARDING_ICONS[0];
   renderOnboardingBusinesses();
+}
+
+function renameOnboardingBusiness(i, name) {
+  if (onboardingData.businesses[i]) onboardingData.businesses[i].name = name;
 }
 
 function removeOnboardingBusiness(i) {
@@ -7597,7 +7675,7 @@ function renderOnboardingBusinessList() {
   el.innerHTML = onboardingData.businesses.map((b, i) => `
     <div class="ob-biz-row">
       <span class="ob-biz-swatch" style="background:${b.color_bg};color:${b.color_text}"><i class="ti ${b.icon}"></i></span>
-      <span class="ob-biz-name">${esc(b.name)}</span>
+      <input class="ob-biz-name-input" type="text" value="${esc(b.name)}" oninput="renameOnboardingBusiness(${i}, this.value)" />
       <button class="fp-remove-btn" onclick="removeOnboardingBusiness(${i})">&times;</button>
     </div>
   `).join('') || '<div style="font-size:12px;color:#aaa">No ventures added yet.</div>';
@@ -7668,16 +7746,14 @@ async function finishOnboarding() {
       personalPillars: onboardingData.personalPillars,
       nonNegotiables:  onboardingData.nonNegotiables,
       scheduleBlocks:  onboardingData.anchors,
-      ventures: onboardingData.businesses.map(b => ({
-        slug: b.slug, name: b.name, description: '', lead: null, leadRole: null,
-        investorFocus: false, activeDays: 'daily', status: 'active',
-      })),
     }});
 
+    // ventures is derived from the businesses table now — this is the only
+    // write path, no separate /api/profile ventures field to keep in sync.
     for (const b of onboardingData.businesses) {
       await api('/api/businesses', {
         method: 'POST',
-        body: { name: b.name, color_bg: b.color_bg, color_text: b.color_text, icon: b.icon },
+        body: { name: b.name, color_bg: b.color_bg, color_text: b.color_text, icon: b.icon, is_personal: b.is_personal },
       });
     }
 

@@ -19,7 +19,7 @@ const {
   updateUploadedDocumentStatus, linkDocumentToAnalysis, archiveUploadedDocument, searchUploadedDocuments,
   getTeamMembers, getMembersByBusiness,
   updateTaskTime,
-  getBusinesses, addBusiness, deactivateBusiness,
+  getBusinesses, getAllBusinesses, getBusinessById, addBusiness, deactivateBusiness, activateBusiness, updateBusiness,
   getFounderProfile, saveFounderProfile,
   getInvestorTouchesThisWeek, getQuarterlyGoalPct,
   getAnchorsForDate, toggleAnchor,
@@ -494,11 +494,11 @@ app.post('/api/recurring/skip/:date', requireAuth, (req, res) => {
 // ── businesses ────────────────────────────────────────────────────────────────
 
 app.get('/api/businesses', requireAuth, (req, res) => {
-  res.json(getBusinesses(req.user.id));
+  res.json(req.query.includeInactive ? getAllBusinesses(req.user.id) : getBusinesses(req.user.id));
 });
 
 app.post('/api/businesses', requireAuth, (req, res) => {
-  const { name, color_bg, color_text, icon } = req.body;
+  const { name, color_bg, color_text, icon, is_personal, description, lead, lead_role, investor_focus, active_days } = req.body;
   if (!name) return res.status(400).json({ error: 'name is required' });
   const slug = name.toLowerCase()
     .replace(/[^a-z0-9\s-]/g, '')
@@ -507,14 +507,30 @@ app.post('/api/businesses', requireAuth, (req, res) => {
     .slice(0, 30);
   if (!slug) return res.status(400).json({ error: 'invalid name — no valid slug characters' });
   try {
-    addBusiness(req.user.id, name, slug, color_bg || '#f0f0ee', color_text || '#333333', icon || null);
-    res.status(201).json(getBusinesses(req.user.id));
+    addBusiness(req.user.id, name, slug, color_bg || '#f0f0ee', color_text || '#333333', icon || null, {
+      is_personal, description, lead, lead_role, investor_focus, active_days,
+    });
+    res.status(201).json(getAllBusinesses(req.user.id));
   } catch (e) {
     if (e.message.includes('UNIQUE')) {
       return res.status(409).json({ error: `Business slug '${slug}' already exists` });
     }
     res.status(500).json({ error: e.message });
   }
+});
+
+// Rename + AI-context fields, and/or reactivate ({ active: true }) an
+// archived venture — slug and is_personal are immutable (see updateBusiness
+// in db.js for why), so this never accepts either.
+app.patch('/api/businesses/:id', requireAuth, (req, res) => {
+  const biz = getBusinessById(req.user.id, req.params.id);
+  if (!biz) return res.status(404).json({ error: 'not found' });
+  const { name, description, lead, lead_role, investor_focus, active_days, active } = req.body;
+  if (name !== undefined && !name.trim()) return res.status(400).json({ error: 'name cannot be empty' });
+  updateBusiness(req.user.id, req.params.id, { name, description, lead, lead_role, investor_focus, active_days });
+  if (active === true) activateBusiness(req.user.id, req.params.id);
+  else if (active === false) deactivateBusiness(req.user.id, req.params.id);
+  res.json(getBusinessById(req.user.id, req.params.id));
 });
 
 app.delete('/api/businesses/:id', requireAuth, (req, res) => {
