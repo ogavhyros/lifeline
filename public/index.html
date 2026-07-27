@@ -1027,6 +1027,66 @@
       height: 18px;
     }
 
+    /* ── info-icon tooltip (term definitions) ────────────────────────────────── */
+    /* Pure CSS show/hide — :hover for desktop, :focus for tap-to-show on mobile
+       (a <button> reliably gets/loses focus on tap across mobile browsers,
+       so tapping elsewhere naturally dismisses it — no JS needed for the
+       interaction itself, only to fill in the definition text on load). */
+    .info-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 1px solid #d5d5d2;
+      background: none;
+      color: #aaa;
+      font-size: 9px;
+      font-family: Georgia, serif;
+      font-style: italic;
+      line-height: 1;
+      cursor: help;
+      padding: 0;
+      margin-left: 5px;
+      position: relative;
+      flex-shrink: 0;
+      vertical-align: middle;
+    }
+    .info-icon:hover, .info-icon:focus {
+      border-color: #999;
+      color: #666;
+      outline: none;
+    }
+    .info-tooltip {
+      position: absolute;
+      bottom: calc(100% + 7px);
+      left: 50%;
+      transform: translateX(-50%);
+      width: max-content;
+      max-width: 220px;
+      background: #1a1a1a;
+      color: #fff;
+      font-size: 11px;
+      font-family: 'Geist', system-ui, sans-serif;
+      font-style: normal;
+      font-weight: 400;
+      line-height: 1.45;
+      text-align: left;
+      padding: 8px 10px;
+      border-radius: 6px;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity .15s;
+      z-index: 500;
+    }
+    .info-icon:hover .info-tooltip,
+    .info-icon:focus .info-tooltip {
+      opacity: 1;
+      visibility: visible;
+    }
+
     /* ── planning rooms (personal OKRs / venture Rocks) ─────────────────────── */
     .plan-card {
       border: 1px solid #f0f0ee;
@@ -1847,6 +1907,10 @@
     .routine-activate-btn:hover { border-color: #1a1a1a; color: #1a1a1a; }
     .routine-time-editable { cursor: pointer; }
     .routine-time-editable:hover { color: #1a1a1a; text-decoration: underline dotted; }
+    .routine-name-editable { cursor: pointer; }
+    .routine-name-editable:hover { text-decoration: underline dotted; }
+    .routine-goal-editable { cursor: pointer; color: #ccc; }
+    .routine-goal-editable:hover { color: #999; text-decoration: underline dotted; }
     .routine-pause-btn {
       background: none;
       border: 1px solid #e8e8e6;
@@ -2674,7 +2738,7 @@
     </div>
 
     <div class="onboarding-step" id="onboarding-step-2" style="display:none">
-      <div class="onboarding-step-title">Your ventures</div>
+      <div class="onboarding-step-title">Your ventures<span class="info-icon-slot" data-term="venture"></span></div>
       <div class="onboarding-step-sub">"Personal" is added for you — rename it if you'd rather. Add up to 2 more businesses, projects, or areas of focus. Pick an icon and it's yours everywhere in the app.</div>
       <div class="ob-icon-picker" id="ob-icon-picker"></div>
       <div style="display:flex;gap:8px;margin-top:10px">
@@ -2697,7 +2761,7 @@
     </div>
 
     <div class="onboarding-step" id="onboarding-step-4" style="display:none">
-      <div class="onboarding-step-title">Daily anchors</div>
+      <div class="onboarding-step-title">Daily anchors<span class="info-icon-slot" data-term="anchor"></span></div>
       <div class="onboarding-step-sub">Suggested habit blocks — edit the times/names, remove any, or add your own.</div>
       <div id="ob-anchors-list"></div>
       <button class="secondary-btn" type="button" style="margin-top:8px" onclick="addOnboardingAnchor()">Add anchor</button>
@@ -2705,7 +2769,7 @@
 
     <div class="onboarding-step" id="onboarding-step-5" style="display:none">
       <div class="onboarding-step-title">Notifications</div>
-      <div class="onboarding-step-sub">You can change these anytime in Settings. Personal OKRs and venture Rocks are set up afterward from the Planning section.</div>
+      <div class="onboarding-step-sub">You can change these anytime in Settings. My Goals and venture Priorities are set up afterward from the Planning section.</div>
       <div class="notif-list">
         <div class="notif-row"><span>Morning briefing</span><label class="toggle-switch"><input type="checkbox" id="ob-notif-briefing" checked><span class="toggle-track"></span></label></div>
         <div class="notif-row"><span>Block reminders</span><label class="toggle-switch"><input type="checkbox" id="ob-notif-block" checked><span class="toggle-track"></span></label></div>
@@ -2765,7 +2829,7 @@
 
     <div class="nav-section">
       <div class="nav-label">PLANNING</div>
-      <a class="nav-item" data-view="okrs" data-tooltip="Personal OKRs"><i class="ti ti-flag"></i><span class="nav-text">Personal OKRs</span></a>
+      <a class="nav-item" data-view="okrs" data-tooltip="My Goals"><i class="ti ti-flag"></i><span class="nav-text">My Goals</span></a>
       <div id="planning-ventures-nav"></div>
     </div>
 
@@ -2781,7 +2845,7 @@
     </div>
 
     <div class="sidebar-week">
-      <div class="sidebar-week-label">This week</div>
+      <div class="sidebar-week-label">This week<span class="info-icon-slot" data-term="weekly_scorecard"></span></div>
       <div class="sidebar-week-val" id="weekly-stat">—</div>
     </div>
 
@@ -2830,7 +2894,7 @@
       </div>
       <div class="more-drawer-section">
         <div class="more-drawer-label">Planning</div>
-        <a class="more-drawer-item" data-view="okrs" onclick="switchTab('okrs');closeMoreDrawer()"><i class="ti ti-flag"></i>Personal OKRs</a>
+        <a class="more-drawer-item" data-view="okrs" onclick="switchTab('okrs');closeMoreDrawer()"><i class="ti ti-flag"></i>My Goals</a>
         <div id="planning-ventures-drawer"></div>
       </div>
       <div class="more-drawer-section">
@@ -2854,6 +2918,7 @@
       <h1 class="page-title" id="today-date">Loading…</h1>
       <p class="page-sub" id="today-sub">—</p>
 
+      <div class="focus-section-label" style="margin:12px 0 4px">Anchor chain<span class="info-icon-slot" data-term="anchor_chain"></span></div>
       <div class="anchor-row" id="anchor-chain"></div>
 
       <div class="inline-stats">
@@ -2876,10 +2941,10 @@
       </div>
 
       <div class="plan-week-row">
-        <button class="text-btn" id="plan-week-btn" type="button">Plan my week →</button>
+        <button class="text-btn" id="plan-week-btn" type="button">Plan my week →</button><span class="info-icon-slot" data-term="plan_my_week"></span>
       </div>
       <div class="ai-box" id="plan-week-box">
-        <div class="ai-focus" id="plan-week-empty" style="display:none">No open Objectives, Key Results, or Rocks yet — set some in Planning first.</div>
+        <div class="ai-focus" id="plan-week-empty" style="display:none">No open Goals, Milestones, or Priorities yet — set some in Planning first.</div>
         <div id="plan-week-list"></div>
         <div class="pending-rec-row" style="margin-top:4px">
           <input class="settings-input" id="pw-new-title" type="text" placeholder="Add your own task…" style="flex:1;font-size:12px" />
@@ -2972,7 +3037,7 @@
 
       <div class="board-header-row">
         <div>
-          <h1 class="page-title">Board</h1>
+          <h1 class="page-title">Board<span class="info-icon-slot" data-term="task_board"></span></h1>
           <p class="page-sub">Drag cards between columns to update status</p>
         </div>
         <button class="members-btn" id="members-btn" type="button" onclick="openMembersPanel()" style="display:none">
@@ -3017,7 +3082,7 @@
     <!-- BRAIN DUMP ────────────────────────────────────────────────────────────── -->
     <div class="view" id="v-dump">
 
-      <h1 class="page-title">Brain Dump</h1>
+      <h1 class="page-title">Brain Dump<span class="info-icon-slot" data-term="brain_dump"></span></h1>
 
       <div class="dump-wrapper">
         <textarea
@@ -3115,7 +3180,7 @@
       <div class="section-head" id="cal-label">This Month</div>
       <div class="cal-grid" id="cal-grid"></div>
 
-      <div class="section-head">KPI Tracker</div>
+      <div class="section-head">Key Numbers</div>
       <div id="kpi-container"></div>
 
       <div class="section-head">Completion by business — last 30 days</div>
@@ -3304,7 +3369,7 @@
 
       <!-- Businesses and categories (ventures — the single place to add, rename, and archive them) -->
       <div class="settings-section">
-        <div class="settings-section-head">Businesses and categories</div>
+        <div class="settings-section-head">Businesses and categories<span class="info-icon-slot" data-term="venture"></span></div>
         <p class="settings-hint">Your ventures and Personal track — these appear everywhere: task tags, the Planning sidebar, and AI-generated briefings.</p>
         <div id="businesses-list"></div>
 
@@ -3462,109 +3527,26 @@
 
     <!-- ROUTINES ────────────────────────────────────────────────────────────── -->
     <div class="view" id="v-routines">
-      <h1 class="page-title">Daily Routines</h1>
+      <h1 class="page-title">Daily Routines<span class="info-icon-slot" data-term="routine"></span></h1>
       <p class="page-sub" style="font-size:13px;color:#999">Tasks that run every day or on specific days, tied to your current goals.</p>
 
       <!-- Business Routines -->
       <div class="section-head" style="margin-top:20px">Business</div>
-      <div class="routines-biz-grid">
-
-        <div class="routine-card" id="routines-blok">
-          <div class="routine-card-head">
-            <span class="biz-tag biz-blok">blok</span> Blok AI
-          </div>
-          <div class="routine-task-list" id="rt-blok-list"></div>
-          <div class="rec-add-row">
-            <input class="rec-add-input" id="rt-blok-name" type="text" placeholder="+ Add Blok AI routine" autocomplete="off" />
-            <input class="rec-add-time" id="rt-blok-time" type="text" placeholder="time" />
-            <select class="rec-add-select-sm" id="rt-blok-days">
-              <option value="daily">Daily</option>
-              <option value="1,2,3,4,5" selected>Mon–Fri</option>
-              <option value="1,3,5">Mon/Wed/Fri</option>
-            </select>
-            <button class="add-btn" type="button" onclick="addRoutineTask('blok','work','rt-blok')">Add</button>
-          </div>
-        </div>
-
-        <div class="routine-card" id="routines-aphl">
-          <div class="routine-card-head">
-            <span class="biz-tag biz-aphl">aphl</span> APHL Africa
-          </div>
-          <div class="routine-task-list" id="rt-aphl-list"></div>
-          <div class="rec-add-row">
-            <input class="rec-add-input" id="rt-aphl-name" type="text" placeholder="+ Add APHL routine" autocomplete="off" />
-            <input class="rec-add-time" id="rt-aphl-time" type="text" placeholder="time" />
-            <select class="rec-add-select-sm" id="rt-aphl-days">
-              <option value="daily" selected>Daily</option>
-              <option value="1,2,3,4,5">Mon–Fri</option>
-            </select>
-            <button class="add-btn" type="button" onclick="addRoutineTask('aphl','work','rt-aphl')">Add</button>
-          </div>
-        </div>
-
-      </div>
+      <div class="routines-biz-grid" id="routines-biz-grid"></div>
 
       <!-- Personal Routines -->
       <div class="section-head" style="margin-top:28px">Personal</div>
-      <div class="routines-personal-grid">
+      <div class="routines-personal-grid" id="routines-personal-grid"></div>
 
-        <div class="routine-card routine-card-personal">
-          <div class="routine-card-head"><i class="ti ti-sun" style="font-size:13px;color:#e8a838"></i> Spiritual</div>
-          <div class="routine-task-list" id="rt-spiritual-list"></div>
-          <div class="rec-add-row">
-            <input class="rec-add-input" id="rt-spiritual-name" type="text" placeholder="+ Add spiritual routine" autocomplete="off" />
-            <input class="rec-add-time" id="rt-spiritual-time" type="text" placeholder="time" />
-            <button class="add-btn" type="button" onclick="addRoutineTask('personal','spiritual','rt-spiritual')">Add</button>
-          </div>
-        </div>
+      <!-- Paused routines -->
+      <div class="section-head" style="margin-top:28px;color:#ccc">Paused routines</div>
+      <p style="font-size:11px;color:#ccc;margin-bottom:10px">Routines you've turned off but might come back to.</p>
+      <div id="rt-paused-list"></div>
 
-        <div class="routine-card routine-card-personal">
-          <div class="routine-card-head"><i class="ti ti-brain" style="font-size:13px;color:#7c6fcd"></i> Mental health</div>
-          <div class="routine-task-list" id="rt-mental-list"></div>
-          <div class="rec-add-row">
-            <input class="rec-add-input" id="rt-mental-name" type="text" placeholder="+ Add mental health routine" autocomplete="off" />
-            <input class="rec-add-time" id="rt-mental-time" type="text" placeholder="time" />
-            <button class="add-btn" type="button" onclick="addRoutineTask('personal','mental','rt-mental')">Add</button>
-          </div>
-        </div>
-
-        <div class="routine-card routine-card-personal">
-          <div class="routine-card-head"><i class="ti ti-heart" style="font-size:13px;color:#e05c5c"></i> Physical health</div>
-          <div class="routine-task-list" id="rt-physical-list"></div>
-          <div class="rec-add-row">
-            <input class="rec-add-input" id="rt-physical-name" type="text" placeholder="+ Add physical health routine" autocomplete="off" />
-            <input class="rec-add-time" id="rt-physical-time" type="text" placeholder="time" />
-            <button class="add-btn" type="button" onclick="addRoutineTask('personal','physical','rt-physical')">Add</button>
-          </div>
-        </div>
-
-        <div class="routine-card routine-card-personal">
-          <div class="routine-card-head"><i class="ti ti-droplet" style="font-size:13px;color:#4db8c8"></i> Hygiene and grooming</div>
-          <div class="routine-task-list" id="rt-grooming-list"></div>
-          <div class="rec-add-row">
-            <input class="rec-add-input" id="rt-grooming-name" type="text" placeholder="+ Add grooming routine" autocomplete="off" />
-            <input class="rec-add-time" id="rt-grooming-time" type="text" placeholder="time" />
-            <button class="add-btn" type="button" onclick="addRoutineTask('personal','grooming','rt-grooming')">Add</button>
-          </div>
-        </div>
-
-        <div class="routine-card routine-card-personal" style="background:#fafafa;border:1px solid #e8e8e6">
-          <div class="routine-card-head"><i class="ti ti-home" style="font-size:13px;color:#c07a3c"></i> Family</div>
-          <div class="routine-task-list" id="rt-family-list"></div>
-          <div class="rec-add-row">
-            <input class="rec-add-input" id="rt-family-name" type="text" placeholder="+ Add family routine" autocomplete="off" />
-            <input class="rec-add-time" id="rt-family-time" type="text" placeholder="time" />
-            <button class="add-btn" type="button" onclick="addRoutineTask('personal','family','rt-family')">Add</button>
-          </div>
-          <p style="font-size:11px;color:#999;margin:6px 0 0;padding:0">Family time is protected. It does not move for business.</p>
-        </div>
-
-      </div>
-
-      <!-- Paused / Future routines -->
-      <div class="section-head" style="margin-top:28px;color:#ccc">Paused &amp; planned routines</div>
-      <p style="font-size:11px;color:#ccc;margin-bottom:10px">Paused routines and routines you plan to activate later.</p>
-      <div id="rt-future-list"></div>
+      <!-- Planned routines -->
+      <div class="section-head" style="margin-top:28px;color:#ccc">Planned routines</div>
+      <p style="font-size:11px;color:#ccc;margin-bottom:10px">Ideas for routines you haven't started yet.</p>
+      <div id="rt-planned-list"></div>
       <div class="rec-add-row" style="margin-top:8px">
         <input class="rec-add-input" id="rt-future-name" type="text" placeholder="Future routine name" autocomplete="off" />
         <input class="rec-add-time" id="rt-future-time" type="text" placeholder="time" />
@@ -5957,31 +5939,97 @@ function formatDaysLabelShort(days) {
   return days.split(',').map(n => ABB[n] || '?').join('/');
 }
 
+// Routines are rendered from the logged-in user's own businesses and
+// personalPillars — no hardcoded venture cards, no fixed set of "life
+// pillar" categories. A pillar's routine category is a slug of its own
+// display text; renaming a pillar in Settings orphans routines tagged with
+// the old slug (same tradeoff as the rest of the app — nothing here is
+// worse off than businesses would be if slugs weren't kept stable there).
+
+function slugifyPillar(name) {
+  return String(name).toLowerCase().replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-').slice(0, 30) || 'general';
+}
+
+const PILLAR_ICON_RULES = [
+  { test: /spirit/i,              icon: 'ti-sun',     color: '#e8a838' },
+  { test: /mental|mind/i,         icon: 'ti-brain',   color: '#7c6fcd' },
+  { test: /physical|health|fit/i, icon: 'ti-heart',   color: '#e05c5c' },
+  { test: /groom|hygiene/i,       icon: 'ti-droplet', color: '#4db8c8' },
+  { test: /famil/i,               icon: 'ti-home',    color: '#c07a3c' },
+];
+function pillarIconFor(name) {
+  return PILLAR_ICON_RULES.find(r => r.test.test(name)) || { icon: 'ti-target', color: '#999' };
+}
+
+function routineBizCardHtml(biz) {
+  const prefix = `rt-biz-${biz.id}`;
+  return `
+    <div class="routine-card">
+      <div class="routine-card-head">${tagHtml(biz.slug)} ${esc(biz.name)}</div>
+      <div class="routine-task-list" id="${prefix}-list"></div>
+      <div class="rec-add-row">
+        <input class="rec-add-input" id="${prefix}-name" type="text" placeholder="+ Add ${esc(biz.name)} routine" autocomplete="off" />
+        <input class="rec-add-time" id="${prefix}-time" type="text" placeholder="time" />
+        <select class="rec-add-select-sm" id="${prefix}-days">
+          <option value="daily">Daily</option>
+          <option value="1,2,3,4,5">Mon–Fri</option>
+          <option value="1,3,5">Mon/Wed/Fri</option>
+        </select>
+        <button class="add-btn" type="button" onclick="addRoutineTask('${esc(biz.slug)}','work','${prefix}')">Add</button>
+      </div>
+    </div>
+  `;
+}
+
+function routinePillarCardHtml(pillar) {
+  const slug = slugifyPillar(pillar);
+  const prefix = `rt-pillar-${slug}`;
+  const { icon, color } = pillarIconFor(pillar);
+  const isFamily = /famil/i.test(pillar);
+  return `
+    <div class="routine-card routine-card-personal"${isFamily ? ' style="background:#fafafa;border:1px solid #e8e8e6"' : ''}>
+      <div class="routine-card-head"><i class="ti ${icon}" style="font-size:13px;color:${color}"></i> ${esc(pillar)}</div>
+      <div class="routine-task-list" id="${prefix}-list"></div>
+      <div class="rec-add-row">
+        <input class="rec-add-input" id="${prefix}-name" type="text" placeholder="+ Add ${esc(pillar)} routine" autocomplete="off" />
+        <input class="rec-add-time" id="${prefix}-time" type="text" placeholder="time" />
+        <button class="add-btn" type="button" onclick="addRoutineTask('personal','${slug}','${prefix}')">Add</button>
+      </div>
+      ${isFamily ? '<p style="font-size:11px;color:#999;margin:6px 0 0;padding:0">Family time is protected. It does not move for business.</p>' : ''}
+    </div>
+  `;
+}
+
 async function loadRoutines() {
   try {
-    const [grouped, future] = await Promise.all([
+    const [grouped, paused, planned, profile] = await Promise.all([
       api('/api/recurring'),
-      api('/api/recurring/future'),
+      api('/api/recurring?status=paused'),
+      api('/api/recurring?status=planned'),
+      api('/api/profile'),
     ]);
 
-    // Business sections
-    renderRoutineSection('rt-blok-list', grouped.blok || []);
-    renderRoutineSection('rt-aphl-list', grouped.aphl || []);
+    const bizList = BUSINESSES.filter(b => !b.is_personal);
+    const bizGrid = document.getElementById('routines-biz-grid');
+    bizGrid.innerHTML = bizList.map(routineBizCardHtml).join('')
+      || '<div class="empty-text">No businesses yet — add one in Settings.</div>';
+    bizList.forEach(b => renderRoutineSection(`rt-biz-${b.id}-list`, grouped[b.slug] || []));
 
-    // Personal by category
+    const pillars = (profile.personalPillars && profile.personalPillars.length) ? profile.personalPillars : ['Personal'];
+    document.getElementById('routines-personal-grid').innerHTML = pillars.map(routinePillarCardHtml).join('');
     const personal = grouped.personal || [];
-    renderRoutineSection('rt-spiritual-list', personal.filter(r => r.category === 'spiritual'), true);
-    renderRoutineSection('rt-mental-list',    personal.filter(r => r.category === 'mental'),    true);
-    renderRoutineSection('rt-physical-list',  personal.filter(r => r.category === 'physical'));
-    renderRoutineSection('rt-grooming-list',  personal.filter(r => r.category === 'grooming'),  true);
-    renderRoutineSection('rt-family-list',    personal.filter(r => r.category === 'family'),    true);
+    pillars.forEach(p => renderRoutineSection(`rt-pillar-${slugifyPillar(p)}-list`, personal.filter(r => r.category === slugifyPillar(p))));
 
-    // Future routines
-    renderFutureRoutines(future);
+    renderPausedPlanned('rt-paused-list', paused);
+    renderPausedPlanned('rt-planned-list', planned);
   } catch (e) { console.error('loadRoutines:', e); }
 }
 
-function renderRoutineSection(elId, tasks, permanent = false) {
+function routineGoalHtml(t) {
+  return `<span class="routine-goal-editable" onclick="event.stopPropagation();editRecurringGoal(${t.id},'${esc(t.linked_goal || '')}')" title="Click to set linked goal">${t.linked_goal ? esc(t.linked_goal) : '+ goal'}</span>`;
+}
+
+function renderRoutineSection(elId, tasks) {
   const el = document.getElementById(elId);
   if (!el) return;
   if (!tasks.length) {
@@ -5992,37 +6040,31 @@ function renderRoutineSection(elId, tasks, permanent = false) {
     <div class="routine-row" style="flex-wrap:wrap">
       <i class="ti ti-refresh" style="font-size:11px;color:#ccc;flex-shrink:0"></i>
       <span class="routine-time routine-time-editable" onclick="editRecurringTime(${t.id},'${t.scheduled_time || ''}')" title="Click to change time">${t.scheduled_time ? esc(t.scheduled_time) : '+'}</span>
-      <span class="routine-name">${esc(t.name)}</span>
+      <span class="routine-name routine-name-editable" onclick="editRecurringName(${t.id},'${esc(t.name)}')" title="Click to rename">${esc(t.name)}</span>
       <span class="routine-days">${formatDaysLabelShort(t.days)}</span>
       <button class="routine-pause-btn" onclick="toggleRoutineActive(${t.id})" title="Pause this routine">Pause</button>
-      <button class="routine-remove" onclick="removeRoutine(${t.id}, ${permanent})" aria-label="Remove"><i class="ti ti-x"></i></button>
+      <button class="routine-remove" onclick="removeRoutine(${t.id})" title="Pause and move to Paused routines" aria-label="Remove"><i class="ti ti-x"></i></button>
+      <div style="width:100%;padding-left:27px;font-size:11px;margin-top:2px">${routineGoalHtml(t)}</div>
       ${t.notes ? `<div style="width:100%;padding-left:27px;font-size:11px;color:#999;font-style:italic;margin-top:1px">${esc(t.notes)}</div>` : ''}
     </div>`).join('');
 }
 
-function renderFutureRoutines(tasks) {
-  const el = document.getElementById('rt-future-list');
+function renderPausedPlanned(elId, tasks) {
+  const el = document.getElementById(elId);
   if (!el) return;
   if (!tasks.length) {
-    el.innerHTML = `<div style="font-size:12px;color:#ccc;padding:4px 0">
-      <div class="routine-row" style="opacity:.5">
-        <i class="ti ti-clock" style="font-size:11px;color:#ccc;flex-shrink:0"></i>
-        <span class="routine-time">18:00</span>
-        <span class="routine-name">Pottery session</span>
-        <span class="routine-days">Mon/Wed/Fri</span>
-        <button class="routine-activate-btn" onclick="activateFuture(this)" data-name="Pottery session">Activate</button>
-      </div>
-    </div>`;
+    el.innerHTML = '<div style="font-size:12px;color:#ccc;padding:4px 0">Nothing here.</div>';
     return;
   }
   el.innerHTML = tasks.map(t => `
-    <div class="routine-row">
+    <div class="routine-row" style="flex-wrap:wrap">
       <i class="ti ti-clock" style="font-size:11px;color:#ccc;flex-shrink:0"></i>
       <span class="routine-time">${t.scheduled_time ? esc(t.scheduled_time) : ''}</span>
-      <span class="routine-name" style="color:#aaa">${esc(t.name)}</span>
+      <span class="routine-name routine-name-editable" style="color:#aaa" onclick="editRecurringName(${t.id},'${esc(t.name)}')" title="Click to rename">${esc(t.name)}</span>
       <span class="routine-days">${formatDaysLabelShort(t.days)}</span>
-      <button class="routine-activate-btn" onclick="activateFutureRoutine(${t.id})">Resume</button>
-      <button class="routine-remove" onclick="removeRoutine(${t.id}, false)" aria-label="Remove"><i class="ti ti-x"></i></button>
+      <button class="routine-activate-btn" onclick="activateFutureRoutine(${t.id})">Activate</button>
+      <button class="routine-remove" onclick="hardDeleteRoutine(${t.id})" title="Delete permanently" aria-label="Delete"><i class="ti ti-x"></i></button>
+      <div style="width:100%;padding-left:19px;font-size:11px;margin-top:2px">${routineGoalHtml(t)}</div>
     </div>`).join('');
 }
 
@@ -6046,16 +6088,23 @@ async function addRoutineTask(biz, category, prefix) {
   } catch (e) { console.error('addRoutineTask:', e); }
 }
 
-async function removeRoutine(id, permanent = false) {
-  if (permanent) {
-    const ok = confirm('Are you sure? This is a core routine. Remove it?');
-    if (!ok) return;
-  }
+// Non-destructive: pauses (status -> 'paused'), never deletes. It stays
+// listed under "Paused routines" until reactivated or explicitly deleted
+// from there — no confirm needed since nothing is actually lost.
+async function removeRoutine(id) {
   try {
     await api(`/api/recurring/${id}`, { method: 'DELETE' });
     loadRoutines();
     api('/api/recurring').then(g => { _focusRecurring = g.personal || []; renderFocusBlocks(); }).catch(() => {});
   } catch (e) { console.error('removeRoutine:', e); }
+}
+
+async function hardDeleteRoutine(id) {
+  if (!confirm('Delete this routine permanently? This cannot be undone.')) return;
+  try {
+    await api(`/api/recurring/${id}?hard=true`, { method: 'DELETE' });
+    loadRoutines();
+  } catch (e) { console.error('hardDeleteRoutine:', e); }
 }
 
 async function activateFutureRoutine(id) {
@@ -6065,19 +6114,6 @@ async function activateFutureRoutine(id) {
     api('/api/recurring').then(g => { _focusRecurring = g.personal || []; renderFocusBlocks(); }).catch(() => {});
     showToast('Routine activated');
   } catch (e) { console.error('activateFutureRoutine:', e); }
-}
-
-// Handles the hardcoded pottery "Activate" button in the empty-future fallback
-async function activateFuture(btn) {
-  try {
-    const future = await api('/api/recurring/future');
-    const pottery = future.find(r => r.name === 'Pottery session');
-    if (pottery) {
-      await activateFutureRoutine(pottery.id);
-    } else {
-      showToast('No pottery routine found in future list');
-    }
-  } catch (e) { console.error('activateFuture:', e); }
 }
 
 async function addFutureRoutine() {
@@ -6101,6 +6137,60 @@ async function addFutureRoutine() {
     if (timeEl) timeEl.value = '';
     loadRoutines();
   } catch (e) { console.error('addFutureRoutine:', e); }
+}
+
+function editRecurringName(id, current) {
+  const span = event.currentTarget || event.target;
+  const inp = document.createElement('input');
+  inp.type = 'text';
+  inp.value = current;
+  inp.style.cssText = 'font-size:12px;font-family:Geist,system-ui,sans-serif;border:none;border-bottom:1px solid #1a1a1a;outline:none;background:transparent;padding:0;flex:1;min-width:80px';
+  span.replaceWith(inp);
+  inp.focus();
+  inp.select();
+
+  let saved = false;
+  async function save() {
+    if (saved) return;
+    saved = true;
+    const val = inp.value.trim();
+    if (!val) { loadRoutines(); return; }
+    try {
+      await api(`/api/recurring/${id}`, { method: 'PATCH', body: { name: val } });
+      loadRoutines();
+    } catch { loadRoutines(); }
+  }
+  inp.addEventListener('blur', save);
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') inp.blur();
+    if (e.key === 'Escape') { saved = true; loadRoutines(); }
+  });
+}
+
+function editRecurringGoal(id, current) {
+  const span = event.currentTarget || event.target;
+  const inp = document.createElement('input');
+  inp.type = 'text';
+  inp.value = current;
+  inp.placeholder = 'Linked goal…';
+  inp.style.cssText = 'font-size:11px;font-family:Geist,system-ui,sans-serif;border:none;border-bottom:1px solid #ccc;outline:none;background:transparent;padding:0;width:100%';
+  span.replaceWith(inp);
+  inp.focus();
+
+  let saved = false;
+  async function save() {
+    if (saved) return;
+    saved = true;
+    try {
+      await api(`/api/recurring/${id}`, { method: 'PATCH', body: { linked_goal: inp.value.trim() || null } });
+      loadRoutines();
+    } catch { loadRoutines(); }
+  }
+  inp.addEventListener('blur', save);
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') inp.blur();
+    if (e.key === 'Escape') { saved = true; loadRoutines(); }
+  });
 }
 
 // ── DASHBOARD VIEW ────────────────────────────────────────────────────────────
@@ -7290,40 +7380,41 @@ async function loadOkrsRoom() {
 function renderOkrsRoom(ctx, status, annualObjectives, okrs, unlinked) {
   const el = document.getElementById('okrs-room-container');
   el.innerHTML = `
-    <h1 class="page-title">Personal OKRs</h1>
+    <h1 class="page-title">My Goals${infoIconSlot('goal')}</h1>
     <p class="page-sub">Q${ctx.quarter} ${ctx.year}</p>
 
-    ${planningRetroBanner(status, 'Personal OKRs')}
+    ${planningRetroBanner(status, 'My Goals')}
     ${status && status.due ? `<button class="text-btn" style="margin-bottom:20px" onclick="ackPlanningRetro(${status.year},${status.quarter},loadOkrsRoom)">Done reviewing — start this quarter clean</button>` : ''}
 
-    <div class="section-head">Annual objectives — ${ctx.year}</div>
+    <div class="section-head">Annual goals — ${ctx.year}</div>
     <div id="ao-list">
       ${annualObjectives.length ? annualObjectives.map(ao => `
         <div class="pending-rec-row">
           <span style="flex:1;font-size:13px">${esc(ao.title)}</span>
           ${planPill(ao.status, `cycleAnnualObjectiveStatus(${ao.id},'${ao.status}')`)}
         </div>
-      `).join('') : '<div class="empty-text">No annual objectives yet for ' + ctx.year + '.</div>'}
+      `).join('') : '<div class="empty-text">No annual goals yet for ' + ctx.year + '.</div>'}
     </div>
     <div style="display:flex;gap:6px;margin:10px 0 28px">
-      <input class="settings-input" id="ao-title-input" type="text" placeholder="New annual objective for ${ctx.year}…" style="flex:1" />
+      <input class="settings-input" id="ao-title-input" type="text" placeholder="New annual goal for ${ctx.year}…" style="flex:1" />
       <button class="add-btn" onclick="addAnnualObjectiveInline(${ctx.year})">Add</button>
     </div>
 
-    <div class="section-head">This quarter's OKRs</div>
+    <div class="section-head">This quarter's Goals</div>
     <div id="okr-list">
-      ${okrs.length ? okrs.map(okr => renderOkrCard(okr, annualObjectives)).join('') : '<div class="empty-text">No OKRs set for Q' + ctx.quarter + ' ' + ctx.year + ' yet.</div>'}
+      ${okrs.length ? okrs.map(okr => renderOkrCard(okr, annualObjectives)).join('') : '<div class="empty-text">No Goals set for Q' + ctx.quarter + ' ' + ctx.year + ' yet.</div>'}
     </div>
 
     <div style="margin-top:16px">
       <select class="settings-select" id="okr-annual-sel" style="max-width:none;width:100%;margin-bottom:6px">
-        <option value="">Not linked to an annual objective</option>
+        <option value="">Not linked to an annual goal</option>
         ${annualObjectives.map(ao => `<option value="${ao.id}">${esc(ao.title)}</option>`).join('')}
       </select>
-      <input class="settings-input" id="okr-text-input" type="text" placeholder="New quarterly OKR…" style="width:100%;margin-bottom:6px" />
-      <button class="add-btn" onclick="addQuarterlyOkrInline(${ctx.year},${ctx.quarter})">Add OKR</button>
+      <input class="settings-input" id="okr-text-input" type="text" placeholder="New quarterly goal…" style="width:100%;margin-bottom:6px" />
+      <button class="add-btn" onclick="addQuarterlyOkrInline(${ctx.year},${ctx.quarter})">Add Goal</button>
     </div>
   `;
+  renderInfoIcons();
 
   okrs.forEach(okr => renderLinkedKeyResultTasks(okr, unlinked));
 }
@@ -7339,7 +7430,7 @@ function renderOkrCard(okr, annualObjectives) {
       ${parent ? `<div class="plan-card-sub">Under: ${esc(parent.title)}</div>` : ''}
       ${(okr.key_results || []).map(kr => renderKeyResultRow(okr, kr)).join('')}
       <div style="display:flex;gap:6px;margin-top:10px">
-        <input class="settings-input" id="kr-input-${okr.id}" type="text" placeholder="New key result…" style="flex:1;font-size:12px" />
+        <input class="settings-input" id="kr-input-${okr.id}" type="text" placeholder="New milestone…" style="flex:1;font-size:12px" />
         <input class="settings-input" id="kr-target-${okr.id}" type="number" placeholder="target" style="max-width:70px;font-size:12px" />
         <button class="text-btn" onclick="addKeyResultInline(${okr.id})">Add</button>
       </div>
@@ -7472,24 +7563,25 @@ function renderRocksRoom(venture, ctx, status, rocks, unlinked, ventureInfo) {
   const label = ventureInfo ? ventureInfo.name : venture;
   el.innerHTML = `
     <h1 class="page-title">${esc(label)}</h1>
-    <p class="page-sub">Q${ctx.quarter} ${ctx.year} Rocks${ventureInfo && ventureInfo.lead ? ' · ' + esc(ventureInfo.lead) : ''}</p>
-    ${isDormant ? `<div class="pending-rec-banner" style="margin-bottom:20px"><div class="pending-rec-head">Inactive venture</div><div class="pending-rec-sub">${esc(ventureInfo.description || 'Not an active focus right now.')} Rocks can still be tracked here if needed.</div></div>` : ''}
+    <p class="page-sub">Q${ctx.quarter} ${ctx.year} Priorities${ventureInfo && ventureInfo.lead ? ' · ' + esc(ventureInfo.lead) : ''}</p>
+    ${isDormant ? `<div class="pending-rec-banner" style="margin-bottom:20px"><div class="pending-rec-head">Inactive venture</div><div class="pending-rec-sub">${esc(ventureInfo.description || 'Not an active focus right now.')} Priorities can still be tracked here if needed.</div></div>` : ''}
 
     ${planningRetroBanner(status, label)}
     ${status && status.due ? `<button class="text-btn" style="margin-bottom:20px" onclick="ackPlanningRetro(${status.year},${status.quarter},function(){loadRocksRoom('${venture}')})">Done reviewing — start this quarter clean</button>` : ''}
 
-    <div class="section-head">Rocks (1–3 for the quarter)</div>
+    <div class="section-head">Priorities (1–3 for the quarter)${infoIconSlot('priority')}</div>
     <div id="rock-list">
-      ${rocks.length ? rocks.map(r => renderRockCard(r)).join('') : '<div class="empty-text">No Rocks set for this quarter yet.</div>'}
+      ${rocks.length ? rocks.map(r => renderRockCard(r)).join('') : '<div class="empty-text">No Priorities set for this quarter yet.</div>'}
     </div>
 
-    ${rocks.length >= 3 ? '<div style="font-size:11px;color:#ccc;margin-top:10px">3 Rocks already set — EOS keeps it to 1–3 per quarter.</div>' : `
+    ${rocks.length >= 3 ? '<div style="font-size:11px;color:#ccc;margin-top:10px">3 Priorities already set — keep it to 1–3 per quarter.</div>' : `
     <div style="margin-top:16px">
-      <input class="settings-input" id="rock-title-${venture}" type="text" placeholder="New Rock title…" style="width:100%;margin-bottom:6px" />
+      <input class="settings-input" id="rock-title-${venture}" type="text" placeholder="New Priority title…" style="width:100%;margin-bottom:6px" />
       <input class="settings-input" id="rock-owner-${venture}" type="text" placeholder="Owner (optional, defaults to you)" style="width:100%;margin-bottom:6px" />
-      <button class="add-btn" onclick="addRockInline('${venture}',${ctx.year},${ctx.quarter})">Add Rock</button>
+      <button class="add-btn" onclick="addRockInline('${venture}',${ctx.year},${ctx.quarter})">Add Priority</button>
     </div>`}
   `;
+  renderInfoIcons();
 
   rocks.forEach(async r => {
     const containerId = `rock-tasks-${r.id}`;
@@ -7777,6 +7869,38 @@ async function finishOnboarding() {
   }
 }
 
+// ── term definitions / info-icon tooltips ──────────────────────────────────────
+// definitions.json is the single source of truth (public/, served statically,
+// same as every other static asset) — no term's copy is duplicated inline
+// anywhere. Markup just drops a <span class="info-icon-slot" data-term="x">
+// placeholder (via infoIconSlot() in JS templates, or written directly in
+// static HTML); renderInfoIcons() fills every one of those in from TERM_DEFS.
+// Safe to call repeatedly and on hidden (display:none) sections — a slot
+// filled while hidden just works once its parent view becomes visible.
+
+let TERM_DEFS = {};
+
+async function loadDefinitions() {
+  try {
+    TERM_DEFS = await fetch('/definitions.json').then(r => r.json());
+  } catch (e) {
+    console.error('loadDefinitions:', e);
+  }
+}
+
+function infoIconSlot(term) {
+  return `<span class="info-icon-slot" data-term="${esc(term)}"></span>`;
+}
+
+function renderInfoIcons() {
+  document.querySelectorAll('.info-icon-slot').forEach(slot => {
+    const term = slot.dataset.term;
+    const def  = TERM_DEFS[term];
+    if (!def) return; // unknown term — leave the slot empty rather than show nothing useful
+    slot.outerHTML = `<button class="info-icon" type="button" aria-label="What is ${esc(term.replace(/_/g, ' '))}?">i<span class="info-tooltip">${esc(def)}</span></button>`;
+  });
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
 
   // Registered unconditionally — must run regardless of auth state so the
@@ -7784,6 +7908,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   }
+
+  await loadDefinitions();
+  renderInfoIcons();
 
   const authed = await checkAuth();
   if (!authed) {

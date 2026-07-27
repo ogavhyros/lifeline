@@ -168,9 +168,9 @@ const quarterlyRetroPrompt = forEachTelegramUser(async (userId) => {
   const lines = [
     `New quarter — Q${quarter} ${year}.`,
     openCount
-      ? `${openCount} OKR${priorOkrs.length !== 1 ? 's' : ''}/Rock${priorRocks.length !== 1 ? 's' : ''} from last quarter still open — worth a quick retro.`
-      : `Last quarter's OKRs and Rocks are all settled.`,
-    `Open Personal OKRs or a venture room in the app to review last quarter and set this quarter's OKRs and Rocks.`,
+      ? `${openCount} Goal${priorOkrs.length !== 1 ? 's' : ''}/Priorit${priorRocks.length !== 1 ? 'ies' : 'y'} from last quarter still open — worth a quick retro.`
+      : `Last quarter's Goals and Priorities are all settled.`,
+    `Open My Goals or a venture room in the app to review last quarter and set this quarter's Goals and Priorities.`,
   ];
   await sendMessage(userId, lines.join('\n\n'));
   upsertSetting(userId, quarterNotifiedKey(year, quarter), '1');

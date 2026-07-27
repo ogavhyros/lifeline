@@ -774,7 +774,7 @@ async function handleCommand(userId, text, chatId) {
         'PERSONAL:\n' +
         '/family — family time reminder\n\n' +
         'PLANNING:\n' +
-        'Personal OKRs and venture Rocks live in the app — see the Planning section in the sidebar.\n' +
+        'My Goals and venture Priorities live in the app — see the Planning section in the sidebar.\n' +
         'You\'ll get a message here at the start of each quarter to review and set new ones.\n\n' +
         `Businesses: ${getValidBusinesses(userId).join(', ')}\n` +
         'Send voice to report completions or dump new tasks.'

@@ -336,6 +336,15 @@ try { db.exec(`ALTER TABLE tasks ADD COLUMN calendar_event_id TEXT`); } catch {}
 try { db.exec(`ALTER TABLE tasks ADD COLUMN calendar_source TEXT`); } catch {}
 try { db.exec(`ALTER TABLE recurring_tasks ADD COLUMN category TEXT DEFAULT 'work'`); } catch {}
 try { db.exec(`ALTER TABLE recurring_tasks ADD COLUMN notes TEXT`); } catch {}
+// status is the source of truth for the 3-way active/paused/planned UI
+// distinction (validated at the route layer, matching this file's existing
+// convention rather than a SQL CHECK constraint); active stays in sync via
+// a trigger below purely so every pre-existing active=1 consumer (the
+// scheduler, Telegram, getRecurring/populateRecurring) keeps working
+// unchanged. linked_goal is a free-text label — deliberately not an FK to
+// the OKR/Rocks planning layer (kept simple per this feature's scope).
+try { db.exec(`ALTER TABLE recurring_tasks ADD COLUMN status TEXT NOT NULL DEFAULT 'active'`); } catch {}
+try { db.exec(`ALTER TABLE recurring_tasks ADD COLUMN linked_goal TEXT`); } catch {}
 try { db.exec(`ALTER TABLE tasks ADD COLUMN status TEXT`); } catch {}
 try { db.exec(`ALTER TABLE businesses ADD COLUMN icon TEXT`); } catch {}
 // Consolidates what used to be two disconnected venture representations
@@ -427,6 +436,25 @@ db.exec(`
       ELSE 'backlog'
     END
     WHERE id = NEW.id;
+  END;
+
+  -- Same technique as the tasks.status triggers above, mirrored for
+  -- recurring_tasks: status ('active'/'paused'/'planned') is what the
+  -- Routines UI and PATCH /api/recurring/:id write to directly, while
+  -- active stays a plain derived boolean so every existing active=1
+  -- consumer (scheduler.js populateRecurring, Telegram, getRecurring)
+  -- keeps working with zero changes.
+  CREATE TRIGGER IF NOT EXISTS trg_recurring_active_on_insert
+  AFTER INSERT ON recurring_tasks
+  BEGIN
+    UPDATE recurring_tasks SET active = CASE WHEN NEW.status = 'active' THEN 1 ELSE 0 END WHERE id = NEW.id;
+  END;
+
+  CREATE TRIGGER IF NOT EXISTS trg_recurring_active_on_status_change
+  AFTER UPDATE OF status ON recurring_tasks
+  WHEN NEW.status != OLD.status
+  BEGIN
+    UPDATE recurring_tasks SET active = CASE WHEN NEW.status = 'active' THEN 1 ELSE 0 END WHERE id = NEW.id;
   END;
 `);
 
@@ -1264,13 +1292,20 @@ const upsertKpi = (userId, date, business, metric, value, target) =>
 
 const getRecurringStmt        = db.prepare('SELECT * FROM recurring_tasks WHERE user_id = ? AND active = 1 ORDER BY business, scheduled_time, id');
 const getFutureRecurringStmt  = db.prepare('SELECT * FROM recurring_tasks WHERE user_id = ? AND active = 0 ORDER BY business, scheduled_time, id');
+const getRecurringByStatusStmt = db.prepare('SELECT * FROM recurring_tasks WHERE user_id = ? AND status = ? ORDER BY business, scheduled_time, id');
 const addRecurringStmt        = db.prepare(
-  `INSERT INTO recurring_tasks (user_id, name, business, scheduled_time, days, time_block, category, active)
-   VALUES (?, ?, ?, ?, ?, ?, ?, 1)`
+  `INSERT INTO recurring_tasks (user_id, name, business, scheduled_time, days, time_block, category, active, status, linked_goal)
+   VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`
 );
 const deleteRecurringStmt     = db.prepare('DELETE FROM recurring_tasks WHERE user_id = ? AND id = ?');
-const deactivateRecurringStmt = db.prepare('UPDATE recurring_tasks SET active = 0 WHERE user_id = ? AND id = ?');
-const activateRecurringStmt   = db.prepare('UPDATE recurring_tasks SET active = 1 WHERE user_id = ? AND id = ?');
+// Both write status, not active directly — active is purely a derived
+// column (see the trg_recurring_active_* triggers) so there is exactly one
+// writer of truth. Deactivating means "paused" (was on, now off); a routine
+// created straight into the inactive state (POST /api/recurring/future)
+// is 'planned' instead — that distinction is exactly why status exists
+// separately from the plain active boolean.
+const deactivateRecurringStmt = db.prepare(`UPDATE recurring_tasks SET status = 'paused' WHERE user_id = ? AND id = ?`);
+const activateRecurringStmt   = db.prepare(`UPDATE recurring_tasks SET status = 'active' WHERE user_id = ? AND id = ?`);
 const getCategoryRecurringStmt = db.prepare('SELECT * FROM recurring_tasks WHERE user_id = ? AND category = ? AND active = 1 ORDER BY scheduled_time, id');
 const checkRecurringExistsStmt = db.prepare('SELECT id FROM recurring_tasks WHERE user_id = ? AND name = ? AND business = ? AND active = 1');
 const checkTaskExistsStmt      = db.prepare('SELECT id FROM tasks WHERE user_id = ? AND date = ? AND name = ?');
@@ -1285,12 +1320,44 @@ const insertCarriedTaskStmt = db.prepare(
 
 const getRecurring        = (userId) => getRecurringStmt.all(userId);
 const getFutureRecurring  = (userId) => getFutureRecurringStmt.all(userId);
-const addRecurring        = (userId, name, business, scheduled_time, days, time_block, category) =>
-  addRecurringStmt.run(userId, name, business, scheduled_time || null, days || 'daily', time_block || null, category || 'work');
+const getRecurringByStatus = (userId, status) => getRecurringByStatusStmt.all(userId, status);
+const addRecurring        = (userId, name, business, scheduled_time, days, time_block, category, extra = {}) =>
+  addRecurringStmt.run(
+    userId, name, business, scheduled_time || null, days || 'daily', time_block || null, category || 'work',
+    extra.status || 'active', extra.linked_goal || null
+  );
 const deleteRecurring     = (userId, id) => deleteRecurringStmt.run(userId, id);
 const deactivateRecurring = (userId, id) => deactivateRecurringStmt.run(userId, id);
 const activateRecurring   = (userId, id) => activateRecurringStmt.run(userId, id);
 const getCategoryRecurring = (userId, category) => getCategoryRecurringStmt.all(userId, category);
+
+const getRecurringByIdStmt = db.prepare('SELECT * FROM recurring_tasks WHERE user_id = ? AND id = ?');
+const getRecurringById = (userId, id) => getRecurringByIdStmt.get(userId, id);
+
+// Generic edit — status included, so this is also how the Routines UI moves
+// a routine between active/paused/planned (the trigger above derives
+// `active` from whatever status ends up here). Only touches fields the
+// caller actually passed; everything else keeps its current value.
+const updateRecurringStmt = db.prepare(`
+  UPDATE recurring_tasks
+  SET name = ?, business = ?, scheduled_time = ?, days = ?, time_block = ?, category = ?, linked_goal = ?, status = ?
+  WHERE user_id = ? AND id = ?
+`);
+function updateRecurring(userId, id, fields) {
+  const current = getRecurringById(userId, id);
+  if (!current) return { changes: 0 };
+  return updateRecurringStmt.run(
+    fields.name !== undefined ? fields.name : current.name,
+    fields.business !== undefined ? fields.business : current.business,
+    fields.scheduled_time !== undefined ? fields.scheduled_time : current.scheduled_time,
+    fields.days !== undefined ? fields.days : current.days,
+    fields.time_block !== undefined ? fields.time_block : current.time_block,
+    fields.category !== undefined ? fields.category : current.category,
+    fields.linked_goal !== undefined ? fields.linked_goal : current.linked_goal,
+    fields.status !== undefined ? fields.status : current.status,
+    userId, id
+  );
+}
 const checkTaskExists      = (userId, date, name) => checkTaskExistsStmt.get(userId, date, name);
 const insertCarriedTask    = (userId, date, name, business, time, priority) =>
   insertCarriedTaskStmt.run(userId, date, name, business, time || null, priority || 'normal');
@@ -2068,6 +2135,23 @@ seedDefaultsForUser(1);
   }
 }
 
+// ── recurring_tasks status backfill (v1) — one-time ───────────────────────────
+// status didn't exist before this column was added (every row defaulted to
+// 'active' regardless of its actual active flag). Backfill from the boolean
+// that DID exist: active=1 -> 'active' (correct), active=0 -> 'paused' (the
+// closest available default — there's no historical record of whether an
+// already-inactive routine was paused-from-active or created straight as a
+// future idea; 'paused' just means "not currently running" either way, and
+// nothing downstream treats the two differently yet).
+{
+  const alreadyMigrated = getSystemFlag('recurring_status_backfill_v1');
+  if (!alreadyMigrated) {
+    db.exec(`UPDATE recurring_tasks SET status = 'paused' WHERE active = 0 AND status = 'active'`);
+    setSystemFlag('recurring_status_backfill_v1', '1');
+    console.log('[db] recurring_tasks status backfilled from the existing active flag');
+  }
+}
+
 // ── startup seeds (v4 — runs once, resets previous seeds) ────────────────────
 // Recurring-task seed data is OGV-specific (his actual daily routine) — only
 // ever seeded for user 1, same as before this migration.
@@ -2299,7 +2383,10 @@ module.exports = {
   getRecurring,
   getFutureRecurring,
   getRecurringGrouped,
+  getRecurringById,
+  getRecurringByStatus,
   addRecurring,
+  updateRecurring,
   deleteRecurring,
   deactivateRecurring,
   activateRecurring,

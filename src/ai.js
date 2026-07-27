@@ -25,29 +25,79 @@ function ventureBizList(profile) {
   return [...profile.ventures.map(v => v.slug), 'personal'].join('|');
 }
 
+// Every AI feature in this file funnels through here, so a timeout + retry
+// fixed once here covers all of them (Plan My Week, morning briefing, EOD
+// review, document analysis, etc.) rather than needing the same fix bolted
+// onto each caller separately.
+const CLAUDE_TIMEOUT_MS  = 60000; // Opus + a couple thousand tokens can genuinely take a while
+const CLAUDE_MAX_RETRIES = 2;     // up to 3 attempts total
+
+function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+function backoffMs(attempt) { return 500 * 3 ** attempt; } // 500ms, then 1500ms
+
+// ECONNRESET/ETIMEDOUT/etc. are connection-level blips that usually succeed
+// on a plain retry — this is not guessing at the cause, it's just treating
+// a transient network reset the way transient network resets should be
+// treated. AbortError means our own timeout fired, also worth one retry.
+function isRetryableNetworkError(err) {
+  const retryableCodes = ['ECONNRESET', 'ETIMEDOUT', 'ECONNREFUSED', 'EPIPE', 'EAI_AGAIN'];
+  return err.name === 'AbortError' || retryableCodes.includes(err.code) || retryableCodes.includes(err.cause && err.cause.code);
+}
+
 async function claudeMessage(system, userContent, model = CLAUDE_MODEL, maxTokens = 1024) {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: maxTokens,
-      system,
-      messages: [{ role: 'user', content: userContent }],
-    }),
-  });
+  let lastErr;
+  for (let attempt = 0; attempt <= CLAUDE_MAX_RETRIES; attempt++) {
+    const controller = new AbortController();
+    const timeoutId   = setTimeout(() => controller.abort(), CLAUDE_TIMEOUT_MS);
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: maxTokens,
+          system,
+          messages: [{ role: 'user', content: userContent }],
+        }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Anthropic API error ${res.status}: ${err}`);
+      if (!res.ok) {
+        const errText = await res.text();
+        // 429 (rate limited) and 5xx (including 529 "overloaded") are worth
+        // retrying; 4xx client errors (bad request, auth) will just fail
+        // the same way again, so those throw immediately.
+        const retryableStatus = res.status === 429 || res.status >= 500;
+        if (retryableStatus && attempt < CLAUDE_MAX_RETRIES) {
+          lastErr = new Error(`Anthropic API error ${res.status}: ${errText}`);
+          await sleep(backoffMs(attempt));
+          continue;
+        }
+        throw new Error(`Anthropic API error ${res.status}: ${errText}`);
+      }
+
+      const data = await res.json();
+      return data.content[0].text;
+    } catch (err) {
+      clearTimeout(timeoutId);
+      const timedOut = err.name === 'AbortError';
+      const friendlyErr = timedOut
+        ? new Error(`Anthropic API request timed out after ${CLAUDE_TIMEOUT_MS}ms`)
+        : err;
+      if (isRetryableNetworkError(err) && attempt < CLAUDE_MAX_RETRIES) {
+        lastErr = friendlyErr;
+        await sleep(backoffMs(attempt));
+        continue;
+      }
+      throw friendlyErr;
+    }
   }
-
-  const data = await res.json();
-  return data.content[0].text;
+  throw lastErr;
 }
 
 async function transcribeAudio(audioBuffer, mimeType) {
@@ -274,34 +324,40 @@ Return ONLY the JSON. No markdown.`;
 }
 
 // "Plan my week" — suggests daily/weekly tasks grounded in the user's open
-// planning-layer items (annual objectives, this quarter's OKRs/key results,
-// venture Rocks).
+// planning-layer items (annual goals, this quarter's goals/milestones,
+// venture priorities). Talks to Claude using the same plain-language terms
+// the UI shows the user (Goal/Milestone/Priority, not OKR/Objective/Key
+// Result/Rock) so the model's generated "reason" text — the one part of
+// this prompt's output the user actually reads verbatim — doesn't leak the
+// old jargon back in even though the UI around it no longer uses it. The
+// underlying JSON field names (okr_id, rock_id, linked_okr_id, etc.) are an
+// internal API contract, not shown to the user, so those are untouched.
 async function suggestWeeklyTasks(userId, { objectives, okrs, rocksByVenture, existingTaskNames, today, weekday }) {
   const profile = getFounderProfile(userId);
   const ventureSlugs = [...profile.ventures.map(v => v.slug), 'personal'];
 
   const okrLines = okrs.map(o => {
     const krLines = (o.key_results || []).map(kr =>
-      `    - KR: ${kr.description} (${kr.current_value}/${kr.target_value ?? '?'}${kr.unit ? ' ' + kr.unit : ''}, ${kr.status})`
+      `    - Milestone: ${kr.description} (${kr.current_value}/${kr.target_value ?? '?'}${kr.unit ? ' ' + kr.unit : ''}, ${kr.status})`
     ).join('\n');
     return `  [okr_id=${o.id}] ${o.objective_text} (${o.status})\n${krLines}`;
   }).join('\n');
 
   const rockLines = Object.entries(rocksByVenture).map(([slug, rocks]) => {
-    if (!rocks.length) return `  ${slug}: (no open Rocks)`;
+    if (!rocks.length) return `  ${slug}: (no open Priorities)`;
     return `  ${slug}:\n` + rocks.map(r =>
       `    [rock_id=${r.id}] ${r.title}${r.description ? ' — ' + r.description : ''} (${r.status}${r.owner ? ', owner: ' + r.owner : ''})`
     ).join('\n');
   }).join('\n');
 
   const system = `You are ${profile.brandName || 'LIFELINE'} — ${profile.name}'s weekly planning partner. Direct, human, no corporate fluff, no flattery, no filler.
-${profile.name} has an OKR/EOS-style planning layer above their daily task list: annual Objectives, this quarter's OKRs and Key Results (personal), and per-venture Rocks. Your job is to suggest a concrete, grounded set of tasks that would actually move the OPEN items forward this week — not restate the OKRs/Rocks as tasks.
+${profile.name} has a planning layer above their daily task list: annual Goals, this quarter's Goals and Milestones (personal), and per-venture Priorities. Your job is to suggest a concrete, grounded set of tasks that would actually move the OPEN items forward this week — not restate the Goals/Priorities as tasks.
 
 Rules:
 - Every suggestion must trace back to something in OPEN ITEMS below via its okr_id or rock_id — do not invent goals that aren't there.
-- Prioritize whichever Key Results are furthest from target, and Rocks marked at_risk, over ones already on track or with no signal either way.
+- Prioritize whichever Milestones are furthest from target, and Priorities marked at_risk, over ones already on track or with no signal either way.
 - Do not repeat anything listed under ALREADY SCHEDULED THIS WEEK.
-- Each task must be specific and completable in a day or two — not a copy of the OKR/Rock title.
+- Each task must be specific and completable in a day or two — not a copy of the Goal/Priority title.
 - 5 to 10 suggestions total. Spread them across the week; don't dump everything on one day. Use "this_week" for anything flexible that doesn't need a specific day.
 - The "reason" field is one short sentence in your own direct voice — why this matters right now, not a generic restatement.
 
@@ -322,9 +378,9 @@ Return ONLY valid JSON, no markdown, no explanation, exactly this shape:
   const userContent =
     `Today: ${weekday}, ${today}\n\n` +
     `OPEN ITEMS\n\n` +
-    `Annual objectives (active):\n${objectives.map(o => `  [id=${o.id}] ${o.title}`).join('\n') || '  (none)'}\n\n` +
-    `This quarter's OKRs (active):\n${okrLines || '  (none)'}\n\n` +
-    `Venture Rocks (open):\n${rockLines || '  (none)'}\n\n` +
+    `Annual goals (active):\n${objectives.map(o => `  [id=${o.id}] ${o.title}`).join('\n') || '  (none)'}\n\n` +
+    `This quarter's Goals (active):\n${okrLines || '  (none)'}\n\n` +
+    `Venture Priorities (open):\n${rockLines || '  (none)'}\n\n` +
     `ALREADY SCHEDULED THIS WEEK:\n${existingTaskNames.join('\n') || '(nothing yet)'}`;
 
   // 2048 tokens, not the claudeMessage default of 1024 — 5-10 suggestions

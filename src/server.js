@@ -8,7 +8,8 @@ const {
   getTasksByDate, getTaskById, insertTask, toggleTask, markTaskDone, updatePriority, deleteTask,
   deduplicateTasks, updateTaskStatus, updateTaskDate, getBoardTasks, logTaskInsert,
   getHistory, getKpis, upsertKpi,
-  getRecurring, getFutureRecurring, getRecurringGrouped, addRecurring, deactivateRecurring, activateRecurring, populateRecurring,
+  getRecurring, getFutureRecurring, getRecurringGrouped, getRecurringById, getRecurringByStatus, addRecurring, updateRecurring,
+  deleteRecurring, deactivateRecurring, activateRecurring, populateRecurring,
   toggleRecurringActive, updateRecurringTime,
   getPendingRecurring, confirmRecurring, confirmAllRecurring, rejectRecurring, rejectAllPendingRecurring,
   carryTask, addIdea, getIdeas, addNote, getNotes, syncDayLog,
@@ -397,20 +398,52 @@ app.post('/api/tasks/:id/carry', requireAuth, (req, res) => {
 
 // ── recurring tasks ───────────────────────────────────────────────────────────
 
+const RECURRING_STATUSES = ['active', 'paused', 'planned'];
+
 app.get('/api/recurring', requireAuth, (req, res) => {
+  // No ?status= : grouped-by-business, active only — what the Business/
+  // Personal routine cards render. With ?status= : a flat list scoped to
+  // that status — what the Paused/Planned sections render, now that those
+  // are genuinely distinct instead of both just meaning active=0.
+  if (req.query.status) {
+    if (!RECURRING_STATUSES.includes(req.query.status)) {
+      return res.status(400).json({ error: `status must be one of ${RECURRING_STATUSES.join(', ')}` });
+    }
+    return res.json(getRecurringByStatus(req.user.id, req.query.status));
+  }
   res.json(getRecurringGrouped(req.user.id));
 });
 
 app.post('/api/recurring', requireAuth, (req, res) => {
-  const { name, business, scheduled_time, days, time_block, category } = req.body;
+  const { name, business, scheduled_time, days, time_block, category, linked_goal } = req.body;
   if (!name || !business) return res.status(400).json({ error: 'name and business are required' });
-  addRecurring(req.user.id, name, business, scheduled_time, days, time_block, category);
+  addRecurring(req.user.id, name, business, scheduled_time, days, time_block, category, { linked_goal });
   res.status(201).json(getRecurringGrouped(req.user.id));
 });
 
+app.patch('/api/recurring/:id', requireAuth, (req, res) => {
+  const routine = getRecurringById(req.user.id, req.params.id);
+  if (!routine) return res.status(404).json({ error: 'not found' });
+  const { name, business, scheduled_time, days, time_block, category, linked_goal, status } = req.body;
+  if (status !== undefined && !RECURRING_STATUSES.includes(status)) {
+    return res.status(400).json({ error: `status must be one of ${RECURRING_STATUSES.join(', ')}` });
+  }
+  updateRecurring(req.user.id, req.params.id, { name, business, scheduled_time, days, time_block, category, linked_goal, status });
+  res.json(getRecurringById(req.user.id, req.params.id));
+});
+
+// Soft by default (status -> 'paused', same "inactive != deleted" pattern as
+// everywhere else in the app) — a routine that's already inactive can't be
+// "paused" any further, so ?hard=true is how the Paused/Planned section's
+// remove button actually clears one out, with an explicit confirm in the UI.
 app.delete('/api/recurring/:id', requireAuth, (req, res) => {
-  const info = deactivateRecurring(req.user.id, req.params.id);
-  if (!info.changes) return res.status(404).json({ error: 'not found' });
+  const routine = getRecurringById(req.user.id, req.params.id);
+  if (!routine) return res.status(404).json({ error: 'not found' });
+  if (req.query.hard === 'true') {
+    deleteRecurring(req.user.id, req.params.id);
+  } else {
+    deactivateRecurring(req.user.id, req.params.id);
+  }
   res.json(getRecurring(req.user.id));
 });
 
@@ -419,12 +452,9 @@ app.get('/api/recurring/future', requireAuth, (req, res) => {
 });
 
 app.post('/api/recurring/future', requireAuth, (req, res) => {
-  const { name, business, scheduled_time, days, time_block, category } = req.body;
+  const { name, business, scheduled_time, days, time_block, category, linked_goal } = req.body;
   if (!name || !business) return res.status(400).json({ error: 'name and business are required' });
-  db.prepare(
-    `INSERT INTO recurring_tasks (user_id, name, business, scheduled_time, days, time_block, category, active)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 0)`
-  ).run(req.user.id, name, business, scheduled_time || null, days || 'daily', time_block || null, category || 'work');
+  addRecurring(req.user.id, name, business, scheduled_time, days, time_block, category, { status: 'planned', linked_goal });
   res.status(201).json(getFutureRecurring(req.user.id));
 });
 
