@@ -22,8 +22,9 @@ const {
   getTeamMembers, getMembersByBusiness,
   updateTaskTime,
   getBusinesses, getAllBusinesses, getBusinessById, addBusiness, deactivateBusiness, activateBusiness, updateBusiness,
+  getDefaultBusinessSlug,
   getFounderProfile, saveFounderProfile,
-  getInvestorTouchesThisWeek, getQuarterlyGoalPct,
+  getQuarterlyGoalPct,
   getAnchorsForDate, toggleAnchor,
   insertConnectToken, getConnectToken, deleteConnectToken, clearUserChatId,
   getUserById, getUserByEmail,
@@ -599,10 +600,11 @@ app.post('/api/documents/analyze', requireAuth, async (req, res) => {
   try {
     const goals    = getAllGoals(req.user.id);
     const tasks    = getTasksByDate(req.user.id, watToday());
-    const analysis = await parseStrategicDocument(req.user.id, text, business || 'blok', goals, tasks);
+    const biz      = business || getDefaultBusinessSlug(req.user.id);
+    const analysis = await parseStrategicDocument(req.user.id, text, biz, goals, tasks);
     const info     = saveDocumentAnalysis(
       req.user.id,
-      business || 'blok',
+      biz,
       text.slice(0, 200),
       analysis.summary,
       analysis.key_insight,
@@ -626,9 +628,10 @@ app.post('/api/documents/analyze/import', requireAuth, (req, res) => {
     `INSERT INTO tasks (user_id, date, name, business, time, done, priority, source)
      VALUES (?, ?, ?, ?, ?, 0, ?, 'document')`
   );
+  const defaultBiz = getDefaultBusinessSlug(req.user.id);
   db.transaction((ts) => {
     for (const t of ts) {
-      stmt.run(req.user.id, today, t.name, t.business || 'blok', t.time || null, t.priority || 'normal');
+      stmt.run(req.user.id, today, t.name, t.business || defaultBiz, t.time || null, t.priority || 'normal');
     }
   })(tasks);
   syncDayLog(req.user.id, today);
@@ -700,7 +703,7 @@ app.post('/api/documents/upload', requireAuth, docUpload.single('document'), asy
 app.post('/api/documents/upload/analyze', requireAuth, docUpload.single('document'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   const { business, tags, assigned_to } = req.body;
-  const biz = business || 'blok';
+  const biz = business || getDefaultBusinessSlug(req.user.id);
   try {
     const parsed  = await parseDocument(req.file.path, req.file.mimetype);
     const cleaned = cleanDocumentText(parsed.text);
@@ -747,9 +750,10 @@ app.post('/api/documents/library/:id/analyze', requireAuth, async (req, res) => 
   try {
     const goals    = getAllGoals(req.user.id);
     const tasks    = getTasksByDate(req.user.id, watToday());
-    const analysis = await parseStrategicDocument(req.user.id, doc.parsed_text, doc.business || 'blok', goals, tasks);
+    const biz      = doc.business || getDefaultBusinessSlug(req.user.id);
+    const analysis = await parseStrategicDocument(req.user.id, doc.parsed_text, biz, goals, tasks);
     const anaInfo  = saveDocumentAnalysis(
-      req.user.id, doc.business || 'blok', doc.parsed_text.slice(0, 200),
+      req.user.id, biz, doc.parsed_text.slice(0, 200),
       analysis.summary, analysis.key_insight, analysis.risk,
       JSON.stringify(analysis.tasks)
     );
@@ -772,9 +776,10 @@ app.post('/api/documents/library/:id/assign', requireAuth, (req, res) => {
     `INSERT INTO tasks (user_id, date, name, business, time, done, priority, source)
      VALUES (?, ?, ?, ?, ?, 0, ?, 'document')`
   );
+  const defaultBiz = getDefaultBusinessSlug(req.user.id);
   db.transaction((ts) => {
     for (const t of ts) {
-      stmt.run(req.user.id, targetDate, t.name, t.business || doc.business || 'blok', t.time || null, t.priority || 'normal');
+      stmt.run(req.user.id, targetDate, t.name, t.business || doc.business || defaultBiz, t.time || null, t.priority || 'normal');
     }
   })(tasks);
   if (assignee) {
@@ -963,8 +968,7 @@ app.get('/api/analytics/missed', requireAuth, (req, res) => {
 
 app.get('/api/scorecard/week', requireAuth, (req, res) => {
   res.json({
-    investorTouches: getInvestorTouchesThisWeek(req.user.id),
-    quarterlyPct:    getQuarterlyGoalPct(req.user.id),
+    quarterlyPct: getQuarterlyGoalPct(req.user.id),
   });
 });
 

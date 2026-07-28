@@ -2928,8 +2928,6 @@
         <span class="stat-div">·</span>
         <span id="s-rate">—</span>%&thinsp;today
         <span class="stat-div">·</span>
-        <span id="s-investor">—</span>&thinsp;investor touches
-        <span class="stat-div">·</span>
         <span id="s-quarterly">—</span>%&thinsp;quarterly
       </div>
 
@@ -3436,13 +3434,8 @@
       <h1 class="page-title">Strategic Documents</h1>
       <p class="page-sub" style="font-size:13px;color:#999">Upload a document to extract tasks and strategic insight.</p>
 
-      <!-- Business selector -->
-      <div class="doc-biz-pills" id="doc-biz-pills">
-        <button class="doc-biz-pill selected" data-biz="blok" onclick="selectDocBiz(this)">Blok AI</button>
-        <button class="doc-biz-pill" data-biz="aphl" onclick="selectDocBiz(this)">APHL Africa</button>
-        <button class="doc-biz-pill" data-biz="trade" onclick="selectDocBiz(this)">TradeSol</button>
-        <button class="doc-biz-pill" data-biz="personal" onclick="selectDocBiz(this)">Personal</button>
-      </div>
+      <!-- Business selector — populated from the user's own businesses by renderDocBizPills() -->
+      <div class="doc-biz-pills" id="doc-biz-pills"></div>
 
       <!-- Upload zone -->
       <div class="doc-upload-zone" id="doc-upload-zone"
@@ -3516,10 +3509,6 @@
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
         <div class="doc-filter-pills" id="doc-filter-pills">
           <button class="doc-filter-pill selected" data-biz="all" onclick="filterDocLib(this,'all')">All</button>
-          <button class="doc-filter-pill" data-biz="blok" onclick="filterDocLib(this,'blok')">Blok AI</button>
-          <button class="doc-filter-pill" data-biz="aphl" onclick="filterDocLib(this,'aphl')">APHL Africa</button>
-          <button class="doc-filter-pill" data-biz="trade" onclick="filterDocLib(this,'trade')">TradeSol</button>
-          <button class="doc-filter-pill" data-biz="personal" onclick="filterDocLib(this,'personal')">Personal</button>
         </div>
         <input class="doc-search-input" id="doc-search-input" type="text" placeholder="Search documents…" oninput="searchDocLib(this.value)">
       </div>
@@ -3568,57 +3557,24 @@
 
 // ── constants ─────────────────────────────────────────────────────────────────
 
-let BLOCKS = [
-  { time: '05:30', end: '05:45', name: 'Prayer',                                    biz: 'anchor'   },
-  { time: '05:45', end: '06:00', name: 'Journaling',                                biz: 'anchor'   },
-  { time: '06:00', end: '06:30', name: 'Orient and daily priority',                 biz: 'blok'     },
-  { time: '06:30', end: '07:00', name: 'Pre-day setup: depot price, brief Candy',   biz: 'aphl'     },
-  { time: '07:00', end: '07:30', name: 'Morning command: floor price, driver call',  biz: 'aphl'     },
-  { time: '07:30', end: '09:00', name: 'Raise: investor relations',                 biz: 'blok'     },
-  { time: '08:00', end: '10:00', name: 'Sales push: Candy runs outbound',           biz: 'aphl'     },
-  { time: '09:00', end: '10:30', name: 'Product: PM review, product user flow',      biz: 'blok'     },
-  { time: '10:00', end: '13:00', name: 'Operations: payments, loading, tracking',   biz: 'aphl'     },
-  { time: '10:30', end: '11:30', name: 'Comms: Slack, async check-ins',             biz: 'blok'     },
-  { time: '11:30', end: '12:30', name: 'Brand: creative review, social metrics',    biz: 'blok'     },
-  { time: '13:00', end: '14:00', name: 'MD strategic hour: depot, pricing',         biz: 'aphl'     },
-  { time: '14:00', end: '15:30', name: 'Strategy: priorities, decision log',        biz: 'blok'     },
-  { time: '16:00', end: '17:30', name: 'Unified day close: ops sync, revenue log',  biz: 'blok'     },
-  { time: '17:30', end: '18:00', name: 'Calls to loved ones and family',            biz: 'anchor'   },
-  { time: '18:00', end: '19:00', name: 'Pottery or reading',                        biz: 'personal' },
-  { time: '19:00', end: '20:00', name: 'Physical activity',                         biz: 'personal' },
-  { time: '20:30', end: '21:00', name: 'Evening wind-down and next day planning',   biz: 'anchor'   },
-];
+// Populated from GET /api/schedule shortly after load (loadSchedule()) —
+// starts empty rather than pre-filled with one user's real schedule, since
+// getActiveBlock()/renderSchedule() already handle an empty array cleanly.
+let BLOCKS = [];
 
+// personal/anchor are generic system categories every user has, not real
+// ventures — real venture labels come from BUSINESSES (see loadBusinesses(),
+// which fills this in per-user) rather than a hardcoded venture list.
 const BIZ_LABEL = {
-  blok:     'Blok AI',
-  aphl:     'APHL Africa',
-  trade:    'TradeSol',
   personal: 'Personal',
   anchor:   'Anchor',
 };
 
-const KPI_DEFS = [
-  { biz: 'blok', label: 'Blok AI', items: [
-    { k: 'investor_touchpoints',  label: 'Investor touchpoints (quality)', target: '1/day'  },
-    { k: 'warm_relationships',    label: 'Warm relationships building',    target: 'Weekly' },
-    { k: 'investor_meetings',     label: 'Investor meetings/calls',        target: 'Weekly' },
-    { k: 'warm_intros_requested', label: 'Warm intros requested',          target: 'Weekly' },
-  ]},
-  { biz: 'aphl', label: 'APHL Africa', items: [
-    { k: 'outbound_calls',   label: 'Outbound calls',       target: '20+/day' },
-    { k: 'trips_completed',  label: 'Trips completed',      target: 'Daily'   },
-    { k: 'revenue_logged',   label: 'Revenue logged (NGN)', target: 'Daily'   },
-  ]},
-  { biz: 'trade', label: 'TradeSol', items: [
-    { k: 'content_pieces',   label: 'Content pieces',       target: 'Weekly'  },
-    { k: 'agent_signups',    label: 'Agent signups',        target: 'Monthly' },
-  ]},
-  { biz: 'personal', label: 'Personal', items: [
-    { k: 'exercise',         label: 'Exercise sessions',    target: '5/wk'    },
-    { k: 'pottery',          label: 'Pottery sessions',     target: '3/wk'    },
-    { k: 'books',            label: 'Books in progress',    target: 'Ongoing' },
-  ]},
-];
+// Per-venture custom metrics (KPI_DEFS) aren't a real feature yet — this
+// used to be one user's fixed metric catalogue, shown to everyone
+// regardless of their own ventures. Empty until that's built properly as a
+// user-configurable feature (see renderKpis()'s empty state below).
+const KPI_DEFS = [];
 
 // ── state ─────────────────────────────────────────────────────────────────────
 
@@ -3741,6 +3697,7 @@ async function loadBusinesses() {
     for (const b of BUSINESSES) BIZ_LABEL[b.slug] = b.name;
     updateAllBizSelects();
     renderDocBizPills();
+    renderDocFilterPills();
     renderPlanningNav();
   } catch {}
 }
@@ -3756,11 +3713,26 @@ function updateAllBizSelects() {
 
 function renderDocBizPills() {
   const el = document.getElementById('doc-biz-pills');
-  if (!el || !BUSINESSES.length) return;
+  if (!el) return;
+  if (!BUSINESSES.length) {
+    el.innerHTML = '<div class="empty-text" style="padding:4px 0">No businesses yet — add one in Settings.</div>';
+    return;
+  }
   if (!BUSINESSES.some(b => b.slug === _docSelectedBiz)) _docSelectedBiz = BUSINESSES[0].slug;
   el.innerHTML = BUSINESSES.map(b => `
     <button class="doc-biz-pill${b.slug === _docSelectedBiz ? ' selected' : ''}" data-biz="${esc(b.slug)}" onclick="selectDocBiz(this)">${esc(b.name)}</button>
   `).join('');
+}
+
+// "All" pill is static markup (see v-documents view) — this only ever adds
+// the per-business filter pills after it, from the user's own businesses.
+function renderDocFilterPills() {
+  const el = document.getElementById('doc-filter-pills');
+  if (!el) return;
+  const extra = BUSINESSES.map(b => `
+    <button class="doc-filter-pill" data-biz="${esc(b.slug)}" onclick="filterDocLib(this,'${esc(b.slug)}')">${esc(b.name)}</button>
+  `).join('');
+  el.innerHTML = `<button class="doc-filter-pill selected" data-biz="all" onclick="filterDocLib(this,'all')">All</button>${extra}`;
 }
 
 function tagHtml(biz) {
@@ -3769,9 +3741,9 @@ function tagHtml(biz) {
   if (bizData) {
     return `<span class="tag" style="background:${bizData.color_bg};color:${bizData.color_text}">${esc(bizData.name)}</span>`;
   }
-  const known = { blok: 1, aphl: 1, trade: 1, personal: 1, anchor: 1 };
-  const cls   = known[b] ? `tag-${b}` : 'tag-anchor';
-  return `<span class="tag ${cls}">${esc(BIZ_LABEL[b] || biz)}</span>`;
+  // personal/anchor are generic system categories (BIZ_LABEL), not a real
+  // venture — anything else unknown just shows its raw slug, no fabricated label.
+  return `<span class="tag tag-anchor">${esc(BIZ_LABEL[b] || biz)}</span>`;
 }
 
 // ── focus blocks: use BUSINESSES for biz cards ────────────────────────────────
@@ -5528,7 +5500,6 @@ async function updateWeeklyStat() {
 async function updateScorecard() {
   try {
     const sc = await api('/api/scorecard/week');
-    document.getElementById('s-investor').textContent  = sc.investorTouches ?? 0;
     document.getElementById('s-quarterly').textContent = sc.quarterlyPct != null ? sc.quarterlyPct : '—';
   } catch { }
 }
@@ -5541,13 +5512,10 @@ function renderFocusBlocks() {
   const el = document.getElementById('focus-blocks-grid');
   if (!el) return;
 
-  const BIZLIST = BUSINESSES.length
-    ? BUSINESSES.filter(b => b.slug !== 'personal').map(b => ({ key: b.slug, label: b.name }))
-    : [
-        { key: 'blok',  label: BIZ_LABEL.blok  || 'Blok AI' },
-        { key: 'aphl',  label: BIZ_LABEL.aphl  || 'APHL Africa' },
-        { key: 'trade', label: BIZ_LABEL.trade || 'TradeSol' },
-      ];
+  // No hardcoded fallback here — until loadBusinesses() resolves (or for a
+  // user with no ventures yet), this is just empty; the Personal card below
+  // still renders on its own with its own empty state.
+  const BIZLIST = BUSINESSES.filter(b => b.slug !== 'personal').map(b => ({ key: b.slug, label: b.name }));
 
   const PRI = { high: 0, normal: 1, low: 2 };
 
@@ -5664,7 +5632,7 @@ function focusQuickAdd(biz) {
 
 let _docCurrentAnalysis = null;
 let _docCurrentId       = null;
-let _docSelectedBiz     = 'blok';
+let _docSelectedBiz     = 'personal'; // corrected to the user's real first business by renderDocBizPills()
 let _docSelectedFile    = null;
 let _docLibAll          = [];
 let _docLibFilter       = 'all';
@@ -6385,6 +6353,10 @@ function renderKpis(apiKpis) {
   for (const k of apiKpis) idx[`${k.business}__${k.metric}`] = k;
 
   const container = document.getElementById('kpi-container');
+  if (!KPI_DEFS.length) {
+    container.innerHTML = '<div class="empty-text">No custom metrics yet — per-venture tracking is coming soon.</div>';
+    return;
+  }
   container.innerHTML = KPI_DEFS.map(def => `
     <div class="kpi-biz-head">${esc(def.label)}</div>
     ${def.items.map(item => {

@@ -834,19 +834,6 @@ function toggleAnchor(userId, date, key) {
 
 // ── scorecard metrics ─────────────────────────────────────────────────────────
 
-// Counts distinct days this week (Mon–today) with at least one completed task
-// whose name mentions "investor" — matches the recurring "Investor relationship
-// touchpoint" task and similar. One touchpoint per day is the target, so
-// distinct days (not raw task count) is what "investor touches" means here.
-const getInvestorTouchesStmt = db.prepare(`
-  SELECT COUNT(DISTINCT date) AS cnt FROM tasks
-  WHERE user_id = ? AND done = 1 AND date >= ? AND date <= ? AND LOWER(name) LIKE '%investor%'
-`);
-
-function getInvestorTouchesThisWeek(userId) {
-  return getInvestorTouchesStmt.get(userId, weekStart(), watToday()).cnt;
-}
-
 // Calendar-quarter date range, as 'YYYY-MM-DD' strings. Defaults to the
 // current WAT quarter; pass year/quarter explicitly for a past one (e.g.
 // anchor-derived key-result progress, or the retro flow reviewing last
@@ -1796,6 +1783,21 @@ const updateBusinessStmt = db.prepare(`
 
 const getBusinesses = (userId) => getBusinessesStmt.all(userId);
 const getAllBusinesses = (userId) => getAllBusinessesStmt.all(userId);
+// Generic replacement for the old hardcoded `business || 'blok'` fallback
+// used across document-analysis and brain-dump task creation — 'blok' isn't
+// a real business for anyone but OGV, so it silently orphaned tasks for
+// every other user. Prefers the user's personal track (every user gets
+// exactly one, is_personal-marked), then their first active business, then
+// falls back to the literal slug 'personal' only if a user somehow has zero
+// businesses at all (shouldn't happen post-onboarding, but insertTask still
+// needs *some* value).
+function getDefaultBusinessSlug(userId) {
+  const all = getAllBusinessesStmt.all(userId);
+  const personal = all.find(b => b.is_personal);
+  if (personal) return personal.slug;
+  const activeFirst = all.find(b => b.active) || all[0];
+  return activeFirst ? activeFirst.slug : 'personal';
+}
 const getBusinessById  = (userId, id) => getBusinessByIdStmt.get(userId, id);
 const addBusiness = (userId, name, slug, color_bg, color_text, icon, extra = {}) => {
   const sortOrder = extra.sort_order ?? getAllBusinessesStmt.all(userId).length;
@@ -1975,7 +1977,10 @@ function computeVenturesFromBusinesses(userId) {
 
 function getFounderProfile(userId) {
   const row = getSetting(userId, 'founder_profile');
-  const fallback = userId === 1 ? DEFAULT_FOUNDER_PROFILE : BLANK_FOUNDER_PROFILE;
+  // Same generic fallback for every user, OGV included — his real profile
+  // is migrated into a real settings row (see founder_profile_seeded_v1
+  // below), not read from the DEFAULT_FOUNDER_PROFILE code constant anymore.
+  const fallback = BLANK_FOUNDER_PROFILE;
   let profile = fallback;
   if (row) {
     try {
@@ -2231,6 +2236,27 @@ seedDefaultsForUser(1);
 
     setSystemFlag('ventures_consolidation_v1', '1');
     console.log('[db] ventures consolidation migration complete — businesses is now the single source of truth for venture data');
+  }
+}
+
+// ── founder profile migration (v1) — one-time ─────────────────────────────────
+// OGV (user 1) has never had a stored settings.founder_profile row — his real
+// name/identity/goals/non-negotiables/investor-cadence/schedule have only
+// ever lived in the DEFAULT_FOUNDER_PROFILE code constant, which is what let
+// getFounderProfile special-case userId === 1 with its own fallback. Write
+// it into a real row now (skips silently if one somehow already exists) so
+// that special case can go away — every user, OGV included, now falls back
+// to the same generic BLANK_FOUNDER_PROFILE when nothing's stored. ventures
+// is excluded — always computed live from businesses, never stored.
+{
+  const alreadyMigrated = getSystemFlag('founder_profile_seeded_v1');
+  if (!alreadyMigrated) {
+    if (!getSetting(1, 'founder_profile')) {
+      const { ventures: _ventures, ...rest } = DEFAULT_FOUNDER_PROFILE;
+      upsertSetting(1, 'founder_profile', JSON.stringify(rest));
+      console.log('[db] migrated OGV\'s founder profile from the DEFAULT_FOUNDER_PROFILE code constant into a real settings row');
+    }
+    setSystemFlag('founder_profile_seeded_v1', '1');
   }
 }
 
@@ -2559,6 +2585,7 @@ module.exports = {
   activateBusiness,
   updateBusiness,
   getBusinessBySlug,
+  getDefaultBusinessSlug,
 
   // calendar import
   getTaskByEventId,
@@ -2578,7 +2605,6 @@ module.exports = {
   BLANK_FOUNDER_PROFILE,
 
   // scorecard
-  getInvestorTouchesThisWeek,
   getQuarterlyGoalPct,
 
   // anchors

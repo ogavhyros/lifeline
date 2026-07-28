@@ -20,7 +20,7 @@ const {
   getSetting, saveDocumentAnalysis,
   saveUploadedDocument, getAllUploadedDocuments, linkDocumentToAnalysis, updateUploadedDocumentStatus,
   getPendingRecurring, confirmRecurring, confirmAllRecurring, rejectRecurring, rejectAllPendingRecurring,
-  getBusinesses, getFounderProfile, logTaskInsert,
+  getBusinesses, getDefaultBusinessSlug, getFounderProfile, logTaskInsert,
   getUserById, getUserByChatId, setUserChatId, getConnectToken, deleteConnectToken,
 } = require('./db');
 
@@ -405,8 +405,9 @@ function saveDocumentTasks(userId, tasks) {
     `INSERT INTO tasks (user_id, date, name, business, time, done, priority, source)
      VALUES (?, ?, ?, ?, ?, 0, ?, 'document')`
   );
+  const defaultBiz = getDefaultBusinessSlug(userId);
   db.transaction((ts) => {
-    for (const t of ts) stmt.run(userId, today, t.name, t.business || 'blok', t.time || null, t.priority || 'normal');
+    for (const t of ts) stmt.run(userId, today, t.name, t.business || defaultBiz, t.time || null, t.priority || 'normal');
   })(tasks);
   syncDayLog(userId, today);
 }
@@ -486,8 +487,9 @@ async function handleUpdate(update) {
           `INSERT INTO tasks (user_id, date, name, business, time, done, priority, source)
            VALUES (?, ?, ?, ?, ?, 0, ?, 'document')`
         );
+        const defaultBiz = getDefaultBusinessSlug(userId);
         db.transaction((ts) => {
-          for (const t of ts) stmt.run(userId, tomorrow, t.name, t.business || 'blok', t.time || null, t.priority || 'normal');
+          for (const t of ts) stmt.run(userId, tomorrow, t.name, t.business || defaultBiz, t.time || null, t.priority || 'normal');
         })(tasks);
         syncDayLog(userId, tomorrow);
         await sendMessage(userId, `${tasks.length} task${tasks.length !== 1 ? 's' : ''} assigned to tomorrow.`);
@@ -571,14 +573,14 @@ async function handleUpdate(update) {
       if (upper === 'EDIT') {
         pendingRecurring.delete(chatId);
         rejectAllPendingRecurring(userId, date);
+        const otherSlug = getValidBusinesses(userId).find(s => s !== 'personal');
         await sendMessage(userId,
           'Send me the list of tasks you want today.\n' +
           'One per line, format:\n' +
           '[business] task name at HH:MM\n\n' +
           'Example:\n' +
-          'aphl Get depot price at 06:30\n' +
-          'blok Investor touchpoint at 07:30\n' +
-          'personal Morning journal at 05:45'
+          'personal Morning workout at 06:00\n' +
+          `${otherSlug || 'work'} Draft the proposal at 09:00`
         );
         return;
       }
@@ -1081,27 +1083,32 @@ async function handleCommand(userId, text, chatId) {
     }
 
     case '/analyze': {
+      const slugs    = getValidBusinesses(userId);
+      const examples = (slugs.length ? slugs.slice(0, 2) : ['personal'])
+        .map(s => `${s}: [paste document]`).join('\n');
       await sendMessage(userId,
         `Send me a strategic document to break into daily tasks.\n\n` +
         `Paste your document as a text message — a business plan, investor memo, operations report, strategic note, or any business document.\n\n` +
         `Prefix with the business name:\n` +
-        `blok: [paste document]\n` +
-        `aphl: [paste document]\n\n` +
+        `${examples}\n\n` +
         `I will extract 2–3 specific daily tasks from it and tell you the key insight and risk.`
       );
       break;
     }
 
     case '/investor': {
-      const dow = new Date(Date.now() + 60 * 60 * 1000).getUTCDay();
-      const msgs = {
-        1: `INVESTOR TOUCHPOINT — Monday\n\nToday's focus: Research\nPick one investor or fund to research deeply.\n\nQuestions to answer:\n- What is their investment thesis?\n- What companies have they backed that are similar to Blok AI?\n- What have they posted or written recently?\n- Who in your network knows them?\n- What would make them care about Blok AI specifically?\n\nGoal: Know them well enough to have a real conversation, not pitch them blindly.`,
-        2: `INVESTOR TOUCHPOINT — Tuesday\n\nToday's focus: Warm intro mapping\n\nOpen your contact list. Who do you know who knows your target investors?\n\nQuestions to answer:\n- Who is one person who can introduce you to someone on your target list?\n- What do you need to send them to make the ask easy?\n- Have you kept this person warm recently?\n\nGoal: One intro request sent today to someone who can connect you.`,
-        3: `INVESTOR TOUCHPOINT — Wednesday\n\nToday's focus: Deepen an existing relationship\n\nPick someone already in your pipeline. Not a cold contact. Someone you have spoken to before.\n\nOptions:\n- Share a product update or milestone\n- Send an article relevant to their thesis\n- Ask for their honest feedback on something specific\n- Check in genuinely with no pitch attached\n\nGoal: One meaningful interaction that moves the relationship forward.`,
-        4: `INVESTOR TOUCHPOINT — Thursday\n\nToday's focus: Warm intro follow-up\n\nCheck your pending intro requests. Has anyone responded? Do you need to nudge a connector?\n\nAlso: Is there a founder in your network who has raised recently? They are often the best source of warm intros and honest advice.\n\nGoal: Move one intro request forward today.`,
-        5: `INVESTOR TOUCHPOINT — Friday\n\nToday's focus: Week recap and pipeline update\n\nBefore you close the week:\n- Who did you connect with this week?\n- What conversations are warm?\n- What needs follow-up next week?\n- Did any relationship go cold that needs attention?\n\nUpdate your pipeline notes now while it is fresh.\nGoal: Clean, current pipeline going into the weekend.`,
-      };
-      const msg = msgs[dow] || `Investor relations rest day.\n\nWeekend is for recovery, not outreach. Relationships need breathing room.\n\nUse the time to think about who you want to build a relationship with next week.`;
+      // Pulls from the user's own founder_profile.investorCadence (Settings →
+      // Founder profile → Cadence) instead of a fixed Monday-Friday script —
+      // this used to be hardcoded here independent of that profile field,
+      // mentioning Blok AI by name regardless of who was asking.
+      const cadence = getFounderProfile(userId).investorCadence;
+      if (!cadence || !cadence.length) {
+        await sendMessage(userId, 'No investor cadence set up yet. Add one in Settings → Founder profile → Cadence.');
+        break;
+      }
+      const dow = new Date(Date.now() + 60 * 60 * 1000).getUTCDay(); // 0=Sun..6=Sat
+      const idx = dow === 0 ? 6 : dow - 1; // cadence is stored Monday..Sunday
+      const msg = cadence[idx] || 'No plan set for today.';
       await sendMessage(userId, msg);
       break;
     }
@@ -1119,8 +1126,8 @@ async function handleCommand(userId, text, chatId) {
         try {
           const goals    = getAllGoals(userId);
           const tasks    = getTodayTasks(userId);
-          const analysis = await parseStrategicDocument(userId, doc.parsed_text, doc.business || 'blok', goals, tasks);
-          const biz      = doc.business || 'blok';
+          const biz      = doc.business || getDefaultBusinessSlug(userId);
+          const analysis = await parseStrategicDocument(userId, doc.parsed_text, biz, goals, tasks);
           const anaInfo  = saveDocumentAnalysis(
             userId, biz, doc.parsed_text.slice(0, 200),
             analysis.summary, analysis.key_insight, analysis.risk,

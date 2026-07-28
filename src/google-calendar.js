@@ -18,6 +18,7 @@ const {
   db, getSetting, upsertSetting, deleteSetting, updateTaskEventId,
   getTaskByEventId, insertCalendarTask, updateTaskFromCalendar, deleteTaskByEventId,
   getTasksByDate, syncDayLog, getFounderProfile, logTaskInsert,
+  getAllBusinesses, getBusinessBySlug,
 } = require('./db');
 
 // Injected by server.js after both modules load — avoids circular dependency
@@ -239,10 +240,9 @@ async function deleteEvent(userId, eventId, calendarId) {
 
 // ── task sync ─────────────────────────────────────────────────────────────────
 
-const BIZ_LABEL_CAL = {
-  blok: 'Blok AI', aphl: 'APHL Africa', trade: 'TradeSol',
-  personal: 'Personal', anchor: 'Anchor',
-};
+// Last-resort color only (cosmetic) — an unrecognized slug just gets the
+// default color, never wrong content. Real business names come from the
+// user's own businesses table (see bizLabel below), not a hardcoded map.
 const BIZ_COLOR_CAL = { blok: '9', aphl: '2', trade: '5', personal: '4', anchor: '8' };
 
 async function syncTaskToCalendar(userId, task) {
@@ -255,7 +255,7 @@ async function syncTaskToCalendar(userId, task) {
   const calendarId = calRow ? calRow.value : 'primary';
 
   const biz      = task.business || 'personal';
-  const bizLabel = BIZ_LABEL_CAL[biz] || biz;
+  const bizLabel = getBusinessBySlug(userId, biz)?.name || biz;
   const isDone   = !!task.done;
   const summary  = `${isDone ? '✓ ' : ''}[${biz.toUpperCase()}] ${task.name}`;
   const colorId  = isDone ? '8' : (BIZ_COLOR_CAL[biz] || '4');
@@ -502,11 +502,17 @@ async function getChangedEvents(userId, syncToken) {
 
 // ── event → task processing ───────────────────────────────────────────────────
 
-function _detectBusiness(title, description) {
+// Matches against the user's own real venture names/slugs instead of a
+// fixed keyword list tuned to one person's businesses — that version
+// ('blok'/'arkad'/'investor'/'pitch'/'fundrais' → 'blok', etc.) only ever
+// matched OGV's own ventures, so it silently did nothing useful for anyone
+// else's calendar sync (always fell through to 'personal').
+function _detectBusiness(userId, title, description) {
   const text = `${title} ${description}`.toLowerCase();
-  if (/blok|arkad|investor|pitch|fundrais/.test(text))          return 'blok';
-  if (/aphl|depot|candy|haulage|petroleum|loading/.test(text))  return 'aphl';
-  if (/tradesol|trade|agent|commerce/.test(text))               return 'trade';
+  const ventures = getAllBusinesses(userId).filter(b => !b.is_personal);
+  for (const b of ventures) {
+    if (text.includes(b.name.toLowerCase()) || text.includes(b.slug.toLowerCase())) return b.slug;
+  }
   return 'personal';
 }
 
@@ -539,7 +545,7 @@ async function processCalendarEvent(userId, event, caller = 'unknown') {
   if (!date) return;
 
   const startTime = watHHMM(event.start?.dateTime) || null;
-  const business  = _detectBusiness(title, event.description || '');
+  const business  = _detectBusiness(userId, title, event.description || '');
   const existing  = getTaskByEventId(userId, event.id);
 
   console.log(`[calendar] processCalendarEvent caller=${caller} userId=${userId} eventId=${event.id} existingMatch=${existing ? `YES(taskId=${existing.id})` : 'NO'} pid=${process.pid}`);

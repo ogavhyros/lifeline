@@ -71,6 +71,16 @@ function forEachTelegramUser(fn) {
   };
 }
 
+// Wraps forEachTelegramUser to gate a job to user 1 (OGV) only — for the
+// fixed-clock-time work/anchor-block reminders below, whose times and block
+// labels are OGV's own real daily schedule, not a generic default. Same
+// gating pattern already used for seedDefaultsForUser/SEEDS_V4 in db.js.
+// Deriving a generic version of these from each user's own
+// founder_profile.scheduleBlocks is real follow-up work, not a strip.
+function forOgvOnly(fn) {
+  return forEachTelegramUser(userId => (userId === 1 ? fn(userId) : undefined));
+}
+
 // ── notification preferences ──────────────────────────────────────────────────
 
 function notifEnabled(userId, key) {
@@ -351,31 +361,33 @@ const JOBS = [
   // morning calendar sync — push today's tasks to Google Calendar
   { time: '05:25', label: 'morning-cal-sync', action: morningCalendarSync, noQuiet: true },
 
-  // anchor blocks
-  { time: '05:25', label: 'prayer-5min',    action: forEachTelegramUser(userId => notifEnabled(userId, 'block_reminders') && sendMessage(userId, 'Prayer block in 5 minutes')) },
-  { time: '05:40', label: 'journaling-now', action: forEachTelegramUser(userId => sendMessage(userId, buildBlockMessage(userId, '05:45', 'Journaling', 'anchor'))) },
-  { time: '06:25', label: 'orient-now',     action: forEachTelegramUser(userId => sendMessage(userId, buildBlockMessage(userId, '06:00', 'Orient and daily priority', 'blok'))) },
-  { time: '06:25', label: 'pre-day-5min',   action: forEachTelegramUser(userId => sendMessage(userId, buildBlockMessage(userId, '06:30', 'Pre-day setup', 'aphl'))) },
+  // anchor blocks — OGV's own fixed schedule (times, labels, biz tags),
+  // gated to user 1 only (forOgvOnly). See the note above forOgvOnly's
+  // definition — this is a follow-up to genericize, not a strip.
+  { time: '05:25', label: 'prayer-5min',    action: forOgvOnly(userId => notifEnabled(userId, 'block_reminders') && sendMessage(userId, 'Prayer block in 5 minutes')) },
+  { time: '05:40', label: 'journaling-now', action: forOgvOnly(userId => sendMessage(userId, buildBlockMessage(userId, '05:45', 'Journaling', 'anchor'))) },
+  { time: '06:25', label: 'orient-now',     action: forOgvOnly(userId => sendMessage(userId, buildBlockMessage(userId, '06:00', 'Orient and daily priority', 'blok'))) },
+  { time: '06:25', label: 'pre-day-5min',   action: forOgvOnly(userId => sendMessage(userId, buildBlockMessage(userId, '06:30', 'Pre-day setup', 'aphl'))) },
 
-  // daily briefing
+  // daily briefing — generic, content-personalized per user via getFounderProfile/AI
   { time: '06:30', label: 'briefing',       action: morningBriefing },
   // quarterly retro / new-quarter prompt — no-ops except on a quarter boundary
   { time: '06:35', label: 'quarterly-retro', action: quarterlyRetroPrompt },
-  { time: '06:50', label: 'morning-cmd',    action: forEachTelegramUser(userId => sendMessage(userId, buildBlockMessage(userId, '07:00', 'Morning command', 'aphl'))) },
+  { time: '06:50', label: 'morning-cmd',    action: forOgvOnly(userId => sendMessage(userId, buildBlockMessage(userId, '07:00', 'Morning command', 'aphl'))) },
 
-  // work blocks
-  { time: '07:20', label: 'raise',        action: forEachTelegramUser(userId => sendMessage(userId, buildBlockMessage(userId, '07:30', 'Raise — investor relations', 'blok'))) },
-  { time: '08:50', label: 'product',      action: forEachTelegramUser(userId => sendMessage(userId, buildBlockMessage(userId, '09:00', 'Product block', 'blok'))) },
-  { time: '09:50', label: 'operations',   action: forEachTelegramUser(userId => sendMessage(userId, buildBlockMessage(userId, '10:00', 'Operations block', 'aphl'))) },
-  { time: '10:20', label: 'comms',        action: forEachTelegramUser(userId => sendMessage(userId, buildBlockMessage(userId, '10:30', 'Comms block', 'blok'))) },
-  { time: '11:20', label: 'brand',        action: forEachTelegramUser(userId => sendMessage(userId, buildBlockMessage(userId, '11:30', 'Brand block', 'blok'))) },
-  { time: '12:50', label: 'md-strategic', action: forEachTelegramUser(userId => sendMessage(userId, buildBlockMessage(userId, '13:00', 'MD strategic hour', 'aphl'))) },
-  { time: '13:50', label: 'strategy',     action: forEachTelegramUser(userId => sendMessage(userId, buildBlockMessage(userId, '14:00', 'Strategy block', 'blok'))) },
-  { time: '15:50', label: 'day-close',    action: forEachTelegramUser(userId => sendMessage(userId, buildBlockMessage(userId, '16:00', 'Day close', 'blok'))) },
+  // work blocks — OGV-only, same reason as the anchor blocks above
+  { time: '07:20', label: 'raise',        action: forOgvOnly(userId => sendMessage(userId, buildBlockMessage(userId, '07:30', 'Raise — investor relations', 'blok'))) },
+  { time: '08:50', label: 'product',      action: forOgvOnly(userId => sendMessage(userId, buildBlockMessage(userId, '09:00', 'Product block', 'blok'))) },
+  { time: '09:50', label: 'operations',   action: forOgvOnly(userId => sendMessage(userId, buildBlockMessage(userId, '10:00', 'Operations block', 'aphl'))) },
+  { time: '10:20', label: 'comms',        action: forOgvOnly(userId => sendMessage(userId, buildBlockMessage(userId, '10:30', 'Comms block', 'blok'))) },
+  { time: '11:20', label: 'brand',        action: forOgvOnly(userId => sendMessage(userId, buildBlockMessage(userId, '11:30', 'Brand block', 'blok'))) },
+  { time: '12:50', label: 'md-strategic', action: forOgvOnly(userId => sendMessage(userId, buildBlockMessage(userId, '13:00', 'MD strategic hour', 'aphl'))) },
+  { time: '13:50', label: 'strategy',     action: forOgvOnly(userId => sendMessage(userId, buildBlockMessage(userId, '14:00', 'Strategy block', 'blok'))) },
+  { time: '15:50', label: 'day-close',    action: forOgvOnly(userId => sendMessage(userId, buildBlockMessage(userId, '16:00', 'Day close', 'blok'))) },
 
-  // personal blocks
-  { time: '17:50', label: 'personal',     action: forEachTelegramUser(userId => sendMessage(userId, buildBlockMessage(userId, '18:00', 'Personal block', 'personal'))) },
-  { time: '19:00', label: 'physical',     action: forEachTelegramUser(userId => sendMessage(userId, buildBlockMessage(userId, '19:00', 'Physical activity', 'personal'))) },
+  // personal blocks — OGV-only, same reason as the anchor blocks above
+  { time: '17:50', label: 'personal',     action: forOgvOnly(userId => sendMessage(userId, buildBlockMessage(userId, '18:00', 'Personal block', 'personal'))) },
+  { time: '19:00', label: 'physical',     action: forOgvOnly(userId => sendMessage(userId, buildBlockMessage(userId, '19:00', 'Physical activity', 'personal'))) },
 
   // EOD review
   { time: '21:00', label: 'eod', action: eodReview },
