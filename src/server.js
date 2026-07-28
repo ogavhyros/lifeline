@@ -13,6 +13,7 @@ const {
   toggleRecurringActive, updateRecurringTime,
   getPendingRecurring, confirmRecurring, confirmAllRecurring, rejectRecurring, rejectAllPendingRecurring,
   carryTask, addIdea, getIdeas, addNote, getNotes, syncDayLog,
+  rolloverStaleTasks, getPendingCarryover, resolveCarryover,
   getAllGoals,
   getSetting, upsertSetting, deleteSetting,
   saveDocumentAnalysis, getDocumentAnalyses,
@@ -164,6 +165,7 @@ registerAuthRoutes(app); // POST /api/auth/signup, /login, /logout, GET /api/aut
 
 app.get('/api/tasks', requireAuth, (req, res) => {
   const date  = req.query.date || watToday();
+  rolloverStaleTasks(req.user.id); // always today-relative, independent of `date` above (which may be a past date being viewed)
   syncDayLog(req.user.id, date);
   // Widened for board sharing: own tasks + tasks on boards I'm a member of +
   // tasks assigned to me. syncDayLog above only touches the requester's own
@@ -244,7 +246,25 @@ app.patch('/api/tasks/:id/time', requireAuth, (req, res) => {
 const TASK_STATUSES = ['backlog', 'today', 'in_progress', 'done'];
 
 app.get('/api/tasks/board', requireAuth, (req, res) => {
+  rolloverStaleTasks(req.user.id);
   res.json(getVisibleBoardTasks(req.user.id));
+});
+
+// ── carryover review (day-boundary confirmation, not auto-carry) ────────────
+// rolloverStaleTasks above is what actually moves stale tasks into
+// pending_carryover (called on every board/task read); this endpoint just
+// lists whatever's already sitting there. Personal only (getPendingCarryover
+// is user_id-scoped, not board-widened) — a shared/assigned task belongs to
+// its real owner's carryover review, not an assignee's.
+app.get('/api/tasks/pending-carryover', requireAuth, (req, res) => {
+  rolloverStaleTasks(req.user.id);
+  res.json(getPendingCarryover(req.user.id));
+});
+
+app.post('/api/tasks/carryover', requireAuth, (req, res) => {
+  const { confirm, dismiss } = req.body;
+  const result = resolveCarryover(req.user.id, confirm, dismiss);
+  res.json(result);
 });
 
 app.patch('/api/tasks/:id/status', requireAuth, (req, res) => {

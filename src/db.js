@@ -32,6 +32,16 @@ function logTaskInsert(source, title, meta = {}) {
 
 const db = new Database(dbPath);
 
+// ── app timezone ──────────────────────────────────────────────────────────────
+// Single global app timezone (not yet per-user) — every "today" boundary in
+// this file (task carryover, recurring population, kanban status derivation,
+// quarterly windows) is computed off this one offset. Configurable via env
+// var rather than the previous hardcoded "+1 hours" so it isn't silently
+// wrong for a deploy outside Africa/Lagos; true per-user timezones are a
+// follow-up (would need a users.timezone column, which doesn't exist yet).
+const APP_TZ_OFFSET_HOURS = Number(process.env.APP_TIMEZONE_OFFSET_HOURS ?? 1); // default: Africa/Lagos (UTC+1)
+const APP_TZ_OFFSET_MS    = APP_TZ_OFFSET_HOURS * 60 * 60 * 1000;
+
 // ── schema ────────────────────────────────────────────────────────────────────
 
 db.exec(`
@@ -334,6 +344,10 @@ try { db.exec(`ALTER TABLE tasks ADD COLUMN source TEXT`); } catch {}
 try { db.exec(`ALTER TABLE tasks ADD COLUMN event_id TEXT`); } catch {}
 try { db.exec(`ALTER TABLE tasks ADD COLUMN calendar_event_id TEXT`); } catch {}
 try { db.exec(`ALTER TABLE tasks ADD COLUMN calendar_source TEXT`); } catch {}
+// carried_from: original date, set only when a pending_carryover task is
+// confirmed back onto the board (see resolveCarryover below). NULL for
+// every task that has never been through the carryover review.
+try { db.exec(`ALTER TABLE tasks ADD COLUMN carried_from TEXT`); } catch {}
 try { db.exec(`ALTER TABLE recurring_tasks ADD COLUMN category TEXT DEFAULT 'work'`); } catch {}
 try { db.exec(`ALTER TABLE recurring_tasks ADD COLUMN notes TEXT`); } catch {}
 // status is the source of truth for the 3-way active/paused/planned UI
@@ -403,16 +417,20 @@ db.exec(`
 `);
 
 // ── kanban board status — keeps tasks.status in sync with done/date ──────────
-// Column values: 'backlog' | 'today' | 'in_progress' | 'done'. Rather than
-// touching every INSERT call site (insertTask, insertRecurringTask,
-// insertCarriedTask, insertCalendarTask …) to pass a status explicitly, these
-// triggers derive it from the row's own done/date whenever a caller leaves
-// status NULL (on insert) or flips done (via toggleTask/markTaskDone/Telegram/
-// calendar sync) — so the Board stays correct no matter which existing code
-// path touched the task. date('now','+1 hours') mirrors watToday()'s WAT
-// (UTC+1) offset so "today" lines up with what the rest of the app considers
-// today. PATCH /api/tasks/:id/status (server.js) always writes status last,
-// after any done/date side effects, so an explicit board move always wins.
+// Column values: 'backlog' | 'today' | 'in_progress' | 'done', plus two
+// lifecycle values these triggers deliberately never produce or touch:
+// 'pending_carryover' | 'archived' (owned entirely by rolloverStaleTasks/
+// resolveCarryover below, via direct writes after the fact — neither trigger
+// fires on those paths since they don't change `done`). Rather than touching
+// every INSERT call site (insertTask, insertRecurringTask, insertCalendarTask
+// …) to pass a status explicitly, these triggers derive it
+// from the row's own done/date whenever a caller leaves status NULL (on
+// insert) or flips done (via toggleTask/markTaskDone/Telegram/calendar sync)
+// — so the Board stays correct no matter which existing code path touched
+// the task. date('now','+N hours') mirrors watToday()'s APP_TZ_OFFSET_HOURS
+// so "today" lines up with what the rest of the app considers today. PATCH
+// /api/tasks/:id/status (server.js) always writes status last, after any
+// done/date side effects, so an explicit board move always wins.
 db.exec(`
   CREATE TRIGGER IF NOT EXISTS trg_tasks_status_on_insert
   AFTER INSERT ON tasks
@@ -420,7 +438,7 @@ db.exec(`
   BEGIN
     UPDATE tasks SET status = CASE
       WHEN NEW.done = 1 THEN 'done'
-      WHEN NEW.date = date('now','+1 hours') THEN 'today'
+      WHEN NEW.date = date('now','+${APP_TZ_OFFSET_HOURS} hours') THEN 'today'
       ELSE 'backlog'
     END
     WHERE id = NEW.id;
@@ -432,7 +450,7 @@ db.exec(`
   BEGIN
     UPDATE tasks SET status = CASE
       WHEN NEW.done = 1 THEN 'done'
-      WHEN NEW.date = date('now','+1 hours') THEN 'today'
+      WHEN NEW.date = date('now','+${APP_TZ_OFFSET_HOURS} hours') THEN 'today'
       ELSE 'backlog'
     END
     WHERE id = NEW.id;
@@ -459,17 +477,19 @@ db.exec(`
 `);
 
 // ── WAT helpers ───────────────────────────────────────────────────────────────
+// "WAT" (West Africa Time) is the historical name; all three now run off the
+// configurable APP_TZ_OFFSET_MS above rather than a hardcoded +1 hour.
 
 function watToday() {
-  return new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 10);
+  return new Date(Date.now() + APP_TZ_OFFSET_MS).toISOString().slice(0, 10);
 }
 
 function watTomorrow() {
-  return new Date(Date.now() + 60 * 60 * 1000 + 86400000).toISOString().slice(0, 10);
+  return new Date(Date.now() + APP_TZ_OFFSET_MS + 86400000).toISOString().slice(0, 10);
 }
 
 function watCutoff(days) {
-  return new Date(Date.now() + 60 * 60 * 1000 - days * 86400000).toISOString().slice(0, 10);
+  return new Date(Date.now() + APP_TZ_OFFSET_MS - days * 86400000).toISOString().slice(0, 10);
 }
 
 // { year, quarter (1-4) } for a given WAT date string ('YYYY-MM-DD'), or today.
@@ -1086,16 +1106,22 @@ const updateTaskDate    = (userId, date, id)   => updateTaskDateStmt.run(date, u
 // Bounded to the last 60 days (like getHistory's watCutoff pattern) so the
 // Board doesn't turn into an unbounded dump of every daily recurring-task row
 // this app has ever generated — only recently-relevant tasks are board items.
+// pending_carryover/archived are excluded outright — those live only in the
+// carryover review, never on the board itself. done is further scoped to
+// today's date so the Done column doesn't grow forever; historic completions
+// stay reachable via getHistory instead (see brief: "Board query fix").
 const getBoardTasksStmt = db.prepare(`
   SELECT * FROM tasks
   WHERE user_id = ? AND date >= ?
+    AND status NOT IN ('pending_carryover', 'archived')
+    AND (status != 'done' OR date = ?)
   ORDER BY
     CASE status WHEN 'today' THEN 0 WHEN 'in_progress' THEN 1 WHEN 'backlog' THEN 2 ELSE 3 END,
     CASE priority WHEN 'high' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
     date, id
 `);
 function getBoardTasks(userId) {
-  return getBoardTasksStmt.all(userId, watCutoff(60));
+  return getBoardTasksStmt.all(userId, watCutoff(60), watToday());
 }
 
 // ── board membership (Task 4: board sharing) ──────────────────────────────────
@@ -1166,6 +1192,8 @@ function getVisibleTasksByDate(userId, date) {
 const getVisibleBoardTasksStmt = db.prepare(`
   SELECT DISTINCT t.* FROM tasks t
   WHERE t.date >= ?
+    AND t.status NOT IN ('pending_carryover', 'archived')
+    AND (t.status != 'done' OR t.date = ?)
     AND (
       t.user_id = ?
       OR t.user_id IN (SELECT board_owner_id FROM board_members WHERE member_id = ?)
@@ -1177,7 +1205,8 @@ const getVisibleBoardTasksStmt = db.prepare(`
     t.date, t.id
 `);
 function getVisibleBoardTasks(userId) {
-  return getVisibleBoardTasksStmt.all(watCutoff(60), userId, userId, userId);
+  const today = watToday();
+  return getVisibleBoardTasksStmt.all(watCutoff(60), today, userId, userId, userId);
 }
 
 const getVisibleTaskByIdStmt = db.prepare(`
@@ -1313,11 +1342,6 @@ const insertRecurringTaskStmt  = db.prepare(
   `INSERT INTO tasks (user_id, date, name, business, time, done, priority, source)
    VALUES (?, ?, ?, ?, ?, 0, 'normal', 'recurring')`
 );
-const insertCarriedTaskStmt = db.prepare(
-  `INSERT INTO tasks (user_id, date, name, business, time, done, priority, source)
-   VALUES (?, ?, ?, ?, ?, 0, ?, 'carried')`
-);
-
 const getRecurring        = (userId) => getRecurringStmt.all(userId);
 const getFutureRecurring  = (userId) => getFutureRecurringStmt.all(userId);
 const getRecurringByStatus = (userId, status) => getRecurringByStatusStmt.all(userId, status);
@@ -1359,8 +1383,6 @@ function updateRecurring(userId, id, fields) {
   );
 }
 const checkTaskExists      = (userId, date, name) => checkTaskExistsStmt.get(userId, date, name);
-const insertCarriedTask    = (userId, date, name, business, time, priority) =>
-  insertCarriedTaskStmt.run(userId, date, name, business, time || null, priority || 'normal');
 
 function insertTaskSafe(userId, date, name, business, time, priority) {
   const exists = checkTaskExists(userId, date, name);
@@ -1505,6 +1527,83 @@ function carryTask(userId, taskId, fromDate, toDate) {
   logTaskInsert('carry-forward', original.name, { date: toDate, business: original.business, fromTaskId: taskId, userId });
   insertCarryStmt.run(userId, taskId, fromDate, toDate);
   return getTaskById(userId, info.lastInsertRowid);
+}
+
+// ── daily rollover + carryover review ─────────────────────────────────────────
+// Confirmation over automation: nothing from a previous day silently re-joins
+// today's board on its own. Lazy, not cron-driven — run on demand from any
+// board/task read (see server.js) instead of a scheduled job, so it works
+// correctly however many days the user has been away and needs no new
+// scheduler process. Both UPDATEs below are guarded by the same status they
+// transition away from, so a second concurrent call (web + Telegram open at
+// once) is a no-op the second time — no separate locking needed.
+//
+// Recurring-sourced tasks are deliberately excluded from the review and
+// silently archived instead of offered for carryover: each day already gets
+// its own fresh recurring proposal via populateRecurring/pending_recurring
+// (see the "Recurring-task data model" — a day's recurring instance was never
+// meant to carry completion state across days), so re-offering yesterday's
+// leftover instance here would just double-prompt the same routine through
+// two different confirmation flows. This mirrors how anchors are handled
+// (never part of this review either) even though anchors don't live in the
+// tasks table at all, so no special-casing was needed for them here.
+const rolloverArchiveRecurringStmt = db.prepare(`
+  UPDATE tasks SET status = 'archived'
+  WHERE user_id = ? AND date < ? AND status IN ('backlog', 'today', 'in_progress') AND source = 'recurring'
+`);
+const rolloverPendingCarryoverStmt = db.prepare(`
+  UPDATE tasks SET status = 'pending_carryover'
+  WHERE user_id = ? AND date < ? AND status IN ('backlog', 'today', 'in_progress')
+    AND (source IS NULL OR source != 'recurring')
+`);
+function rolloverStaleTasks(userId) {
+  const today = watToday();
+  rolloverArchiveRecurringStmt.run(userId, today);
+  rolloverPendingCarryoverStmt.run(userId, today);
+}
+
+// Multi-day gaps (user hasn't opened the board in a while) land here as one
+// flat list spanning every missed date — `date` still holds each task's
+// original day (rollover above only ever touches `status`), so the frontend
+// groups by that for the "grouped by original date" review if it wants to.
+const getPendingCarryoverStmt = db.prepare(`
+  SELECT * FROM tasks WHERE user_id = ? AND status = 'pending_carryover' ORDER BY date, id
+`);
+function getPendingCarryover(userId) {
+  return getPendingCarryoverStmt.all(userId);
+}
+
+// carried_from = date reads the OLD (pre-update) value of `date` — standard
+// SQL UPDATE semantics, all SET expressions evaluate against the original
+// row — so this captures the original stale date in one statement with no
+// separate read first. Both statements are WHERE-guarded on the very status
+// they move off of, making a repeat call (double-submit, or web+Telegram
+// racing) a harmless no-op rather than a double-apply.
+const confirmCarryoverStmt = db.prepare(`
+  UPDATE tasks SET carried_from = date, date = ?, status = 'today'
+  WHERE user_id = ? AND id = ? AND status = 'pending_carryover'
+`);
+const archiveCarryoverStmt = db.prepare(`
+  UPDATE tasks SET status = 'archived'
+  WHERE user_id = ? AND id = ? AND status = 'pending_carryover'
+`);
+// Ownership is enforced by the WHERE user_id = ? on every UPDATE, not a
+// separate lookup — an id that isn't the caller's (or isn't actually
+// pending_carryover, e.g. already resolved by a racing request) just matches
+// zero rows and is silently omitted from the returned confirmed/dismissed
+// lists, same soft-skip style as confirmAllRecurring above.
+function resolveCarryover(userId, confirmIds, dismissIds) {
+  const today  = watToday();
+  const result = { confirmed: [], dismissed: [] };
+  db.transaction(() => {
+    for (const id of confirmIds || []) {
+      if (confirmCarryoverStmt.run(today, userId, id).changes) result.confirmed.push(Number(id));
+    }
+    for (const id of dismissIds || []) {
+      if (archiveCarryoverStmt.run(userId, id).changes) result.dismissed.push(Number(id));
+    }
+  })();
+  return result;
 }
 
 // ── prepared statements — ideas ───────────────────────────────────────────────
@@ -2342,7 +2441,6 @@ module.exports = {
   getTasksByDate,
   getTaskById,
   insertTask,
-  insertCarriedTask,
   insertTaskSafe,
   getMostRecentTaskDate,
   toggleTask,
@@ -2406,6 +2504,11 @@ module.exports = {
 
   // carry
   carryTask,
+
+  // daily rollover + carryover review
+  rolloverStaleTasks,
+  getPendingCarryover,
+  resolveCarryover,
 
   // ideas
   addIdea,

@@ -3047,6 +3047,8 @@
 
       <div class="board-filter-row" id="board-filter-row"></div>
 
+      <div id="carryover-banner" style="display:none"></div>
+
       <div class="board-col-switcher" id="board-col-switcher">
         <button class="board-col-switch-btn active" data-status="backlog" onclick="switchBoardCol('backlog')">Backlog</button>
         <button class="board-col-switch-btn" data-status="today" onclick="switchBoardCol('today')">Today</button>
@@ -4593,6 +4595,86 @@ async function loadBoard() {
     console.error('loadBoard:', e);
   }
   loadBoardMembersFeature();
+  checkPendingCarryover();
+}
+
+// ── carry-over-from-yesterday review ────────────────────────────────────────
+// Board load is the one lazy trigger point (GET /api/tasks/board on the
+// backend already runs the day-boundary rollover before answering) — nothing
+// here is on a timer. Mirrors the existing pending-recurring banner's
+// fetch-then-render shape and reuses its .pending-rec-* styling rather than
+// introducing a new visual pattern.
+
+async function checkPendingCarryover() {
+  try {
+    const pending = await api('/api/tasks/pending-carryover');
+    renderCarryoverBanner(pending);
+  } catch (e) { console.error('checkPendingCarryover:', e); }
+}
+
+function _friendlyCarryoverDate(dateStr) {
+  const d   = new Date(dateStr + 'T12:00:00Z');
+  const now = new Date();
+  const diffDays = Math.round((Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) - Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())) / 86400000);
+  if (diffDays === 1) return 'Yesterday';
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function renderCarryoverBanner(pending) {
+  const banner = document.getElementById('carryover-banner');
+  if (!banner) return;
+  if (!pending || !pending.length) { banner.style.display = 'none'; return; }
+
+  const byDate = {};
+  for (const t of pending) (byDate[t.date] ||= []).push(t);
+  const dates = Object.keys(byDate).sort();
+  const title = dates.length > 1 ? 'Carry over from previous days?' : 'Carry over from yesterday?';
+
+  banner.style.display = 'block';
+  banner.innerHTML = `
+    <div class="pending-rec-banner">
+      <div class="pending-rec-head">${esc(title)}</div>
+      <div class="pending-rec-sub">You didn't get to these. Want to bring any into today?</div>
+      <div id="carryover-list">
+        ${dates.map(date => `
+          ${dates.length > 1 ? `<div style="font-size:11px;color:#999;font-weight:500;margin:8px 0 2px">${esc(_friendlyCarryoverDate(date))}</div>` : ''}
+          ${byDate[date].map(t => `
+            <div class="pending-rec-row" data-carryover-id="${t.id}">
+              ${tagHtml(t.business)}
+              <span style="font-size:13px;flex:1">${esc(t.name)}</span>
+              <button class="add-btn" style="padding:3px 10px;font-size:11px" onclick="resolveCarryoverOne(${t.id},'confirm')">Carry over</button>
+              <button class="add-btn" style="padding:3px 10px;font-size:11px;background:#f0f0ee;color:#666" onclick="resolveCarryoverOne(${t.id},'dismiss')">Archive</button>
+            </div>
+          `).join('')}
+        `).join('')}
+      </div>
+      <div class="pending-rec-actions">
+        <button class="add-btn" onclick="resolveCarryoverAll('confirm')">Carry over all</button>
+        <button class="add-btn" style="background:#f0f0ee;color:#666" onclick="resolveCarryoverAll('dismiss')">Archive all</button>
+      </div>
+    </div>
+  `;
+}
+
+async function resolveCarryoverOne(id, action) {
+  try {
+    await api('/api/tasks/carryover', { method: 'POST', body: action === 'confirm' ? { confirm: [id] } : { dismiss: [id] } });
+    document.querySelector(`#carryover-list [data-carryover-id="${id}"]`)?.remove();
+    if (!document.querySelectorAll('#carryover-list [data-carryover-id]').length) {
+      document.getElementById('carryover-banner').style.display = 'none';
+    }
+    loadBoard();
+  } catch (e) { console.error('resolveCarryoverOne:', e); }
+}
+
+async function resolveCarryoverAll(action) {
+  const ids = Array.from(document.querySelectorAll('#carryover-list [data-carryover-id]')).map(el => Number(el.dataset.carryoverId));
+  if (!ids.length) return;
+  try {
+    await api('/api/tasks/carryover', { method: 'POST', body: action === 'confirm' ? { confirm: ids } : { dismiss: ids } });
+    document.getElementById('carryover-banner').style.display = 'none';
+    loadBoard();
+  } catch (e) { console.error('resolveCarryoverAll:', e); }
 }
 
 // ── board sharing: members panel + task assignment ─────────────────────────────

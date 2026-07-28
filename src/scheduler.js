@@ -7,7 +7,7 @@ const {
   getPendingNudges, getSetting,
   getTaskByEventId, updateTaskFromCalendar,
   getTodayTasksIncludingPending, getPendingRecurring,
-  insertCarriedTask, deduplicateTasks,
+  deduplicateTasks,
   claimSchedulerRun,
   watCurrentQuarter, quarterStartDate, getRetroStatus,
   getQuarterlyOkrs, getRocks, getFounderProfile,
@@ -176,6 +176,17 @@ const quarterlyRetroPrompt = forEachTelegramUser(async (userId) => {
   upsertSetting(userId, quarterNotifiedKey(year, quarter), '1');
 });
 
+// Confirmation over automation: this job no longer moves any task onto
+// today's board by itself. It used to (insertCarriedTask, unconditionally,
+// every incomplete non-recurring task, every night) — that's exactly what
+// made the board accumulate indefinitely, since nothing ever asked the user
+// first. The actual day-boundary transition (incomplete → pending_carryover)
+// now happens lazily, on the user's first board/task read of the new day
+// (rolloverStaleTasks in db.js, called from server.js) — deliberately not
+// here, so there is exactly one place that decides "is this stale," not two
+// racing definitions of it. This job keeps only the parts that were already
+// safe automation: cleaning up known-duplicate rows and queuing (not
+// inserting) today's recurring-task proposals, same as before.
 async function midnightCarry() {
   const today     = watToday();
   const yesterday = new Date(Date.now() + 60 * 60 * 1000 - 86400000).toISOString().slice(0, 10);
@@ -184,45 +195,31 @@ async function midnightCarry() {
     const userId = u.id;
     try {
       // Clean up any duplicate tasks from yesterday (Google Calendar sync
-      // loop) before carrying incomplete ones forward — otherwise duplicates
-      // get carried too.
+      // loop) before the day-open rollover has to look at them.
       const removedYesterday = deduplicateTasks(userId, yesterday);
       if (removedYesterday > 0) {
         console.log(`[scheduler] midnight — cleaned ${removedYesterday} duplicate task(s) for user ${userId} on ${yesterday}`);
       }
 
-      // Carry incomplete non-recurring tasks from yesterday
-      const yesterdayTasks = getTasksByDate(userId, yesterday);
-      const todayTasks     = getTasksByDate(userId, today);
-      const todayNames     = new Set(todayTasks.map(t => t.name));
-
-      const toCarry = yesterdayTasks.filter(t =>
-        !t.done &&
-        t.source !== 'recurring' &&
-        t.business !== 'anchor'
-      );
-
-      let carried = 0;
-      for (const t of toCarry) {
-        if (todayNames.has(t.name)) continue;
-        insertCarriedTask(userId, today, t.name, t.business, t.time || null, t.priority || 'normal');
-        todayNames.add(t.name);
-        carried++;
-      }
+      // Read-only — just for tonight's Telegram summary. Doesn't move
+      // anything; the pending_carryover transition itself happens lazily,
+      // per the note above, whenever the user next opens the board/tasks.
+      const pendingCount = getTasksByDate(userId, yesterday).filter(t =>
+        !t.done && t.source !== 'recurring' && t.business !== 'anchor'
+      ).length;
 
       // Queue recurring tasks for today's confirmation
       populateRecurring(userId, today);
       db.prepare('INSERT OR IGNORE INTO day_log (user_id, date) VALUES (?, ?)').run(userId, today);
 
-      console.log(`[scheduler] midnight — carried ${carried} task(s) from ${yesterday} for user ${userId}`);
-
       const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
       const dayLabel = DAYS[new Date(today + 'T12:00:00Z').getUTCDay()];
 
-      if (carried > 0) {
+      if (pendingCount > 0) {
         await sendMessage(userId,
           `New day started — ${dayLabel}, ${today}\n\n` +
-          `Carried forward from yesterday:\n${carried} incomplete task${carried !== 1 ? 's' : ''}\n\n` +
+          `You didn't get to ${pendingCount} task${pendingCount !== 1 ? 's' : ''} from yesterday. ` +
+          `Open the board and we'll ask what to do with ${pendingCount !== 1 ? 'them' : 'it'} — bring it into today, or leave it behind.\n\n` +
           `Recurring tasks will be confirmed at morning briefing.\n\n` +
           `Rest well.`
         );
