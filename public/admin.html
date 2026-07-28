@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LIFELINE — Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;450;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --stone-bg:#F1EBE2;--card:#FCFAF6;--card-2:#F7F0E6;
+  --espresso:#2A201B;--espresso-2:#372A22;--espresso-line:#453629;
+  --clay:#BC4A30;--clay-deep:#A23D26;--clay-tint:#F6E4DB;--ochre:#DE9A44;
+  --sage:#7E8E68;--sage-soft:#E9EDE1;--alert:#C23B2B;--alert-tint:#F7E2DD;
+  --amber:#D68A2E;--amber-tint:#FBEBD3;
+  --ink:#2A201B;--ink-soft:#77685C;--ink-faint:#A99A8B;--line:#E7DDCF;
+  --grad:linear-gradient(135deg,var(--clay),var(--ochre));
+  --shadow-sm:0 1px 2px rgba(42,32,27,.04),0 2px 6px rgba(42,32,27,.05);
+  --shadow-md:0 2px 4px rgba(42,32,27,.04),0 10px 26px -8px rgba(42,32,27,.14);
+  --r-lg:22px;--r-md:16px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+body{font-family:'IBM Plex Sans',system-ui,sans-serif;background:var(--stone-bg);color:var(--ink);font-size:14px;line-height:1.5;display:flex;min-height:100vh}
+.mono{font-family:'IBM Plex Mono',monospace;font-feature-settings:"tnum"}
+
+/* Sidebar */
+.sidebar{width:248px;flex-shrink:0;background:var(--espresso);color:#D9CCBE;padding:26px 18px 20px;display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
+.brand{display:flex;align-items:center;gap:11px;padding:0 8px 4px}
+.brand .rings{width:34px;height:34px;flex-shrink:0}
+.brand-name{font-family:'Fraunces',serif;font-weight:600;font-size:19px;color:#F4EADE;letter-spacing:.2px;display:flex;align-items:center;gap:8px}
+.admin-tag{font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:1px;background:var(--clay);color:#fff;padding:2px 6px;border-radius:5px;text-transform:uppercase;font-weight:600}
+.brand-sub{font-size:10.5px;color:#8E7C6C;letter-spacing:1.4px;text-transform:uppercase;margin-top:1px}
+.nav-group{margin-top:24px}
+.nav-label{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#7A6858;padding:0 12px 9px;font-weight:600}
+.nav-item{display:flex;align-items:center;gap:12px;padding:9px 12px;border-radius:10px;color:#C6B6A6;font-weight:450;cursor:pointer;transition:background .16s,color .16s;margin-bottom:2px}
+.nav-item svg{width:18px;height:18px;flex-shrink:0;opacity:.85}
+.nav-item:hover{background:var(--espresso-2);color:#EDE0D2}
+.nav-item.active{background:var(--clay);color:#fff}
+.nav-item.active svg{opacity:1}
+.nav-item .count{margin-left:auto;font-size:11px;color:#8E7C6C;font-family:'IBM Plex Mono',monospace}
+.side-foot{margin-top:auto}
+.back-app{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;color:#B4A392;cursor:pointer;font-size:13px;border:1px solid var(--espresso-line);margin-bottom:14px}
+.back-app:hover{background:var(--espresso-2);color:#EDE0D2}
+.back-app svg{width:16px;height:16px}
+.user{display:flex;align-items:center;gap:11px;padding:8px 8px 0;border-top:1px solid var(--espresso-line);padding-top:14px}
+.avatar{width:34px;height:34px;border-radius:50%;background:var(--grad);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;font-size:13px;flex-shrink:0}
+.user .u-name{font-weight:500;color:#EDE0D2;font-size:13px}
+.user .u-role{font-size:11px;color:#8E7C6C}
+
+/* Main */
+.main{flex:1;min-width:0;padding:22px 30px 40px;max-width:1320px}
+.topbar{display:flex;align-items:center;gap:16px;margin-bottom:24px}
+.greet{flex:1;min-width:0}
+.greet h1{font-family:'Fraunces',serif;font-weight:500;font-size:29px;line-height:1.15;letter-spacing:-.3px}
+.greet p{color:var(--ink-soft);margin-top:4px;font-size:13.5px;display:flex;align-items:center;gap:8px}
+.env{display:inline-flex;align-items:center;gap:6px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--sage);background:var(--sage-soft);padding:2px 8px;border-radius:20px;font-weight:500}
+.env i{width:7px;height:7px;border-radius:50%;background:var(--sage);display:inline-block}
+.tb-actions{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.pill{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:9px 13px;font-weight:500;box-shadow:var(--shadow-sm);cursor:pointer;color:var(--ink);font-size:13px}
+.pill svg{width:16px;height:16px;color:var(--ink-soft)}
+.icon-btn{width:40px;height:40px;border-radius:12px;background:var(--card);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:var(--shadow-sm)}
+.icon-btn svg{width:18px;height:18px;color:var(--ink-soft)}
+
+/* KPIs */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);padding:16px;box-shadow:var(--shadow-sm);transition:transform .18s,box-shadow .18s}
+.kpi:hover{transform:translateY(-2px);box-shadow:var(--shadow-md)}
+.kpi .k-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.kpi .k-label{font-size:11.5px;color:var(--ink-soft);font-weight:500}
+.kpi .k-ic{width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center}
+.kpi .k-ic svg{width:15px;height:15px}
+.kpi .k-val{font-family:'IBM Plex Mono',monospace;font-size:27px;font-weight:600;letter-spacing:-1px;line-height:1}
+.kpi .k-val small{font-size:14px;color:var(--ink-faint);font-weight:400}
+.kpi .k-trend{font-size:11.5px;margin-top:8px;font-weight:500;display:flex;align-items:center;gap:4px}
+.trend-up{color:var(--sage)}.trend-down{color:var(--alert)}.trend-flat{color:var(--ink-faint)}
+.ic-clay{background:var(--clay-tint)}.ic-clay svg{color:var(--clay)}
+.ic-sage{background:var(--sage-soft)}.ic-sage svg{color:var(--sage)}
+.ic-ochre{background:var(--amber-tint)}.ic-ochre svg{color:#C98126}
+
+/* Grid + cards */
+.grid{display:grid;grid-template-columns:2fr 1fr;gap:18px;align-items:start}
+.col{display:flex;flex-direction:column;gap:18px;min-width:0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow-sm);padding:20px}
+.card-h{display:flex;align-items:center;gap:10px;margin-bottom:18px}
+.card-h .ic{width:30px;height:30px;border-radius:9px;background:var(--clay-tint);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.card-h .ic svg{width:16px;height:16px;color:var(--clay)}
+.card-h h2{font-size:15px;font-weight:600;letter-spacing:-.1px}
+.card-h .meta{margin-left:auto;font-size:12px;color:var(--ink-soft);font-family:'IBM Plex Mono',monospace}
+
+/* Growth chart */
+.chart-top{display:flex;align-items:flex-end;gap:20px;margin-bottom:14px}
+.chart-top .big{font-family:'IBM Plex Mono',monospace;font-size:30px;font-weight:600;letter-spacing:-1px;line-height:1}
+.chart-top .cap{font-size:12px;color:var(--ink-soft);margin-bottom:3px}
+.chart-top .delta{font-size:12px;color:var(--sage);font-weight:600;margin-bottom:4px;display:flex;align-items:center;gap:3px}
+.area-wrap{width:100%}
+.xaxis{display:flex;justify-content:space-between;margin-top:8px}
+.xaxis span{font-size:10.5px;color:var(--ink-faint);font-family:'IBM Plex Mono',monospace}
+
+/* Engagement bars */
+.eng-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px}
+.eng-stat{background:var(--card-2);border-radius:12px;padding:12px 14px}
+.eng-stat .s-v{font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:600;letter-spacing:-.5px}
+.eng-stat .s-l{font-size:11px;color:var(--ink-soft);margin-top:2px}
+.bars{display:flex;align-items:flex-end;gap:5px;height:90px;padding-top:6px}
+.bar-col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%;gap:5px}
+.bar{width:100%;border-radius:5px 5px 3px 3px;background:var(--clay);min-height:3px}
+.bar.faded{background:#E7CBB8}
+.bar-x{display:flex;gap:5px;margin-top:7px}
+.bar-x span{flex:1;text-align:center;font-size:9.5px;color:var(--ink-faint);font-family:'IBM Plex Mono',monospace}
+
+/* Adoption */
+.adopt{display:flex;flex-direction:column;gap:15px}
+.adopt-row .a-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.adopt-row .a-name{font-size:13px;font-weight:500}
+.adopt-row .a-pct{font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:var(--ink-soft)}
+.adopt-row .a-bar{height:7px;border-radius:5px;background:var(--card-2);overflow:hidden}
+.adopt-row .a-bar i{display:block;height:100%;border-radius:5px;background:var(--grad)}
+
+/* System health */
+.health-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.h-tile{border:1px solid var(--line);border-radius:12px;padding:12px 13px;display:flex;flex-direction:column;gap:5px}
+.h-tile .h-l{font-size:11px;color:var(--ink-soft)}
+.h-tile .h-v{display:flex;align-items:center;gap:7px;font-weight:600;font-size:14px}
+.h-tile .h-v .sdot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.sdot.ok{background:var(--sage)}.sdot.warn{background:var(--amber)}.sdot.down{background:var(--alert)}
+.h-tile .h-v .mono{font-family:'IBM Plex Mono',monospace;font-weight:600}
+.h-tile.warn{background:var(--amber-tint);border-color:#EAD3AC}
+
+/* Events */
+.event{display:flex;gap:12px;padding:11px 2px;border-bottom:1px solid var(--line)}
+.event:last-child{border-bottom:0;padding-bottom:0}
+.event .e-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:5px}
+.e-dot.ok{background:var(--sage)}.e-dot.warn{background:var(--amber)}.e-dot.down{background:var(--alert)}
+.event .e-body{flex:1;min-width:0}
+.event .e-t{font-size:13px;font-weight:500}
+.event .e-s{font-size:11.5px;color:var(--ink-soft);margin-top:1px}
+.event .e-time{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--ink-faint);flex-shrink:0}
+.event .e-count{font-family:'IBM Plex Mono',monospace;font-size:11px;background:var(--card-2);padding:1px 7px;border-radius:20px;color:var(--ink-soft);flex-shrink:0;margin-top:1px}
+
+.fade{opacity:0;transform:translateY(10px);animation:fadeUp .55s cubic-bezier(.22,.61,.36,1) forwards}
+@keyframes fadeUp{to{opacity:1;transform:none}}
+
+@media (max-width:1080px){.grid{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:760px){.sidebar{display:none}.main{padding:18px 16px 32px}.health-grid{grid-template-columns:1fr}.greet h1{font-size:24px}}
+@media (prefers-reduced-motion:reduce){.fade{animation:none;opacity:1;transform:none}*{transition:none!important}}
+:focus-visible{outline:2px solid var(--clay);outline-offset:2px;border-radius:6px}
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="brand">
+    <svg class="rings" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <defs><linearGradient id="ring" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#BC4A30"/><stop offset="1" stop-color="#DE9A44"/></linearGradient></defs>
+      <circle cx="14" cy="14" r="8.5" stroke="url(#ring)" stroke-width="3"/><circle cx="26" cy="14" r="8.5" stroke="url(#ring)" stroke-width="3" opacity=".85"/><circle cx="14" cy="26" r="8.5" stroke="url(#ring)" stroke-width="3" opacity=".7"/><circle cx="26" cy="26" r="8.5" stroke="url(#ring)" stroke-width="3" opacity=".55"/>
+    </svg>
+    <div><div class="brand-name">LIFELINE <span class="admin-tag">Admin</span></div><div class="brand-sub">Operator console</div></div>
+  </div>
+
+  <nav class="nav-group">
+    <div class="nav-label">Overview</div>
+    <div class="nav-item active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>Overview</div>
+    <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>Growth</div>
+    <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>Engagement</div>
+    <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>Adoption</div>
+  </nav>
+  <nav class="nav-group">
+    <div class="nav-label">System</div>
+    <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>Health <span class="count" id="health-nav-count"></span></div>
+    <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.5"/><path d="M3 20a6 6 0 0112 0"/><circle cx="17.5" cy="9" r="2.5"/><path d="M16 20a5 5 0 015-3"/></svg>Users</div>
+    <div class="nav-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v14H8l-4 3z"/><path d="M8 9h8M8 13h5"/></svg>Logs</div>
+  </nav>
+
+  <div class="side-foot">
+    <div class="back-app"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>Back to app</div>
+    <div class="user"><div class="avatar" id="admin-avatar">—</div><div><div class="u-name" id="admin-name">—</div><div class="u-role">Owner</div></div></div>
+  </div>
+</aside>
+
+<main class="main">
+  <div class="topbar fade">
+    <div class="greet">
+      <h1>Admin overview</h1>
+      <p id="topbar-date">— · <span class="env"><i></i><span id="env-label">—</span></span></p>
+    </div>
+    <div class="tb-actions">
+      <div class="pill"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 9h18"/></svg>Last 30 days<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></div>
+      <div class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 11-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></div>
+    </div>
+  </div>
+
+  <!-- KPIs — rendered by renderKpiGrid() from /api/admin/overview -->
+  <div class="kpis fade" id="kpi-grid" style="animation-delay:.05s"></div>
+
+  <div class="grid">
+    <!-- LEFT -->
+    <div class="col">
+      <!-- Growth -->
+      <div class="card fade" style="animation-delay:.1s">
+        <div class="card-h">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg></div>
+          <h2>Signups</h2><span class="meta">last 8 weeks</span>
+        </div>
+        <div class="chart-top">
+          <div><div class="cap">This week</div><div class="big mono" id="growth-thisweek">—</div></div>
+          <div class="delta" id="growth-delta"></div>
+        </div>
+        <div class="area-wrap">
+          <svg id="area" viewBox="0 0 600 150" width="100%" height="150" preserveAspectRatio="none" aria-hidden="true">
+            <defs><linearGradient id="areaFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#BC4A30" stop-opacity="0.22"/><stop offset="1" stop-color="#BC4A30" stop-opacity="0"/></linearGradient></defs>
+          </svg>
+          <div class="xaxis" id="growth-xaxis"></div>
+        </div>
+      </div>
+
+      <!-- Engagement -->
+      <div class="card fade" style="animation-delay:.15s">
+        <div class="card-h">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg></div>
+          <h2>Engagement</h2><span class="meta">daily active · 14 days</span>
+        </div>
+        <div class="eng-stats">
+          <div class="eng-stat"><div class="s-v mono" id="eng-avgactive">—</div><div class="s-l">Avg. daily active</div></div>
+          <div class="eng-stat"><div class="s-v mono" id="eng-tasksweek">—</div><div class="s-l">Tasks completed / wk</div></div>
+          <div class="eng-stat"><div class="s-v mono" id="eng-session" style="font-size:14px;color:var(--ink-faint)">Not tracked</div><div class="s-l">Avg. session</div></div>
+        </div>
+        <div class="bars" id="bars"></div>
+        <div class="bar-x" id="barx"></div>
+      </div>
+    </div>
+
+    <!-- RIGHT -->
+    <div class="col">
+      <!-- Adoption -->
+      <div class="card fade" style="animation-delay:.12s">
+        <div class="card-h">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></div>
+          <h2>Feature adoption</h2>
+        </div>
+        <div class="adopt" id="adopt"></div>
+      </div>
+
+      <!-- System health -->
+      <div class="card fade" style="animation-delay:.18s">
+        <div class="card-h">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+          <h2>System health</h2><span class="meta" id="health-meta">—</span>
+        </div>
+        <div class="health-grid" id="health-grid"></div>
+      </div>
+
+      <!-- Recent events -->
+      <div class="card fade" style="animation-delay:.24s">
+        <div class="card-h">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v14H8l-4 3z"/></svg></div>
+          <h2>Recent events</h2><span class="meta">recent signups</span>
+        </div>
+        <div id="events-list"></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+'use strict';
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+async function api(path){
+  const res = await fetch(path, { credentials: 'same-origin' });
+  if (!res.ok) {
+    const err = new Error('request failed');
+    err.status = res.status;
+    throw err;
+  }
+  return res.json();
+}
+
+function showAccessDenied(status){
+  document.querySelector('.main').innerHTML = `
+    <div style="max-width:420px;margin:80px auto;text-align:center">
+      <h1 style="font-family:'Fraunces',serif;font-weight:500;font-size:24px;margin-bottom:10px">
+        ${status === 401 ? 'Not signed in' : 'Not authorized'}
+      </h1>
+      <p style="color:var(--ink-soft);font-size:14px;margin-bottom:20px">
+        ${status === 401
+          ? 'Log in to LIFELINE first, then reload this page.'
+          : "This page is restricted to the owner account."}
+      </p>
+      <a href="/" style="display:inline-block;background:var(--clay);color:#fff;padding:10px 20px;border-radius:10px;text-decoration:none;font-weight:500;font-size:13px">Back to app</a>
+    </div>`;
+}
+
+function fmtUptime(sec){
+  const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60);
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+function trendArrow(dir){
+  return dir === 'up'
+    ? '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M7 14l5-5 5 5"/></svg>'
+    : '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M7 10l5 5 5-5"/></svg>';
+}
+
+// ── KPIs ─────────────────────────────────────────────────────────────────────
+function renderKpiGrid(o){
+  const activePct = o.totalUsers ? Math.round((o.activeThisWeek / o.totalUsers) * 100) : null;
+  const tiles = [
+    { label:'Total users', icClass:'ic-clay',
+      icon:'<circle cx="9" cy="8" r="3.5"/><path d="M3 20a6 6 0 0112 0"/><circle cx="17.5" cy="9" r="2.5"/><path d="M16 20a5 5 0 015-3"/>',
+      val: o.totalUsers, trend:'registered accounts' },
+    { label:'Active this week', icClass:'ic-sage',
+      icon:'<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+      val: o.activeThisWeek, trend: activePct != null ? `${activePct}% of all users` : '—' },
+    { label:'Activation rate', icClass:'ic-ochre',
+      icon:'<path d="M12 2l2.5 6.5L21 9l-5 4.5L17.5 21 12 17l-5.5 4L8 13.5 3 9l6.5-.5z"/>',
+      val: o.activationRate != null ? `${o.activationRate}<small>%</small>` : '—', trend:'completed onboarding' },
+    { label:'Week-1 retention', icClass:'ic-clay',
+      icon:'<path d="M21 12a9 9 0 11-3-6.7"/><path d="M21 4v5h-5"/>',
+      val: o.retentionRate != null ? `${o.retentionRate}<small>%</small>` : '—',
+      trend: o.retentionCohortSize ? `of a ${o.retentionCohortSize}-user cohort` : 'no completed cohort yet' },
+  ];
+  document.getElementById('kpi-grid').innerHTML = tiles.map(t => `
+    <div class="kpi">
+      <div class="k-top"><span class="k-label">${esc(t.label)}</span><span class="k-ic ${t.icClass}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${t.icon}</svg></span></div>
+      <div class="k-val">${t.val}</div>
+      <div class="k-trend trend-flat">${esc(t.trend)}</div>
+    </div>
+  `).join('');
+}
+
+// ── Growth (signups, last 8 weeks) ──────────────────────────────────────────
+function renderGrowth(g){
+  const weeks = g.weeks;
+  const thisWeek = weeks[weeks.length-1].count;
+  const prior = weeks[weeks.length-2] ? weeks[weeks.length-2].count : 0;
+  document.getElementById('growth-thisweek').textContent = thisWeek;
+  const deltaEl = document.getElementById('growth-delta');
+  if (prior > 0) {
+    const pct = Math.round(((thisWeek - prior) / prior) * 100);
+    deltaEl.innerHTML = `${trendArrow(pct >= 0 ? 'up' : 'down')}${pct >= 0 ? '+' : ''}${pct}% vs. prior week`;
+    deltaEl.style.color = pct >= 0 ? 'var(--sage)' : 'var(--alert)';
+  } else if (thisWeek > 0) {
+    deltaEl.textContent = 'First signups this week';
+    deltaEl.style.color = 'var(--sage)';
+  } else {
+    deltaEl.textContent = '';
+  }
+
+  document.getElementById('growth-xaxis').innerHTML = [0,2,4,6,7].map(i => {
+    const d = new Date(weeks[i].weekStart + 'T00:00:00Z');
+    return `<span>${d.toLocaleDateString('en-US',{month:'short',day:'numeric',timeZone:'UTC'})}</span>`;
+  }).join('');
+
+  const svg = document.getElementById('area');
+  const data = weeks.map(w => w.count);
+  const W=600,H=150,pad=6;
+  const max = Math.max(...data, 1) * 1.15;
+  const step = W / (data.length - 1);
+  const pts = data.map((v,i) => [i*step, H-pad-(v/max)*(H-pad*2)]);
+  const line = pts.map((p,i) => (i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
+  const area = line + ` L${W} ${H} L0 ${H} Z`;
+  const ns = 'http://www.w3.org/2000/svg';
+  const a = document.createElementNS(ns,'path'); a.setAttribute('d',area); a.setAttribute('fill','url(#areaFill)'); svg.appendChild(a);
+  const l = document.createElementNS(ns,'path'); l.setAttribute('d',line); l.setAttribute('fill','none'); l.setAttribute('stroke','#BC4A30'); l.setAttribute('stroke-width','2.5'); l.setAttribute('stroke-linecap','round'); l.setAttribute('stroke-linejoin','round');
+  svg.appendChild(l);
+  const tl = l.getTotalLength(); l.style.strokeDasharray = tl; l.style.strokeDashoffset = tl; l.style.transition = 'stroke-dashoffset 1.2s cubic-bezier(.22,.61,.36,1)';
+  requestAnimationFrame(() => { setTimeout(() => l.style.strokeDashoffset = 0, 80); });
+  const last = pts[pts.length-1];
+  const dot = document.createElementNS(ns,'circle'); dot.setAttribute('cx',last[0]); dot.setAttribute('cy',last[1]); dot.setAttribute('r','4'); dot.setAttribute('fill','#BC4A30'); dot.setAttribute('stroke','#FCFAF6'); dot.setAttribute('stroke-width','2'); svg.appendChild(dot);
+}
+
+// ── Engagement ───────────────────────────────────────────────────────────────
+function renderEngagement(e){
+  document.getElementById('eng-avgactive').textContent = e.avgDailyActive;
+  document.getElementById('eng-tasksweek').textContent = e.tasksCompletedThisWeek.toLocaleString();
+  // avg-session stays "Not tracked" — no session-duration data exists yet
+
+  const bars = document.getElementById('bars'), bx = document.getElementById('barx');
+  bars.innerHTML = ''; bx.innerHTML = '';
+  const vals = e.days.map(d => d.active);
+  const max = Math.max(...vals, 1);
+  e.days.forEach((d,i) => {
+    const col = document.createElement('div'); col.className = 'bar-col';
+    const b = document.createElement('div'); b.className = 'bar' + (i >= 7 ? '' : ' faded');
+    b.style.height = '0px'; bars.appendChild(col); col.appendChild(b);
+    setTimeout(() => { b.style.transition = 'height .6s cubic-bezier(.22,.61,.36,1)'; b.style.height = (d.active / max * 100) + '%'; }, 100 + i*30);
+    const s = document.createElement('span'); s.textContent = (i % 2 ? '' : d.date.slice(8,10)); bx.appendChild(s);
+  });
+}
+
+// ── Adoption ─────────────────────────────────────────────────────────────────
+function renderAdoption(a){
+  const wrap = document.getElementById('adopt');
+  wrap.innerHTML = '';
+  a.rows.forEach(row => {
+    const r = document.createElement('div'); r.className = 'adopt-row';
+    if (row.pct == null) {
+      r.innerHTML = `<div class="a-top"><span class="a-name">${esc(row.label)}</span><span class="a-pct" style="color:var(--ink-faint)">Not tracked</span></div><div class="a-bar"></div>`;
+    } else {
+      r.innerHTML = `<div class="a-top"><span class="a-name">${esc(row.label)}</span><span class="a-pct">${row.pct}%</span></div><div class="a-bar"><i style="width:0%"></i></div>`;
+    }
+    wrap.appendChild(r);
+    const bar = r.querySelector('.a-bar i');
+    if (bar) setTimeout(() => { bar.style.transition = 'width .8s cubic-bezier(.22,.61,.36,1)'; bar.style.width = row.pct + '%'; }, 150);
+  });
+}
+
+// ── System health ────────────────────────────────────────────────────────────
+function renderHealth(h){
+  const tiles = [
+    { label:'Database',        ok: h.dbHealthy,   text: h.dbHealthy ? 'Healthy' : 'Down' },
+    { label:'Server uptime',   ok: true,           text: fmtUptime(h.serverUptimeSeconds), info:true },
+    { label:'Telegram',        ok: true,           text: h.telegramMode === 'polling' ? 'Polling mode' : 'Webhook mode', info:true },
+    { label:'Anthropic (Claude)', ok: h.anthropicConfigured, text: h.anthropicConfigured ? 'Configured' : 'Not configured' },
+    { label:'Groq (Whisper)',  ok: h.groqConfigured,      text: h.groqConfigured ? 'Configured' : 'Not configured' },
+    { label:'Google Calendar', ok: h.googleConfigured,    text: h.googleConfigured ? 'Configured' : 'Not configured' },
+  ];
+  document.getElementById('health-grid').innerHTML = tiles.map(t => `
+    <div class="h-tile${!t.ok && !t.info ? ' warn' : ''}">
+      <span class="h-l">${esc(t.label)}</span>
+      <span class="h-v"><span class="sdot ${t.info ? 'ok' : (t.ok ? 'ok' : 'warn')}"></span>${esc(t.text)}</span>
+    </div>
+  `).join('');
+  document.getElementById('health-meta').textContent = `DB ${h.dbHealthy ? 'healthy' : 'down'} · up ${fmtUptime(h.serverUptimeSeconds)}`;
+  const flagged = tiles.filter(t => !t.info && !t.ok).length;
+  document.getElementById('health-nav-count').textContent = flagged || '';
+}
+
+// ── Recent events (real signups) ────────────────────────────────────────────
+function renderEvents(ev){
+  const list = document.getElementById('events-list');
+  if (!ev.recentSignups.length) {
+    list.innerHTML = '<div style="font-size:12px;color:var(--ink-faint);padding:10px 2px">No signups yet.</div>';
+    return;
+  }
+  list.innerHTML = ev.recentSignups.map(s => `
+    <div class="event">
+      <span class="e-dot ok"></span>
+      <div class="e-body"><div class="e-t">New signup</div><div class="e-s">${esc(s.email)}</div></div>
+      <span class="e-time">${esc(s.created_at.slice(0,10))}</span>
+    </div>
+  `).join('');
+}
+
+async function boot(){
+  document.getElementById('topbar-date').innerHTML =
+    new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'}) +
+    ' · <span class="env"><i></i><span id="env-label">' +
+    (location.hostname === 'localhost' ? 'Local dev' : 'Production') + '</span></span>';
+
+  try {
+    const me = await api('/api/auth/me');
+    document.getElementById('admin-name').textContent = me.name || me.email;
+    document.getElementById('admin-avatar').textContent = (me.name || me.email).slice(0,2).toUpperCase();
+  } catch (e) {
+    return showAccessDenied(e.status || 401);
+  }
+
+  try {
+    const [overview, growth, engagement, adoption, health, events] = await Promise.all([
+      api('/api/admin/overview'),
+      api('/api/admin/growth'),
+      api('/api/admin/engagement'),
+      api('/api/admin/adoption'),
+      api('/api/admin/health'),
+      api('/api/admin/events'),
+    ]);
+    renderKpiGrid(overview);
+    renderGrowth(growth);
+    renderEngagement(engagement);
+    renderAdoption(adoption);
+    renderHealth(health);
+    renderEvents(events);
+  } catch (e) {
+    if (e.status === 401 || e.status === 403) return showAccessDenied(e.status);
+    console.error('admin dashboard load failed:', e);
+  }
+}
+
+boot();
+</script>
+</body>
+</html>

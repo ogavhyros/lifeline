@@ -1601,6 +1601,136 @@ app.post('/api/calendar/sync-test', requireAuth, async (req, res) => {
   }
 });
 
+// ── admin ─────────────────────────────────────────────────────────────────────
+// Backs public/admin.html — a standalone page, not linked from the main app,
+// not wired into its nav/state. Restricted to user 1 (the account these
+// routes are meaningful for as an operator, same gating pattern already used
+// elsewhere in this codebase — see forOgvOnly in scheduler.js). Everything
+// below is derived from data this app already has; nothing here is
+// fabricated. Fields with no real backing (avg session length, live
+// Claude/Groq operational status, a general events/audit log — none of
+// which this app tracks) are reported as null/not-available rather than
+// invented, and the frontend renders those honestly instead of guessing.
+
+// Configurable rather than a bare literal 1 so this can be pointed at a
+// different account (or a throwaway test user, locally) without editing
+// code — same reasoning as APP_TIMEZONE_OFFSET_HOURS in db.js. Defaults to
+// user 1 (OGV), the only account these routes are meaningful for right now.
+const ADMIN_USER_ID = Number(process.env.ADMIN_USER_ID || 1);
+function requireAdmin(req, res, next) {
+  if (req.user.id !== ADMIN_USER_ID) return res.status(403).json({ error: 'Forbidden' });
+  next();
+}
+
+app.get('/api/admin/overview', requireAuth, requireAdmin, (req, res) => {
+  const totalUsers = db.prepare('SELECT COUNT(*) n FROM users').get().n;
+
+  const weekAgo = new Date(Date.now() + 60 * 60 * 1000 - 7 * 86400000).toISOString().slice(0, 10);
+  const activeThisWeek = db.prepare('SELECT COUNT(DISTINCT user_id) n FROM day_log WHERE date >= ?').get(weekAgo).n;
+
+  const activated = db.prepare('SELECT COUNT(*) n FROM users WHERE onboarding_completed = 1').get().n;
+  const activationRate = totalUsers ? Math.round((activated / totalUsers) * 100) : null;
+
+  // Week-1 retention: users whose signup is 7-14 days old (a cohort that has
+  // actually completed a full first week) — % who logged any activity
+  // (day_log) in the 7 days after their own signup date, excluding day 0.
+  const today = watToday();
+  const cohort = db.prepare(`
+    SELECT id, date(created_at) AS signup_date FROM users
+    WHERE date(created_at) <= date(?, '-7 days') AND date(created_at) > date(?, '-14 days')
+  `).all(today, today);
+  let retained = 0;
+  for (const u of cohort) {
+    const hit = db.prepare(
+      `SELECT 1 FROM day_log WHERE user_id = ? AND date > ? AND date <= date(?, '+7 days') LIMIT 1`
+    ).get(u.id, u.signup_date, u.signup_date);
+    if (hit) retained++;
+  }
+  const retentionRate = cohort.length ? Math.round((retained / cohort.length) * 100) : null;
+
+  res.json({ totalUsers, activeThisWeek, activationRate, retentionRate, retentionCohortSize: cohort.length });
+});
+
+app.get('/api/admin/growth', requireAuth, requireAdmin, (req, res) => {
+  const users = db.prepare('SELECT created_at FROM users').all()
+    .map(u => new Date(u.created_at.replace(' ', 'T') + 'Z'));
+  const now = new Date(Date.now() + 60 * 60 * 1000);
+  const weeks = [];
+  for (let i = 7; i >= 0; i--) {
+    const start = new Date(now); start.setUTCDate(start.getUTCDate() - i * 7 - now.getUTCDay());
+    start.setUTCHours(0, 0, 0, 0);
+    const end = new Date(start); end.setUTCDate(end.getUTCDate() + 7);
+    const count = users.filter(d => d >= start && d < end).length;
+    weeks.push({ weekStart: start.toISOString().slice(0, 10), count });
+  }
+  res.json({ weeks });
+});
+
+app.get('/api/admin/engagement', requireAuth, requireAdmin, (req, res) => {
+  const days = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date(Date.now() + 60 * 60 * 1000 - i * 86400000).toISOString().slice(0, 10);
+    const active = db.prepare('SELECT COUNT(DISTINCT user_id) n FROM day_log WHERE date = ?').get(d).n;
+    days.push({ date: d, active });
+  }
+  const avgDailyActive = days.length ? Math.round(days.reduce((s, d) => s + d.active, 0) / days.length) : 0;
+
+  const weekAgo = new Date(Date.now() + 60 * 60 * 1000 - 7 * 86400000).toISOString().slice(0, 10);
+  const tasksCompletedThisWeek = db.prepare('SELECT COUNT(*) n FROM tasks WHERE done = 1 AND date >= ?').get(weekAgo).n;
+
+  // Not tracked — this app has no session-duration instrumentation.
+  const avgSessionMinutes = null;
+
+  res.json({ days, avgDailyActive, tasksCompletedThisWeek, avgSessionMinutes });
+});
+
+app.get('/api/admin/adoption', requireAuth, requireAdmin, (req, res) => {
+  const totalUsers = db.prepare('SELECT COUNT(*) n FROM users').get().n;
+  const pct = (n) => (totalUsers ? Math.round((n / totalUsers) * 100) : null);
+
+  const withVenture  = db.prepare("SELECT COUNT(DISTINCT user_id) n FROM businesses WHERE is_personal = 0").get().n;
+  const withCalendar = db.prepare("SELECT COUNT(DISTINCT user_id) n FROM settings WHERE key = 'google_tokens'").get().n;
+  const withRoutine  = db.prepare("SELECT COUNT(DISTINCT user_id) n FROM recurring_tasks").get().n;
+  const withTelegram = db.prepare("SELECT COUNT(*) n FROM users WHERE telegram_chat_id IS NOT NULL").get().n;
+  const withPlanWeek = db.prepare(
+    "SELECT COUNT(DISTINCT user_id) n FROM tasks WHERE quarterly_okr_id IS NOT NULL OR rock_id IS NOT NULL"
+  ).get().n;
+
+  res.json({
+    totalUsers,
+    rows: [
+      { key: 'venture',   label: 'Created a venture',         pct: pct(withVenture) },
+      { key: 'calendar',  label: 'Google Calendar connected', pct: pct(withCalendar) },
+      { key: 'routine',   label: 'Set a routine',             pct: pct(withRoutine) },
+      { key: 'telegram',  label: 'Telegram linked',           pct: pct(withTelegram) },
+      { key: 'planweek',  label: 'Plan my week used',         pct: pct(withPlanWeek) },
+      // Brain-dump-created tasks aren't tagged with a distinct source, so
+      // there's no reliable way to count this yet — reported honestly as
+      // untracked instead of guessed at.
+      { key: 'braindump', label: 'Brain dump used',           pct: null },
+    ],
+  });
+});
+
+app.get('/api/admin/health', requireAuth, requireAdmin, (req, res) => {
+  let dbHealthy = true;
+  try { db.prepare('SELECT 1').get(); } catch { dbHealthy = false; }
+
+  res.json({
+    dbHealthy,
+    serverUptimeSeconds: Math.round(process.uptime()),
+    telegramMode: POLLING ? 'polling' : 'webhook',
+    anthropicConfigured: !!process.env.ANTHROPIC_API_KEY,
+    groqConfigured: !!process.env.GROQ_API_KEY,
+    googleConfigured: !!process.env.GOOGLE_CLIENT_ID,
+  });
+});
+
+app.get('/api/admin/events', requireAuth, requireAdmin, (req, res) => {
+  const recentSignups = db.prepare('SELECT email, created_at FROM users ORDER BY created_at DESC LIMIT 10').all();
+  res.json({ recentSignups });
+});
+
 // ── telegram webhook ──────────────────────────────────────────────────────────
 // External caller (Telegram's servers) — no requireAuth. handleUpdate resolves
 // the right user internally from the incoming message's chat_id.
