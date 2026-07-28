@@ -117,6 +117,12 @@ app.use(express.json());
 app.use(sessionMiddleware);
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
+// Clean-URL alias for the standalone page at public/dashboard.html — same
+// pattern as everything else in this app (served publicly, auth checked
+// client-side via GET /api/auth/me, not gated server-side). Parallel to the
+// existing Today page, not wired into it or the SPA's switchTab() nav.
+app.get('/dashboard', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'dashboard.html')));
+
 registerAuthRoutes(app); // POST /api/auth/signup, /login, /logout, GET /api/auth/me — all public, no requireAuth
 
 // ── startup: verify task persistence ─────────────────────────────────────────

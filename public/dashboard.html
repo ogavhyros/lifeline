@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LIFELINE — Dashboard</title>
+<style>
+:root{
+  --stone-bg:#F1EBE2;--card:#FCFAF6;--card-2:#F7F0E6;
+  --espresso:#2A201B;--espresso-2:#372A22;--espresso-line:#453629;
+  --clay:#BC4A30;--clay-deep:#A23D26;--clay-tint:#F6E4DB;--ochre:#DE9A44;
+  --sage:#7E8E68;--sage-soft:#E9EDE1;
+  --ink:#2A201B;--ink-soft:#77685C;--ink-faint:#A99A8B;--line:#E7DDCF;
+  --grad:linear-gradient(135deg,var(--clay),var(--ochre));
+  --shadow-sm:0 1px 2px rgba(42,32,27,.04),0 2px 6px rgba(42,32,27,.05);
+  --shadow-md:0 2px 4px rgba(42,32,27,.04),0 10px 26px -8px rgba(42,32,27,.14);
+  --r-lg:22px;--r-md:16px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;background:var(--stone-bg);color:var(--ink);font-size:14px;line-height:1.5;display:flex;min-height:100vh;overflow-x:hidden}
+.mono{font-family:ui-monospace,'SFMono-Regular',Consolas,monospace;font-variant-numeric:tabular-nums}
+.serif{font-family:Georgia,'Iowan Old Style','Palatino Linotype',serif}
+
+/* Sidebar */
+.sidebar{width:248px;flex-shrink:0;background:var(--espresso);color:#D9CCBE;padding:26px 18px 20px;display:flex;flex-direction:column;position:sticky;top:0;height:100vh}
+.brand{display:flex;align-items:center;gap:11px;padding:0 8px 4px}
+.brand .rings{width:34px;height:34px;flex-shrink:0}
+.brand-name{font-family:Georgia,serif;font-weight:600;font-size:19px;color:#F4EADE;letter-spacing:.2px}
+.brand-sub{font-size:10.5px;color:#8E7C6C;letter-spacing:1.4px;text-transform:uppercase;margin-top:1px}
+.nav-group{margin-top:26px}
+.nav-label{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#7A6858;padding:0 12px 9px;font-weight:600}
+.nav-item{display:flex;align-items:center;gap:12px;padding:9px 12px;border-radius:10px;color:#C6B6A6;font-weight:450;cursor:pointer;transition:background .16s,color .16s;margin-bottom:2px;text-decoration:none}
+.nav-item svg{width:18px;height:18px;flex-shrink:0;opacity:.85}
+.nav-item:hover{background:var(--espresso-2);color:#EDE0D2}
+.nav-item.active{background:var(--clay);color:#fff}
+.nav-item.active svg{opacity:1}
+.nav-item .count{margin-left:auto;font-size:11px;color:#8E7C6C;font-family:ui-monospace,monospace}
+.nav-item.active .count{color:#F6D8C9}
+.side-foot{margin-top:auto}
+.user{display:flex;align-items:center;gap:11px;padding:8px 8px 0;border-top:1px solid var(--espresso-line);padding-top:14px}
+.avatar{width:34px;height:34px;border-radius:50%;background:var(--grad);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;font-size:13px;flex-shrink:0}
+.user .u-name{font-weight:500;color:#EDE0D2;font-size:13px}
+.user .u-role{font-size:11px;color:#8E7C6C}
+
+/* Main */
+.main{flex:1;min-width:0;padding:22px 30px 40px;max-width:1320px;overflow-x:auto}
+.topbar{display:flex;align-items:center;gap:16px;margin-bottom:26px}
+.greet{flex:1;min-width:0}
+.greet h1{font-family:Georgia,serif;font-weight:500;font-size:30px;line-height:1.15;letter-spacing:-.3px;text-wrap:balance}
+.greet h1 em{font-style:normal;color:var(--clay)}
+.greet p{color:var(--ink-soft);margin-top:4px;font-size:14px}
+.tb-actions{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.pill{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:9px 13px;font-weight:500;box-shadow:var(--shadow-sm);color:var(--ink);font-size:13px;text-decoration:none}
+
+/* Grid */
+.grid{display:grid;grid-template-columns:2fr 1fr;gap:18px;align-items:start}
+.col{display:flex;flex-direction:column;gap:18px;min-width:0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow-sm);padding:20px}
+.card-h{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.card-h .ic{width:30px;height:30px;border-radius:9px;background:var(--clay-tint);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.card-h .ic svg{width:16px;height:16px;color:var(--clay)}
+.card-h h2{font-size:15px;font-weight:600;letter-spacing:-.1px}
+.card-h .link{margin-left:auto;font-size:12.5px;color:var(--ink-soft);font-weight:500;padding:4px 10px;border-radius:8px;text-decoration:none}
+.card-h .link:hover{background:var(--card-2);color:var(--clay)}
+
+/* KPIs */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);padding:16px 16px 15px;box-shadow:var(--shadow-sm)}
+.kpi .k-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.kpi .k-label{font-size:11.5px;color:var(--ink-soft);font-weight:500}
+.kpi .k-ic{width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:var(--clay-tint)}
+.kpi .k-ic svg{width:15px;height:15px;color:var(--clay)}
+.kpi .k-val{font-family:ui-monospace,monospace;font-size:27px;font-weight:600;letter-spacing:-1px;line-height:1}
+.kpi .k-val small{font-size:14px;color:var(--ink-faint);font-weight:400}
+.kpi .k-val.untracked{font-size:14px;color:var(--ink-faint);font-weight:500;font-family:inherit}
+.kpi .k-trend{font-size:11.5px;margin-top:8px;font-weight:500;color:var(--ink-faint)}
+
+/* Tasks list */
+.task{display:flex;align-items:center;gap:13px;padding:12px 4px;border-bottom:1px solid var(--line)}
+.task:last-child{border-bottom:0;padding-bottom:2px}
+.tcheck{width:20px;height:20px;border-radius:7px;border:2px solid #D8C9B8;flex-shrink:0;cursor:pointer;transition:all .15s;display:flex;align-items:center;justify-content:center}
+.tcheck:hover{border-color:var(--clay)}
+.tcheck.done{background:var(--sage);border-color:var(--sage)}
+.tcheck.done svg{width:12px;height:12px;color:#fff}
+.tcheck.anchor{border-color:var(--clay)}
+.tcheck.anchor.done{background:var(--clay);border-color:var(--clay)}
+.t-body{flex:1;min-width:0}
+.t-name{font-weight:500;font-size:13.5px}
+.task.is-done .t-name{color:var(--ink-faint);text-decoration:line-through}
+.t-meta{display:flex;align-items:center;gap:8px;margin-top:2px}
+.tag{font-size:10.5px;padding:2px 8px;border-radius:6px;font-weight:500;letter-spacing:.2px}
+.tag-anchor{background:var(--clay-tint);color:var(--clay-deep)}
+.tag-personal{background:var(--card-2);color:var(--ink-soft)}
+.t-time{margin-left:auto;font-family:ui-monospace,monospace;font-size:12px;color:var(--ink-faint)}
+.empty-note{font-size:12.5px;color:var(--ink-faint);padding:10px 2px}
+
+/* Calendar */
+.cal-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.cal-h .m{font-family:Georgia,serif;font-weight:500;font-size:16px}
+.cal-nav{display:flex;gap:6px}
+.cal-nav button{width:26px;height:26px;border-radius:8px;border:1px solid var(--line);background:var(--card);cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--ink-soft)}
+.cal-nav button:hover{border-color:#D8CBBB}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;text-align:center}
+.cal-grid .dow{font-size:10px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.5px;padding-bottom:6px;font-weight:600}
+.cal-grid .day{aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:12.5px;border-radius:9px;font-family:ui-monospace,monospace;color:var(--ink);position:relative}
+.cal-grid .day.muted{color:var(--ink-faint);opacity:.5}
+.cal-grid .day.today{background:var(--clay);color:#fff;font-weight:600}
+.cal-grid .day.has::after{content:"";position:absolute;bottom:3px;width:4px;height:4px;border-radius:50%;background:var(--ochre)}
+.cal-grid .day.today.has::after{background:#fff}
+
+/* Upcoming */
+.up{display:flex;gap:12px;padding:12px 4px;border-bottom:1px solid var(--line)}
+.up:last-child{border-bottom:0;padding-bottom:2px}
+.up-time{font-family:ui-monospace,monospace;font-size:11.5px;color:var(--clay);font-weight:500;width:52px;flex-shrink:0;padding-top:1px}
+.up-body .u-t{font-weight:500;font-size:13px}
+.up-body .u-s{font-size:11.5px;color:var(--ink-soft);margin-top:1px}
+
+/* Ventures */
+.ven-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.ven{border:1px solid var(--line);border-radius:var(--r-md);padding:14px}
+.ven .v-top{display:flex;align-items:center;gap:9px;margin-bottom:12px}
+.ven .v-badge{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;font-family:Georgia,serif;font-weight:600;font-size:14px;flex-shrink:0}
+.ven .v-name{font-weight:600;font-size:13px}
+.ven .v-foot{display:flex;align-items:center;justify-content:space-between;margin-top:12px;font-size:11.5px;color:var(--ink-soft)}
+.ven .v-foot .n{font-family:ui-monospace,monospace;color:var(--ink)}
+.status-dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:5px}
+
+/* CTA */
+.cta{background:var(--espresso);color:#EDE0D2;border-radius:var(--r-lg);padding:22px;position:relative;overflow:hidden}
+.cta::before{content:"";position:absolute;right:-40px;top:-40px;width:180px;height:180px;background:var(--grad);opacity:.22;filter:blur(30px);border-radius:50%}
+.cta h3{font-family:Georgia,serif;font-weight:500;font-size:19px;color:#F5EBDF;position:relative}
+.cta p{font-size:13px;color:#B4A392;margin:6px 0 16px;position:relative;max-width:78%}
+.cta-btn{background:var(--grad);color:#fff;border:0;border-radius:12px;padding:11px 18px;font-weight:600;font-size:13.5px;cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:8px;position:relative;box-shadow:0 8px 20px -8px rgba(188,74,48,.7);text-decoration:none}
+
+/* Follow-up note card */
+.followup-note{font-size:12.5px;color:var(--ink-faint);line-height:1.6}
+
+.fade{opacity:0;transform:translateY(10px);animation:fadeUp .55s cubic-bezier(.22,.61,.36,1) forwards}
+@keyframes fadeUp{to{opacity:1;transform:none}}
+@media (max-width:1080px){.grid{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:760px){.sidebar{display:none}.main{padding:18px 16px 32px;max-width:100%}.ven-grid{grid-template-columns:1fr}.greet h1{font-size:24px}}
+@media (prefers-reduced-motion:reduce){.fade{animation:none;opacity:1;transform:none}*{transition:none!important}}
+:focus-visible{outline:2px solid var(--clay);outline-offset:2px;border-radius:6px}
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="brand">
+    <svg class="rings" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <defs><linearGradient id="ring" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#BC4A30"/><stop offset="1" stop-color="#DE9A44"/></linearGradient></defs>
+      <circle cx="14" cy="14" r="8.5" stroke="url(#ring)" stroke-width="3"/><circle cx="26" cy="14" r="8.5" stroke="url(#ring)" stroke-width="3" opacity=".85"/><circle cx="14" cy="26" r="8.5" stroke="url(#ring)" stroke-width="3" opacity=".7"/><circle cx="26" cy="26" r="8.5" stroke="url(#ring)" stroke-width="3" opacity=".55"/>
+    </svg>
+    <div><div class="brand-name">LIFELINE</div><div class="brand-sub">Your operating system</div></div>
+  </div>
+
+  <nav class="nav-group">
+    <div class="nav-label">Today</div>
+    <div class="nav-item active"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>Dashboard</div>
+    <a class="nav-item" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 4v16M3 10h5"/></svg>Task board <span class="count" id="nav-board-count"></span></a>
+    <a class="nav-item" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="4"/></svg>Routines</a>
+  </nav>
+
+  <nav class="nav-group">
+    <div class="nav-label">Direction</div>
+    <a class="nav-item" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/></svg>My Goals</a>
+    <a class="nav-item" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21V8l6-4 6 4 6-3v12"/><path d="M3 14h18"/></svg>Ventures <span class="count" id="nav-ventures-count"></span></a>
+    <a class="nav-item" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>Review</a>
+  </nav>
+
+  <div class="side-foot">
+    <div class="user">
+      <div class="avatar" id="sb-avatar">—</div>
+      <div><div class="u-name" id="sb-name">—</div><div class="u-role">Workspace</div></div>
+    </div>
+  </div>
+</aside>
+
+<main class="main">
+  <div class="topbar fade">
+    <div class="greet">
+      <h1 id="greeting">—</h1>
+      <p id="subgreet">—</p>
+    </div>
+    <div class="tb-actions">
+      <a class="pill" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 9h18"/></svg>Open full app</a>
+    </div>
+  </div>
+
+  <div class="kpis fade" id="kpi-grid" style="margin-bottom:18px;animation-delay:.05s"></div>
+
+  <div class="grid">
+    <div class="col">
+      <div class="card fade" style="animation-delay:.15s">
+        <div class="card-h">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></div>
+          <h2>Today</h2>
+          <a class="link" href="/">Open task board</a>
+        </div>
+        <div id="today-list"></div>
+      </div>
+
+      <div class="card fade" style="animation-delay:.2s">
+        <div class="card-h">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21V8l6-4 6 4 6-3v12"/><path d="M3 14h18"/></svg></div>
+          <h2>Ventures</h2>
+          <a class="link" href="/">View all</a>
+        </div>
+        <div class="ven-grid" id="ven-grid"></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="cta fade" style="animation-delay:.12s">
+        <h3>Plan my week</h3>
+        <p>Let LIFELINE draft a balanced week from your goals, routines and calendar. You confirm every block.</p>
+        <a class="cta-btn" href="/"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><path d="M12 2l2.5 6.5L21 9l-5 4.5L17.5 21 12 17l-5.5 4L8 13.5 3 9l6.5-.5z"/></svg>Draft my week</a>
+      </div>
+
+      <div class="card fade" style="animation-delay:.17s">
+        <div class="cal-h">
+          <div class="m" id="cal-month">—</div>
+          <div class="cal-nav"><button id="cal-prev" aria-label="Previous month"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 18l-6-6 6-6"/></svg></button><button id="cal-next" aria-label="Next month"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 18l6-6-6-6"/></svg></button></div>
+        </div>
+        <div class="cal-grid" id="cal"></div>
+      </div>
+
+      <div class="card fade" style="animation-delay:.22s">
+        <div class="card-h">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+          <h2>Upcoming today</h2>
+        </div>
+        <div id="upcoming-list"></div>
+      </div>
+
+      <div class="card fade" style="animation-delay:.27s">
+        <div class="card-h">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div>
+          <h2>Weekly scorecard</h2>
+        </div>
+        <p class="followup-note">Per-domain daily tracking isn't built yet — this needs a real endpoint (life-domain classification doesn't exist in the task schema). Follow-up, not faked here.</p>
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+'use strict';
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+async function api(path, opts = {}){
+  const res = await fetch(path, { credentials: 'same-origin', headers: { 'content-type': 'application/json' }, ...opts });
+  if (!res.ok) { const err = new Error('request failed'); err.status = res.status; throw err; }
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}
+
+function showAccessDenied(status){
+  document.querySelector('.main').innerHTML = `
+    <div style="max-width:420px;margin:80px auto;text-align:center">
+      <h1 style="font-family:Georgia,serif;font-weight:500;font-size:24px;margin-bottom:10px">Not signed in</h1>
+      <p style="color:var(--ink-soft);font-size:14px;margin-bottom:20px">Log in to LIFELINE first, then reload this page.</p>
+      <a href="/" style="display:inline-block;background:var(--clay);color:#fff;padding:10px 20px;border-radius:10px;text-decoration:none;font-weight:500;font-size:13px">Back to app</a>
+    </div>`;
+}
+
+let BUSINESSES = [];
+function bizFor(slug){ return BUSINESSES.find(b => b.slug === slug); }
+
+function tagHtml(business){
+  if (business === 'personal' || !business) return `<span class="tag tag-personal">Personal</span>`;
+  const b = bizFor(business);
+  if (b) return `<span class="tag" style="background:${esc(b.color_bg)};color:${esc(b.color_text)}">${esc(b.name)}</span>`;
+  return `<span class="tag tag-personal">${esc(business)}</span>`;
+}
+
+async function toggleTask(id){
+  try { await api(`/api/tasks/${id}/toggle`, { method: 'PATCH' }); await loadToday(); }
+  catch (e) { console.error('toggleTask:', e); }
+}
+async function toggleAnchor(key){
+  try { await api(`/api/anchors/${key}/toggle`, { method: 'PATCH' }); await loadToday(); }
+  catch (e) { console.error('toggleAnchor:', e); }
+}
+
+let TASKS_TODAY = [];
+
+async function loadToday(){
+  const [tasks, anchors] = await Promise.all([ api('/api/tasks'), api('/api/anchors/today') ]);
+  TASKS_TODAY = tasks;
+
+  const rows = [
+    ...anchors.map(a => ({ kind: 'anchor', name: a.label, time: a.time, done: a.done, key: a.key })),
+    ...tasks.map(t => ({ kind: 'task', name: t.name, time: t.time, done: !!t.done, business: t.business, id: t.id })),
+  ].sort((a, b) => (a.time || 'zz').localeCompare(b.time || 'zz'));
+
+  const list = document.getElementById('today-list');
+  if (!rows.length) {
+    list.innerHTML = '<div class="empty-note">Nothing on today\'s board yet.</div>';
+  } else {
+    list.innerHTML = rows.map(r => {
+      if (r.kind === 'anchor') {
+        return `<div class="task${r.done ? ' is-done' : ''}">
+          <div class="tcheck anchor${r.done ? ' done' : ''}" onclick="toggleAnchor('${esc(r.key)}')">${r.done ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>' : ''}</div>
+          <div class="t-body"><div class="t-name">${esc(r.name)}</div><div class="t-meta"><span class="tag tag-anchor">Anchor</span></div></div>
+          ${r.time ? `<span class="t-time">${esc(r.time)}</span>` : ''}
+        </div>`;
+      }
+      return `<div class="task${r.done ? ' is-done' : ''}">
+        <div class="tcheck${r.done ? ' done' : ''}" onclick="toggleTask(${r.id})">${r.done ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg>' : ''}</div>
+        <div class="t-body"><div class="t-name">${esc(r.name)}</div><div class="t-meta">${tagHtml(r.business)}</div></div>
+        ${r.time ? `<span class="t-time">${esc(r.time)}</span>` : ''}
+      </div>`;
+    }).join('');
+  }
+
+  renderKpis(tasks, anchors);
+  renderUpcoming(tasks);
+}
+
+function renderKpis(tasks, anchors){
+  const doneAnchors = anchors.filter(a => a.done).length;
+  const doneTasks = tasks.filter(t => t.done).length;
+  const tiles = [
+    { label: 'Anchors kept', val: `${doneAnchors}<small>/${anchors.length}</small>`, tracked: true },
+    { label: 'Tasks today', val: `${doneTasks}<small>/${tasks.length}</small>`, trend: `${tasks.length - doneTasks} remaining`, tracked: true },
+    { label: 'Priorities on track', tracked: false, note: 'Needs a real cross-venture summary endpoint (data exists per-venture only)' },
+    { label: 'Focus hours', tracked: false, note: 'No time-tracking exists in this app yet' },
+  ];
+  document.getElementById('kpi-grid').innerHTML = tiles.map(t => `
+    <div class="kpi">
+      <div class="k-top"><span class="k-label">${esc(t.label)}</span></div>
+      ${t.tracked
+        ? `<div class="k-val">${t.val}</div><div class="k-trend">${esc(t.trend || '')}</div>`
+        : `<div class="k-val untracked">Not tracked</div><div class="k-trend">${esc(t.note)}</div>`}
+    </div>
+  `).join('');
+}
+
+function renderUpcoming(tasks){
+  const now = new Date();
+  const nowHHMM = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+  const upcoming = tasks.filter(t => !t.done && t.time && t.time >= nowHHMM).sort((a,b) => a.time.localeCompare(b.time));
+  const list = document.getElementById('upcoming-list');
+  if (!upcoming.length) {
+    list.innerHTML = '<div class="empty-note">Nothing left with a time today.</div>';
+    return;
+  }
+  list.innerHTML = upcoming.map(t => `
+    <div class="up"><span class="up-time">${esc(t.time)}</span><div class="up-body"><div class="u-t">${esc(t.name)}</div><div class="u-s">${bizFor(t.business) ? esc(bizFor(t.business).name) : 'Personal'}</div></div></div>
+  `).join('');
+}
+
+async function loadVentures(){
+  const board = await api('/api/tasks/board');
+  const ventures = BUSINESSES.filter(b => !b.is_personal);
+  const grid = document.getElementById('ven-grid');
+  if (!ventures.length) {
+    grid.innerHTML = '<div class="empty-note">No ventures yet — add one in Settings.</div>';
+    document.getElementById('nav-ventures-count').textContent = '';
+  } else {
+    grid.innerHTML = ventures.map(v => {
+      const open = board.filter(t => t.business === v.slug && t.status !== 'done').length;
+      return `<div class="ven">
+        <div class="v-top"><span class="v-badge" style="background:${esc(v.color_bg)};color:${esc(v.color_text)}">${esc((v.name || '?').charAt(0).toUpperCase())}</span><div class="v-name">${esc(v.name)}</div></div>
+        <div class="v-foot"><span><span class="status-dot" style="background:${v.active ? 'var(--sage)' : 'var(--ink-faint)'}"></span>${v.active ? 'Active' : 'Inactive'}</span><span class="n">${open ? open + ' open' : '—'}</span></div>
+      </div>`;
+    }).join('');
+    document.getElementById('nav-ventures-count').textContent = ventures.length;
+  }
+
+  const openBoard = board.filter(t => t.status !== 'done').length;
+  document.getElementById('nav-board-count').textContent = openBoard || '';
+}
+
+let calYear, calMonth; // calMonth: 0-11
+
+function renderCalMonth(){
+  const first = new Date(calYear, calMonth, 1);
+  const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+  const today = new Date();
+  const isCurrentMonth = today.getFullYear() === calYear && today.getMonth() === calMonth;
+
+  document.getElementById('cal-month').textContent = first.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+  const from = `${calYear}-${String(calMonth+1).padStart(2,'0')}-01`;
+  const to   = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(daysInMonth).padStart(2,'0')}`;
+
+  api(`/api/tasks/range?from=${from}&to=${to}`).then(byDate => {
+    const cal = document.getElementById('cal');
+    cal.innerHTML = '';
+    ['S','M','T','W','T','F','S'].forEach(d => { const e = document.createElement('div'); e.className = 'dow'; e.textContent = d; cal.appendChild(e); });
+    for (let i = 0; i < first.getDay(); i++) { const e = document.createElement('div'); e.className = 'day muted'; cal.appendChild(e); }
+    for (let d = 1; d <= daysInMonth; d++) {
+      const e = document.createElement('div'); e.className = 'day'; e.textContent = d;
+      if (isCurrentMonth && d === today.getDate()) e.classList.add('today');
+      const dateStr = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      if (byDate[dateStr] && byDate[dateStr].length) e.classList.add('has');
+      cal.appendChild(e);
+    }
+  }).catch(e => console.error('calendar load:', e));
+}
+
+function changeMonth(delta){
+  calMonth += delta;
+  if (calMonth < 0) { calMonth = 11; calYear--; }
+  if (calMonth > 11) { calMonth = 0; calYear++; }
+  renderCalMonth();
+}
+
+async function boot(){
+  const now = new Date();
+  const h = now.getHours();
+  const greeting = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+  document.getElementById('greeting').innerHTML = greeting + '<em>.</em>';
+
+  try {
+    const me = await api('/api/auth/me');
+    document.getElementById('subgreet').textContent =
+      now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) + ' — here\'s where today stands.';
+    document.getElementById('sb-name').textContent = me.name || me.email;
+    document.getElementById('sb-avatar').textContent = (me.name || me.email).slice(0, 2).toUpperCase();
+  } catch (e) {
+    return showAccessDenied(e.status || 401);
+  }
+
+  try {
+    BUSINESSES = await api('/api/businesses');
+    await loadToday();
+    await loadVentures();
+    calYear = now.getFullYear(); calMonth = now.getMonth();
+    document.getElementById('cal-prev').addEventListener('click', () => changeMonth(-1));
+    document.getElementById('cal-next').addEventListener('click', () => changeMonth(1));
+    renderCalMonth();
+  } catch (e) {
+    if (e.status === 401 || e.status === 403) return showAccessDenied(e.status);
+    console.error('dashboard load failed:', e);
+  }
+}
+
+boot();
+</script>
+</body>
+</html>
